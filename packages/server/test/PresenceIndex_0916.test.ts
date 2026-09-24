@@ -236,8 +236,13 @@ describe("프레즌스 색인 — 연결의 생애 전부를 정확히 따라간
     await reg(h, "SwapTwo").then((x) => x.close());
     await tick();
     expectIndexMatchesTruth(h, "준비");
+    // 고정 대기(60ms)로는 scrypt 로그인이 끝나기 전에 검사할 수 있다 — 부하가 걸린 기계에서
+    // 매번 실패했다(2026-09-24). 두 번째 authOk 가 올 때까지 기다린다.
+    const authOks = s.all("authOk").length;
     s.clientSend({ type: "login", username: "SwapTwo", password: "pw123456" });
-    await tick(60);
+    await s.waitFor(() => s.all("authOk").length > authOks || s.last("error") !== undefined);
+    expect(s.all("authOk").length, `재로그인 실패: ${JSON.stringify(s.last("error"))}`).toBe(authOks + 1);
+    await tick();
     expectIndexMatchesTruth(h, "계정 갈아탐");
     expect(indexOnline(h).has("SwapOne")).toBe(false);
     expect(indexOnline(h).has("SwapTwo")).toBe(true);
