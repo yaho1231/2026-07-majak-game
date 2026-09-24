@@ -188,6 +188,10 @@ export const AUGMENT_SYNERGY: Readonly<Record<string, SynergyEntry>> = {
     anti: ["riichi_declare"],
   }),
   late_double: e(["riichi", "riichi_value", "menzen"]),
+  // 위압감 — 증강 리치 버튼이라 다른 리치 버튼과는 한 국에 하나만 산다
+  intimidate: e(["riichi", "riichi_declare", "disrupt"], {
+    anti: ["riichi_declare"],
+  }),
   free_riichi_discard: e(["riichi", "menzen"]),
   off_by_one: e(["riichi", "riichi_open", "shape"]),
   ura_peek: e(["riichi_value", "dora", "wall_info"]),
@@ -295,6 +299,7 @@ export const AUGMENT_SYNERGY: Readonly<Record<string, SynergyEntry>> = {
   bottom_deal: e(["wall_info", "tempo"]),
   future_sight: e(["hand_edit", "wall_info"]),
   pruning: e(["hand_edit", "wall_info"]),
+  greed: e(["hand_edit", "wall_info"]),
   xray_hand: e(["opp_info"]),
   tenpai_scan: e(["opp_info", "defense"]),
   danger_sense: e(["opp_info", "defense"]),
@@ -409,6 +414,8 @@ export const AUGMENT_SYNERGY: Readonly<Record<string, SynergyEntry>> = {
   seat_swap: e(["disrupt", "dealer"]),
   time_stop: e(["tempo"]),
   time_pressure: e(["disrupt", "tempo"]),
+  reverse_wind: e(["disrupt", "tempo"]),
+  swamp: e(["disrupt"]),
 
   // ───────────────────────── 축이 없는 것 ─────────────────────────
   // 모든 빌드에 똑같이 어울려 축을 매기면 오히려 왜곡된다 — 균등하게 둔다.

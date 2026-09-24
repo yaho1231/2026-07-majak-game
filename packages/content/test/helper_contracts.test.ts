@@ -196,6 +196,8 @@ describe("손 가공 표식 계약 (handAltered — 천화·지화 게이트, do
     "conjure_draw.ts":
       "자기 순에 선언해 다음 쯔모를 바꾼다 — 버림 1장 뒤라 TILE_DRAWN이 firstTurn을 내린다",
     "giant_god.ts": "국사 13종을 전부 버린 뒤 — 13순 뒤다",
+    "greed.ts":
+      "자기 순에 선언해 다음 쯔모를 바꾼다(소환과 같다) — 버림 1장 뒤라 TILE_DRAWN이 firstTurn을 내린다",
     "haitei_lord.ts": "해저패(패산 마지막 장) 전용",
     "meld_dissolve.ts": "해체할 후로가 있었다 — 첫 바퀴는 이미 깨졌고 되돌아오지 않는다",
     "north_trader.ts": "자체 게이트 — win.blockedYaku로 보유자의 tenhou·chihou를 막는다",

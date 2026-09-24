@@ -883,10 +883,7 @@ export interface SettleWinRequest {
  * 하고 어떤 자리는 한 번도 못 한다 — 국 번호는 무조건 +1로 오르기 때문이다.
  * (구 상태·리플레이에는 rotationSeat가 없으므로 dealerSeat로 폴백한다.)
  */
-function advanceRound(
-  state: GameState,
-  direction: number,
-): {
+function advanceRound(state: GameState): {
   roundNumber: number;
   prevalentWind: number;
   dealerSeat: number;
@@ -894,7 +891,8 @@ function advanceRound(
 } {
   const roundNumber = state.round.roundNumber + 1;
   const rotation = state.round.rotationSeat ?? state.round.dealerSeat;
-  const nextRotation = nextSeat(state, rotation, direction);
+  // 오야 이동은 진행 방향과 무관하다 — 역풍은 그 국의 차례 순서만 뒤집는다(helpers nextSeat).
+  const nextRotation = nextSeat(state, rotation);
   return {
     roundNumber: roundNumber > state.players.length ? 1 : roundNumber,
     prevalentWind:
@@ -1168,7 +1166,7 @@ function sysSettleWin(yaku: YakuRegistry): ActionDef<SettleWinRequest> {
             // (만년 오야가 오야 자리를 자기 쪽으로 끌어와도 순번은 안 건드린다.)
             rotationSeat: state.round.rotationSeat ?? state.round.dealerSeat,
           }
-        : advanceRound(state, rules.resolve<number>("turn.direction", { state }));
+        : advanceRound(state);
 
       const payload: RoundSettledPayload = {
         outcome: "win",
@@ -1318,7 +1316,7 @@ const sysSettleDraw: ActionDef<Record<string, never>> = {
           // 텐파이야메(연장)도 국 번호를 소모하지 않는다 — 기준 자리 유지
           rotationSeat: state.round.rotationSeat ?? state.round.dealerSeat,
         }
-      : advanceRound(state, rules.resolve<number>("turn.direction", { state }));
+      : advanceRound(state);
     const payload: RoundSettledPayload = {
       outcome: "draw",
       deltas,
@@ -1520,7 +1518,7 @@ export function defineStandardFlowRules(rules: RuleRegistry): void {
    * 이후 물리 손패를 자유롭게 버려도 오름패·화료형이 첫 리치 손패로 고정되게 한다.
    */
   rules.define<readonly TileId[] | null>("hand.winTileIds", null);
-  /** 턴 진행 방향 (1=표준, -1=역방향) */
+  /** 턴 진행 방향 (1=표준, -1=역방향). 차례 순서·치 대상·론 우선순위만 바뀐다 (역풍) */
   rules.define("turn.direction", 1);
   /**
    * 게임 종료 시 플레이어 최종 점수에 더해지는 보정값 (기본 0).

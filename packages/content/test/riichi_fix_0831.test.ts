@@ -305,8 +305,9 @@ describe("C-6 리치 선언 5종은 «국당 하나만»이라고 글에 적혀 
     .filter(([, v]) => (v.tags ?? []).includes("riichi_declare"))
     .map(([id]) => id);
 
-  it("riichi_declare 축이 다섯 장이다", () => {
-    expect(DECLARERS.length).toBe(5);
+  // 2026-09-24 위압감(intimidate)이 여섯 번째로 들어왔다
+  it("riichi_declare 축이 여섯 장이다", () => {
+    expect(DECLARERS.length).toBe(6);
   });
 
   for (const id of DECLARERS) {

@@ -117,7 +117,11 @@ export const riichiUpgrade: AugmentDef = defineAugment({
       // 두 번째 선언 — 하가(내 다음 차례 사람)의 그 국 리치를 봉인
       if (stringOf(state, sealKey(state, holder)) !== null) return;
       const mySeat = playerOf(state, holder).seat;
-      const target = playerAtSeat(state, nextSeat(state, mySeat)).id;
+      // 하가 = 진행 방향으로 다음 사람 — 역풍이 켠 국에는 반대쪽 이웃이 된다
+      const direction = ctx.engine.rules.has("turn.direction")
+        ? ctx.engine.rules.resolve<number>("turn.direction", { state })
+        : 1;
+      const target = playerAtSeat(state, nextSeat(state, mySeat, direction)).id;
       if (target === holder) return; // 1인 게임 등 방어
       rc.emit(augmentDataSet(sealKey(state, holder), target));
       // 전원 공개 — 피격자는 자기 리치가 잠긴 이유를 알아야 대응할 수 있다
