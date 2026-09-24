@@ -410,9 +410,14 @@ describe("모바일 — 폰 크기 기준 규칙이 존재한다", () => {
 
   it("예지 재배열이 터치에서도 된다 (HTML5 draggable 단독 금지)", () => {
     expect(APP).toContain("moveForesight");
-    // 드래그 말고 누르는 길이 함께 있어야 한다
-    const strip = APP.slice(APP.indexOf('className="foresight-strip"'));
-    expect(strip.slice(0, 4000)).toContain("onClick={() => {");
+    // 드래그 말고 누르는 길이 함께 있어야 한다. 재배열은 전용 탭(foresight-tab)에서 한다 —
+    // 공개 패를 늘어놓던 foresight-strip은 손패 위 «패산 정보» 줄로 합쳐졌다(2026-09-25, docs/59 U50)
+    const at = APP.indexOf('className="rinshan-pick-panel foresight-tab"');
+    expect(at).toBeGreaterThan(0);
+    const row = APP.slice(at, at + 4000);
+    expect(row).toContain("draggable");
+    expect(row).toContain("onClick={() => {");
+    expect(row).toContain("moveForesight(foresightDragFrom, pos)");
   });
 
   it("타패 미리보기가 마우스 전용이 아니다", () => {

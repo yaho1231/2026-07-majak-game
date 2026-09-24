@@ -2729,38 +2729,88 @@ button {
   pointer-events: none;
 }
 
-/* 삼세 예지 — 내 다음 쯔모 3장을 손패 바로 위에 크게 띄운다 (왼쪽 위 패널 대체). */
-.next-tsumo-strip {
+/* ── 패산 정보 한 줄 (2026-09-25, docs/59 U50) ─────────────────────────────
+   예지·삼세 예지·밑장빼기가 보여 주는 «곧 나올 패»를 손패 바로 위 한 줄에 모은다. 예전엔
+   예지는 ✦ 버튼 옆 알약, 삼세 예지·밑장빼기는 손패 위에 각자 한 줄씩(모양·순서 표기가 제각각)
+   떠서 함께 들면 눈이 세 군데를 오갔다. 공통 규칙: 미니 패 26×37, 오른쪽 끝이 가장 먼저 나올
+   패(«다음» 뱃지), 섹션마다 테두리 색(--wp-accent)만 다르다. 한 줄이라 --own-band도 한 번만 자란다. */
+.wall-peek-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px 8px;
   margin: 0 auto 6px;
-  padding: 5px 12px;
-  width: max-content;
-  max-width: 92%;
+  max-width: 96%;
+}
+.wall-peek-sec {
+  --wp-accent: rgba(199, 188, 255, 0.55);
+  --wp-tag: #e2dcff;
+  --wp-badge: #a591ff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
   border-radius: 10px;
-  background: rgba(36, 26, 61, 0.9);
-  border: 1px solid rgba(199, 188, 255, 0.55);
+  background: rgba(22, 18, 36, 0.9);
+  border: 1px solid var(--wp-accent);
   box-shadow: 0 3px 14px rgba(0, 0, 0, 0.45);
   animation: bar-in 0.25s ease-out;
 }
-.next-tsumo-tag {
-  font-size: 13px;
+/* 섹션별 색 — 예지(분홍빛 보라) · 삼세 예지(푸른 보라) · 밑장빼기(초록). 모양은 같고 테두리만 다르다 */
+.wall-peek-foresight {
+  --wp-accent: rgba(222, 176, 255, 0.6);
+  --wp-tag: #ecd6ff;
+  --wp-badge: #b27ee0;
+}
+.wall-peek-triple {
+  --wp-accent: rgba(160, 172, 255, 0.6);
+  --wp-tag: #d9ddff;
+  --wp-badge: #7f8ff0;
+}
+.wall-peek-bottom {
+  --wp-accent: rgba(124, 196, 156, 0.55);
+  --wp-tag: #abddc4;
+  --wp-badge: #348a68;
+}
+/* 예약된 상태 — 다음 쯔모가 밑장으로 온다는 것을 테두리로 알린다 */
+.wall-peek-bottom.bottom-deal-armed {
+  --wp-accent: rgba(184, 151, 92, 0.9);
+  --wp-tag: #f0c86a;
+  --wp-badge: #9a7b42;
+  box-shadow: 0 0 14px rgba(184, 151, 92, 0.35);
+}
+.wall-peek-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12.5px;
   font-weight: 800;
-  letter-spacing: 0.5px;
-  color: #e2dcff;
+  letter-spacing: 0.4px;
+  color: var(--wp-tag);
   white-space: nowrap;
 }
-.next-tsumo-cell {
+.wall-peek-cta-short { display: none; }
+.wall-peek-tiles {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.wall-peek-cell {
   position: relative;
   display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
 }
-.next-tsumo-cell .tile-mini {
+.wall-peek-cell .tile-mini {
   width: 26px;
   height: 37px;
 }
-.next-tsumo-ord {
+/* 밑장빼기의 나머지 밑장은 그 뒤 순서라 흐리게 둔다(예전 규칙 그대로) */
+.wall-peek-cell.wall-peek-dim { opacity: 0.75; }
+/* 가장 먼저 나올 패 — 모든 섹션 공통 «다음» 뱃지. 나머지 번호(삼세 예지 2·3)도 같은 자리 */
+.wall-peek-badge {
   position: absolute;
   top: -7px;
   right: -6px;
@@ -2768,13 +2818,138 @@ button {
   height: 15px;
   padding: 0 3px;
   border-radius: 999px;
-  background: #a591ff;
+  background: var(--wp-badge);
   color: #f7f3e8;
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 800;
   line-height: 15px;
   text-align: center;
+  white-space: nowrap;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+.wall-peek-badge.wall-peek-ord {
+  background: rgba(255, 255, 255, 0.18);
+}
+/* 예지 — 그 패를 뽑을 자리 라벨, 내 쯔모는 ★와 푸른 테두리 */
+.wall-peek-label {
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+  color: rgba(226, 199, 147, 0.95);
+}
+.wall-peek-cell.foresight-mine .tile-mini {
+  outline: 2px solid rgba(130, 215, 245, 0.95);
+  outline-offset: 1px;
+  box-shadow: 0 0 12px rgba(118, 201, 233, 0.5);
+}
+.wall-peek-cell.foresight-mine .wall-peek-label {
+  color: #ece4d2;
+}
+.wall-peek-reorder {
+  padding: 4px 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(199, 188, 255, 0.8);
+  background: rgba(165, 145, 255, 0.35);
+  color: #f7f3e8;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.wall-peek-reorder:hover {
+  background: rgba(165, 145, 255, 0.55);
+}
+/* 밑장빼기 예약 — 누르는 곳은 태그와 밑장 칸뿐이다(docs/59 U35). 손패 바로 위라 줄 전체를
+   버튼으로 만들면 폰에서 잘못 누른다. 새 맥동은 두지 않고 정적인 테두리로만 «누를 수 있음»을 보인다. */
+.wall-peek-arm,
+.wall-peek-arm-cell {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.wall-peek-arm {
+  padding: 3px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--wp-accent);
+  background: rgba(124, 196, 156, 0.16);
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--wp-tag);
+}
+.wall-peek-arm:hover,
+.wall-peek-arm:focus-visible {
+  background: rgba(124, 196, 156, 0.3);
+}
+.wall-peek-arm-cell {
+  padding: 0;
+  border: 0;
+  background: none;
+  border-radius: 4px;
+}
+.wall-peek-arm-cell .tile-mini {
+  outline: 2px solid rgba(124, 196, 156, 0.85);
+  outline-offset: 1px;
+}
+.wall-peek-arm-cell:hover .tile-mini {
+  outline-color: #abddc4;
+  box-shadow: 0 0 10px rgba(124, 196, 156, 0.55);
+}
+/* 좁은 화면 — 섹션 태그는 아이콘만, 섹션은 줄을 넘긴다(예지 4 + 삼세 3 + 밑장 3 = 10장은 375px 한 줄에 안 든다) */
+@container ui (max-width: 700px) {
+  .wall-peek-sec {
+    padding: 3px 7px;
+    gap: 6px;
+  }
+  /* «(예약됨)»은 남긴다 — 되돌릴 수 없는 예약이라 폰에서도 글자로 보여야 한다. 테두리 색만으로는
+     예약 여부를 읽기 어렵다(2026-09-25, docs/59 U35 리뷰). */
+  .wall-peek-cta {
+    display: none;
+  }
+  /* 섹션 이름은 **눈에서만** 숨긴다 — display: none이면 접근성 트리에서도 빠져 «패산 정보» 안에서
+     어느 증강의 예고인지 들리지 않았다(아이콘은 aria-hidden, div의 title은 이름이 아니다).
+     .sr-only와 같은 방식(W3 통합 리뷰 regression-4). */
+  .wall-peek-name {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+  .wall-peek-cta-short {
+    display: inline;
+  }
+}
+
+/*
+ * 패산 정보 줄의 누르는 곳 — [순서 바꾸기]·밑장빼기 예약 태그·밑장 칸은 그림이 25~37px라 손가락에
+ * 작다. 게다가 손패 바로 위라 빗나간 탭이 손패로 떨어진다. 그림은 두고 **닿는 자리만** 넓히되,
+ * 손패 쪽(아래)은 거의 넓히지 않고 위로 벌린다(W3 통합 리뷰 regression-5, docs/59 U35·U50).
+ */
+@media (pointer: coarse) {
+  .wall-peek-reorder,
+  .wall-peek-arm,
+  .wall-peek-arm-cell {
+    position: relative;
+  }
+  .wall-peek-reorder::before,
+  .wall-peek-arm::before,
+  .wall-peek-arm-cell::before {
+    content: "";
+    position: absolute;
+    /* 위 8px — 더 벌리면 윗줄(이름표·접힌 윗 섹션)의 탭을 가로챈다 */
+    inset: -8px -4px -2px;
+    border-radius: inherit;
+  }
+  /* 밑장 칸은 이웃 칸과 6px 사이라 옆으로는 넓히지 않는다 */
+  .wall-peek-arm-cell::before {
+    inset: -8px 0 -2px;
+  }
 }
 
 /* 영상패 재열기 버튼의 숨쉬는 발광. (2026-07-26까지 폐기된 도박사의 손과 공용
@@ -2937,77 +3112,6 @@ button {
   cursor: pointer;
 }
 .rinshan-pick-skip:hover { background: rgba(255, 255, 255, 0.16); }
-
-/* 예지 — 액티브 증강 버튼 옆 '다음 패' 스트립 (모달을 대체, 2026-08-04).
-   공개된 패는 뽑힐 때까지 계속 여기 남고, 재배열이 열려 있을 때만 드래그된다. */
-.foresight-strip {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  max-width: 100%;
-  padding: 4px 10px;
-  border-radius: 12px;
-  border: 1px solid rgba(199, 188, 255, 0.45);
-  background: rgba(58, 43, 99, 0.55);
-}
-.foresight-strip-tag {
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.5px;
-  color: #c7bcff;
-  white-space: nowrap;
-}
-.foresight-strip-tiles {
-  display: flex;
-  align-items: flex-end;
-  gap: 6px;
-}
-.foresight-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 3px 4px;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
-}
-.foresight-cell.foresight-mine {
-  border-color: rgba(130, 215, 245, 0.95);
-  box-shadow: 0 0 14px rgba(118, 201, 233, 0.5);
-}
-.foresight-cell-label {
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1.1;
-  white-space: nowrap;
-  color: rgba(226, 199, 147, 0.95);
-}
-.foresight-cell.foresight-mine .foresight-cell-label {
-  color: #ece4d2;
-}
-.foresight-strip-confirm {
-  padding: 5px 12px;
-  border-radius: 9px;
-  border: 1px solid rgba(199, 188, 255, 0.8);
-  background: rgba(165, 145, 255, 0.35);
-  color: #f7f3e8;
-  font-size: 12px;
-  font-weight: 800;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.foresight-strip-confirm:hover {
-  background: rgba(165, 145, 255, 0.55);
-}
-/* 좁은 화면 — 스트립은 패와 자리 라벨만 남긴다 (패가 먼저다) */
-@container ui (max-width: 700px) {
-  .foresight-strip {
-    padding: 3px 7px;
-    gap: 6px;
-  }
-}
 
 /* ── 예지 재배열 탭 ──────────────────────────────────────────────────────
    재배열은 스트립 안 미니 패 넉 장을 끄는 일이었다 — 손가락보다 작고 판 구석에
@@ -8004,6 +8108,51 @@ button {
   transform: scale(1.05);
 }
 
+/*
+ * 쓸 수 있는 액티브가 하나면 버튼 글자가 «✦ {증강 이름} · {행동}»이다(2026-09-25, docs/59 U37).
+ * 이름표 줄은 한 줄을 지켜야 해서(아래 가로 블록 «한 줄 ≈600px») 이름·부제 모두 길이를 묶고
+ * 넘치면 말줄임한다. 좁은 화면에서는 부제를 숨긴다 — 행동은 메뉴 줄과 title에도 있다.
+ */
+.aug-btn { white-space: nowrap; }
+.aug-btn-name,
+.aug-btn-sub {
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.aug-btn-name { max-width: 9em; }
+.aug-btn-sub {
+  max-width: 10em;
+  margin-left: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  opacity: 0.85;
+}
+
+/*
+ * 국의 첫 순에만 뜨는 액티브가 지금 후보에 있다 — 평소 켜짐(보랏빛 맥동)과 구별되게 금빛
+ * 테두리와 «첫 순»/«이번 순만» 표를 단다. 한 장 버리면 그 국의 기회가 조용히 사라진다
+ * (2026-09-25, docs/59 U40). 맥동은 새로 두지 않는다 — 기존 turn-pulse 하나로 충분하다.
+ */
+.aug-btn-first {
+  border-color: rgba(240, 200, 110, 0.95);
+}
+.aug-first-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(240, 200, 110, 0.92);
+  color: #2a1d05;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  vertical-align: middle;
+}
+
 .aug-menu {
   position: absolute;
   bottom: calc(100% + 8px);
@@ -8018,6 +8167,12 @@ button {
   border: 1px solid rgba(199, 188, 255, 0.5);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
   min-width: 170px;
+  /*
+   * 줄마다 행동 부제가 붙어 넓어졌다 — 폭은 화면의 92%로 묶는다(docs/59 U38). 다만 이 폭만으로는
+   * 오른쪽 넘침을 못 막는다: 메뉴는 ✦ 버튼 왼쪽 끝(left: 0)에서 퍼지는데 폰 세로에서는 버튼이
+   * 줄 중간쯤에 선다. 그래서 좁은 화면(700px 블록)에서는 기준을 이름표 줄로 옮겨 가운데 세운다.
+   */
+  max-width: 92cqw;
   /* 선택지가 많아도(염색 등) 화면을 넘지 않게 — 넘치면 스크롤 */
   max-height: min(60cqh, 420px);
   overflow-y: auto;
@@ -8240,6 +8395,15 @@ button {
   outline-color: rgba(226, 220, 255, 1);
   box-shadow: 0 0 26px 6px rgba(199, 188, 255, 0.95);
 }
+/* 무장해제(opp-aug) — 줄은 대상이 아니라 입구다(대상은 그 안의 pill). 맥동은 pill이 맡고 줄은
+   점선 테두리만 — 둘 다 뛰면 어디를 눌러야 하는지 다시 흐려진다. pill이 숨는 좁은 화면에서는
+   이 줄을 누르면 고르기 시트가 열린다(2026-09-25, docs/59 U24). */
+.opp-aug-armable {
+  cursor: pointer;
+  border-radius: 12px;
+  outline: 2px dashed rgba(199, 188, 255, 0.85);
+  outline-offset: 4px;
+}
 .opp-arm-tag {
   position: absolute;
   top: -6px;
@@ -8291,6 +8455,26 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* 좌·우 줄의 비후보 사유는 말줄임 대신 두 줄로 접는다 — 이 문장은 aria-label·안내 줄 어디에도
+   없어 자르면 사유가 사라진다. 가장 긴 «후로 구성(깡·퐁)이 달라 고를 수 없습니다»가 굵은 12px로
+   300px 남짓이라, 폭을 막지 않으면 바깥 모서리에서 안쪽으로 늘어나 740×360에서 바닥·점수판을
+   덮었다(2026-09-25, docs/59 U28, B10 리뷰 라운드 2). 어절 단위로 끊고 붙은 쪽으로 정렬한다. */
+.opp-strip-left > .opp-arm-tag.opp-arm-blocked,
+.opp-strip-right > .opp-arm-tag.opp-arm-blocked {
+  /* 줄 폭이 좁아 그대로 두면 shrink-to-fit가 줄 폭에서 접는다 — 글 폭을 기준으로 잡고 180px에서만 접는다 */
+  width: max-content;
+  max-width: 180px;
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
+}
+.opp-strip-left > .opp-arm-tag.opp-arm-blocked {
+  text-align: left;
+}
+.opp-strip-right > .opp-arm-tag.opp-arm-blocked {
+  text-align: right;
+}
 /* 리치라서 대상이 될 수 없는 상대 — 강조 대신 '왜 못 고르는지'만 적는다 */
 .opp-arm-tag.opp-arm-blocked {
   border-color: rgba(255, 150, 150, 0.75);
@@ -8322,6 +8506,70 @@ button {
 }
 .rt.rt-armable:hover {
   box-shadow: 0 0 18px 4px rgba(199, 188, 255, 1);
+}
+
+/* ── 파혼(own-meld) — 판 오른쪽 아래 **내 후로**가 클릭 대상 ──────────────
+   ✦ 메뉴 2단계의 «파혼» 글자 버튼(후로 수만큼 똑같은 줄) 대신 해체할 치·퐁을 판에서 누른다
+   (2026-09-25, docs/59 U31). `.own-corner-right`는 overflow로 위아래를 자르므로 테두리는 래퍼
+   **안쪽**(padding 자리)에 긋고 «해체» 표도 래퍼 안에 얹는다. 폰에서는 --mt-w가 22px까지 줄어
+   후로가 손가락보다 작아지므로 래퍼가 최소 높이를 지킨다. 깡처럼 해체할 수 없는 후로는 흐린다. */
+.meld-armable {
+  position: relative;
+  display: inline-flex;
+  align-items: flex-end;
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 3px;
+  margin: 0;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(199, 188, 255, 0.16);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  outline: 2px solid rgba(199, 188, 255, 0.98);
+  outline-offset: -2px;
+  animation: armable-pulse-inset 1.1s ease-in-out infinite;
+}
+/* 맥동도 안쪽으로 — 바깥 번짐(armable-pulse, 최대 16px)은 .own-corner-right의 overflow가 위아래를 잘랐다(B10 리뷰) */
+@keyframes armable-pulse-inset {
+  0%, 100% { box-shadow: inset 0 0 6px 1px rgba(199, 188, 255, 0.45); }
+  50% { box-shadow: inset 0 0 12px 3px rgba(199, 188, 255, 0.85); }
+}
+.meld-armable:hover {
+  background: rgba(199, 188, 255, 0.28);
+}
+.meld-armable:focus-visible {
+  outline-color: #fff;
+}
+.meld-arm-tag {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  padding: 1px 7px;
+  border-radius: 8px;
+  background: rgba(36, 26, 61, 0.95);
+  border: 1px solid rgba(199, 188, 255, 0.9);
+  color: rgba(247, 243, 232, 0.98);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.meld-armable.meld-unpickable {
+  background: none;
+  outline-color: transparent;
+  animation: none;
+  cursor: not-allowed;
+}
+.meld-armable.meld-unpickable > * {
+  opacity: 0.4;
+}
+/* 흐린 후로도 키보드로는 지나간다 — 어디 서 있는지는 보여야 한다 */
+.meld-armable.meld-unpickable:focus-visible {
+  outline-color: #fff;
 }
 
 /* ── 바닥 **전체**가 클릭 대상 (누명: «이 상대의 바닥에 놓는다») ──────────────
@@ -8471,6 +8719,10 @@ button {
 .aug-menu-item .act-target {
   font-size: 12px;
   opacity: 0.85;
+  /* 행동 부제(«리치 취소 · …»)가 붙어 줄이 길어졌다 — 메뉴가 화면 밖으로 넘치지 않게 말줄임(docs/59 U38) */
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .aug-menu-item:hover {
@@ -8481,6 +8733,41 @@ button {
 .aug-menu-back {
   background: linear-gradient(180deg, #4b4363, #2f2a41);
   opacity: 0.9;
+}
+
+/*
+ * 후보 6개 이상인 2단계(핏빛 계약의 역 8개) — 세로 목록 대신 격자. 폰 가로에서 60cqh 상자에
+ * 4~5줄만 보여 스크롤하며 골랐다(2026-09-25, docs/59 U39). 머리글·«← 다시 고르기»는 한 줄을
+ * 다 쓴다. 넓은 화면은 4열, 좁으면 2열.
+ */
+.aug-menu-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: min(260px, 92cqw);
+  /*
+   * 격자는 목록보다 넓어서 ✦ 버튼 왼쪽 끝에 붙이면(.aug-menu의 left: 0) 버튼이 가운데보다
+   * 오른쪽에 선 폭 — 폰 세로(375px: 버튼 ≈150px 지점 + 260px)나 901~980px(+480px) — 에서
+   * 오른쪽 화면 밖으로 넘친다. min-width는 max-width(92cqw)를 이기므로 폭을 줄이는 것만으로는
+   * 안 된다 — 버튼 위 **가운데**에 세워 양쪽으로 나눠 퍼지게 한다(2026-09-25, docs/59 U39 리뷰).
+   * 폰 세로에서는 버튼 자체가 가운데라는 보장이 없어(짧은 이름표면 버튼 중심 x≈260~290/375)
+   * 700px 블록이 기준을 화면 가운데에 선 이름표 줄(.own-top-main)로 옮긴다.
+   */
+  left: 50%;
+  transform: translateX(-50%);
+}
+.aug-menu-grid .aug-menu-head,
+.aug-menu-grid .aug-menu-back {
+  grid-column: 1 / -1;
+}
+.aug-menu-grid .aug-menu-item {
+  padding: 6px 10px;
+  white-space: normal;
+}
+@container ui (min-width: 901px) {
+  .aug-menu-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    min-width: min(480px, 92cqw);
+  }
 }
 
 /* ─────────────── 리치 대기패 툴팁 ─────────────── */
@@ -9063,6 +9350,36 @@ button {
 /* 연출을 줄여 달라고 한 사람에게는 깜빡임 없이 밝기·테두리만 남긴다 */
 @media (prefers-reduced-motion: reduce) {
   .aug-pill-usable {
+    animation: none;
+  }
+}
+
+/* ── 무장해제·재장전 무장 중 — 누를 수 있는 pill ──
+   ✦ 메뉴 2단계의 «봇1의 ○○» 글자 목록 대신 이름표 pill 자체가 대상이다(2026-09-25, docs/59 U24·U32).
+   «지금 누르면 이것»이라는 같은 신호라 `.aug-pill-usable`의 밝은 보라·맥동을 그대로 쓰고, 대상이
+   아닌 pill은 흐려서 누를 곳이 한눈에 갈리게 한다. 툴팁(판단 정보)은 흐림에서 뺀다. */
+.aug-pill-armable {
+  background: rgba(196, 182, 255, 0.62);
+  border-color: #f2eeff;
+  color: #17142b;
+  font-weight: 700;
+  box-shadow: 0 0 0 2px rgba(214, 205, 255, 0.9), 0 0 16px 3px rgba(170, 152, 255, 0.85);
+  cursor: pointer;
+  animation: aug-pill-usable-pulse 1.15s ease-in-out infinite;
+}
+.aug-pill-armable .aug-pill-chip {
+  background: rgba(35, 28, 66, 0.92);
+  color: #efeaff;
+}
+/* 쿨다운·소진으로 식은 pill도 후보면 살린다 — 재장전의 대상이 바로 그런 pill이다(U32) */
+.aug-pill-armable > :not(.aug-tip) {
+  opacity: 1;
+}
+.aug-pill-unpickable > :not(.aug-tip) {
+  opacity: 0.4;
+}
+@media (prefers-reduced-motion: reduce) {
+  .aug-pill-armable {
     animation: none;
   }
 }
@@ -9758,6 +10075,58 @@ button {
   .own-top-main {
     gap: 7px;
   }
+  /* 폰 세로 — ✦ 버튼 부제는 숨기고 이름만(가로 폰 블록과 같은 규칙, docs/59 U37) */
+  .aug-btn-sub { display: none; }
+  /*
+   * «첫 순»/«이번 순만» 표는 여기서 금빛 점 하나로 줄인다 — 글자째 두면 nowrap인 버튼의 최소 폭이
+   * ≈190~220px로 굳어 한 줄 이름표 줄의 예산을 넘고, min-width: 0이어도 버튼 자체는 못 줄어
+   * 옆 .active-info 위로 삐져나간다. 금빛 테두리가 같은 신호를 지고 글자는 스크린리더에
+   * 남는다(font-size: 0은 접근성 이름에서 빠지지 않는다). 이름도 5em으로 한 급 더 묶는다
+   * (2026-09-25, docs/59 U37·U40 리뷰).
+   */
+  /*
+   * ✦ 메뉴(1단계 목록·2단계 격자)의 기준을 ✦ 버튼에서 이름표 줄로 옮겨 **화면 가운데**에 세운다.
+   * 버튼 왼쪽 끝(left: 0)이나 버튼 가운데에 붙이면 버튼이 줄 어디에 서느냐(이름표 길이)에 따라
+   * 375px 세로에서 오른쪽 끝이 화면 밖으로 잘렸다 — 행동 부제가 붙은 줄(≈260px)이 끝까지 안 보였다.
+   * .own-top-main 은 3열 그리드(1fr auto 1fr)의 가운데 칸이라 늘 화면 가운데이고, 폭은 92cqw로
+   * 묶여 있으니 양옆 4cqw 안에 든다(2026-09-25, docs/59 U38·U39 리뷰 2).
+   */
+  .own-top-main { position: relative; }
+  .own-aug { position: static; }
+  .aug-menu {
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  /* 5em은 **증강 이름**에만 — 평소 라벨 «액티브 증강»까지 묶으면 한글 폭이 1em인 글꼴
+     (안드로이드 Noto Sans KR)에서 «액티브 증…»으로 잘렸다(W3 통합 리뷰 regression-2) */
+  .aug-btn-name-aug { max-width: 5em; }
+  /* 버튼 안의 표만 — 메뉴 줄의 «이번 순만»은 금빛 테두리도 폭 압박도 없어 글자째 둔다(U40 리뷰 2) */
+  .aug-btn .aug-first-badge {
+    width: 8px;
+    height: 8px;
+    margin-left: 5px;
+    padding: 0;
+    font-size: 0;
+  }
+  /*
+   * ✦ 버튼이 칸을 따라 **줄어든다**(2026-09-25, docs/59 U37 W3 통합 리뷰). 위 줄의
+   * `.own-top-main > * { min-width: 0 }`이 .own-aug 칸은 줄이는데, 그 안의 버튼은 nowrap에
+   * min-width: auto라 글자 폭 밑으로 못 줄어 칸 밖으로 삐져나갔다 — 375×700에서 pill 4개와 함께면
+   * 오른쪽 끝이 x≈384~404로 화면 밖이었다(부제는 이미 숨겨져 있어 원인이 아니었다). 버튼을
+   * inline-flex로 두고 이름 칸만 min-width: 0으로 열어 넘치면 이름이 말줄임으로 물러난다.
+   * ✦·개수 «(n)»(익명 flex 항목)·첫 순 점은 제 폭을 지킨다. 텍스트 사이 공백은 flex에서 접히므로 gap이 대신한다.
+   */
+  .own-aug .aug-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3em;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+  }
+  .own-aug .aug-btn-name { flex: 0 1 auto; min-width: 0; }
+  .own-aug .aug-btn .aug-first-badge { flex: none; }
   .own-hand {
     border-radius: 12px;
   }
@@ -10167,8 +10536,77 @@ button {
   .own-area { width: calc(100cqw - 140px); }
   .own-top-main { min-width: 0; }
   .own-top-main > * { min-width: 0; }
+  /* ✦ 버튼은 이 줄의 **주 조작**이다 — 칸이 모자라면 정보 칩(.active-info, 눌러서 전문을 본다)이
+     먼저 물러나고 ✦는 제 폭을 지킨다(절반까지). 예전엔 이름표·✦·칩이 같은 비율로 줄어
+     375×700에서 ✦가 «✦ (2)»만 남기고 이름을 통째로 잃었다(2026-09-25 W3 실측). */
+  .own-top-main > .own-aug { flex-shrink: 0; max-width: 50%; }
+  /* 칩은 물러나도 **사라지지는 않는다** — 아이콘과 말줄임이 보이고 누를 수 있는 44px은 남긴다.
+     그 대신 이름표의 알약이 접힌다(알약은 줄바꿈으로 물러날 수 있다). */
+  /* flex-shrink 을 크게 줘 **줄어들 때만** 먼저 물러난다. 남는 폭까지 늘어나지는 않는다 — 늘어나면
+     이름표·✦ 무리가 가운데를 벗어나 왼쪽으로 쏠린다(W3 수정 커밋 리뷰). */
+  .own-top-main > .active-info { flex: 0 100 auto; min-width: 44px; }
+  /* 칩이 좁아지면 글자가 **한 글자씩 세로로** 접혀 위 아이콘 줄까지 솟았다(740×360 실측, 2026-09-25).
+     세로 폰 블록(③ 아래 띠)과 같은 «한 줄 + 말줄임 + 눌러서 전문 보기»를 여기에도 둔다. */
+  .own-top-main .active-info {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .own-top-main .active-info .ai-badge {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .own-top-main .active-info .ai-badge-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .own-top-main .active-info .ai-badge-btn {
+    pointer-events: auto;
+    cursor: pointer;
+  }
   /* 액티브 증강 단추를 한 급 줄여 줄 폭 예산을 벌어 준다 */
   .own-aug { padding: 6px 10px; font-size: 13px; }
+  /* ✦ 버튼의 행동 부제는 여기서 숨긴다 — 이름 하나로도 «무엇이 나가는가»는 읽힌다(docs/59 U37) */
+  .aug-btn-sub { display: none; }
+  /*
+   * «첫 순»/«이번 순만» 표는 여기서 금빛 점 하나로 줄인다 — 글자째 두면 nowrap인 버튼의 최소 폭이
+   * ≈190px(가로 폰 13px 기준, 예산은 150px)로 굳어 한 줄 이름표 줄의 예산을 넘고, min-width: 0이어도 버튼 자체는 못 줄어
+   * 옆 .active-info 위로 삐져나간다. 금빛 테두리가 같은 신호를 지고 글자는 스크린리더에
+   * 남는다(font-size: 0은 접근성 이름에서 빠지지 않는다). 이름도 5em으로 한 급 더 묶는다
+   * (2026-09-25, docs/59 U37·U40 리뷰).
+   */
+  /* 5em은 **증강 이름**에만 — 평소 라벨 «액티브 증강»까지 묶으면 한글 폭이 1em인 글꼴
+     (안드로이드 Noto Sans KR)에서 «액티브 증…»으로 잘렸다(W3 통합 리뷰 regression-2) */
+  .aug-btn-name-aug { max-width: 5em; }
+  /* 버튼 안의 표만 — 메뉴 줄의 «이번 순만»은 금빛 테두리도 폭 압박도 없어 글자째 둔다(U40 리뷰 2) */
+  .aug-btn .aug-first-badge {
+    width: 8px;
+    height: 8px;
+    margin-left: 5px;
+    padding: 0;
+    font-size: 0;
+  }
+  /*
+   * ✦ 버튼이 칸을 따라 **줄어든다**(2026-09-25, docs/59 U37 W3 통합 리뷰). 위 줄의
+   * `.own-top-main > * { min-width: 0 }`이 .own-aug 칸은 줄이는데, 그 안의 버튼은 nowrap에
+   * min-width: auto라 글자 폭 밑으로 못 줄어 칸 밖으로 삐져나갔다 — 375×700에서 pill 4개와 함께면
+   * 오른쪽 끝이 x≈384~404로 화면 밖이었다(부제는 이미 숨겨져 있어 원인이 아니었다). 버튼을
+   * inline-flex로 두고 이름 칸만 min-width: 0으로 열어 넘치면 이름이 말줄임으로 물러난다.
+   * ✦·개수 «(n)»(익명 flex 항목)·첫 순 점은 제 폭을 지킨다. 텍스트 사이 공백은 flex에서 접히므로 gap이 대신한다.
+   */
+  .own-aug .aug-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3em;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+  }
+  .own-aug .aug-btn-name { flex: 0 1 auto; min-width: 0; }
+  .own-aug .aug-btn .aug-first-badge { flex: none; }
 
   /*
    * ── 증강 드래프트: 카드 세 장을 «한 화면에» (2026-08-25 QA §2) ──
@@ -16384,70 +16822,6 @@ body.reconnecting .abort-banner {
 }
 .tier-axis-help { color: #7b9084; font-size: 11.5px; }
 
-/* 밑장빼기 — 패산 맨 밑 3장. 오른쪽 끝이 '다음에 빼올 밑장'이다.
-   열람은 visibility.wall peek(back)이 실시간으로 주므로 창은 상태에 따라 그대로 밀린다. */
-.bottom-deal-strip {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin: 0 auto 6px;
-  padding: 5px 12px;
-  width: max-content;
-  max-width: 92%;
-  border-radius: 10px;
-  background: rgba(11, 19, 16, 0.92);
-  border: 1px solid rgba(124, 196, 156, 0.5);
-  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.45);
-  animation: bar-in 0.25s ease-out;
-}
-/* 예약된 상태 — 다음 쯔모가 밑장으로 온다는 것을 테두리로 알린다 */
-.bottom-deal-strip.bottom-deal-armed {
-  border-color: rgba(184, 151, 92, 0.9);
-  box-shadow: 0 0 14px rgba(184, 151, 92, 0.35);
-}
-.bottom-deal-tag {
-  font-size: 13px;
-  font-weight: 800;
-  letter-spacing: 0.5px;
-  color: #abddc4;
-  white-space: nowrap;
-}
-.bottom-deal-armed .bottom-deal-tag { color: #f0c86a; }
-.bottom-deal-cell {
-  position: relative;
-  display: inline-flex;
-  opacity: 0.75;
-}
-.bottom-deal-cell .tile-mini {
-  width: 26px;
-  height: 37px;
-}
-/* 맨 밑장 = 다음에 빼올 한 장. 나머지는 그 뒤 순서라 흐리게 둔다 */
-.bottom-deal-cell.bottom-deal-next {
-  opacity: 1;
-}
-.bottom-deal-cell.bottom-deal-next::after {
-  content: "밑";
-  position: absolute;
-  bottom: -7px;
-  right: -5px;
-  min-width: 15px;
-  height: 15px;
-  padding: 0 3px;
-  border-radius: 999px;
-  background: #348a68;
-  color: #f7f3e8;
-  font-size: 10px;
-  font-weight: 800;
-  line-height: 15px;
-  text-align: center;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
-}
-.bottom-deal-armed .bottom-deal-cell.bottom-deal-next::after {
-  background: #9a7b42;
-}
-
 /* 등가교환 — 지정 순간 공개받은 상대 손패 참고 줄(2026-09-25, docs/59 U08). give 안내 바로 아래
    (이름표 줄 위)에 두어 넘길 3장을 고르는 동안 위아래로 견준다. 잠깐 뜨는 줄이라 --own-band
    실측에서 빼고 order:-1 목록에 넣었다 — 흐름 안이면 뜨고 질 때마다 보드가 출렁인다(W2 regression-1). 누르는 곳이 아니라서 흐리게, 클릭은 받지 않는다.
@@ -17189,6 +17563,7 @@ body.peeking .overlay-peekable > * {
   .hand-riichi .tile-face,
   .hand-armable,
   .opp-armable,
+  .meld-armable,
   .rt.rt-armable,
   .rt.rt-win-armable,
   .waits-badge-open,
@@ -18394,6 +18769,15 @@ body:has(.rinshan-pick-overlay):not(.peeking) .game-root .quick-toggles {
      물러난다 — 증강 효과 안내(`.active-info`)는 전체 문구를 눌러서 볼 수 있다. */
   .own-top-main { flex-wrap: nowrap; }
   .own-top-main > * { min-width: 0; }
+  /* ✦ 버튼은 이 줄의 **주 조작**이다 — 칸이 모자라면 정보 칩(.active-info, 눌러서 전문을 본다)이
+     먼저 물러나고 ✦는 제 폭을 지킨다(절반까지). 예전엔 이름표·✦·칩이 같은 비율로 줄어
+     375×700에서 ✦가 «✦ (2)»만 남기고 이름을 통째로 잃었다(2026-09-25 W3 실측). */
+  .own-top-main > .own-aug { flex-shrink: 0; max-width: 50%; }
+  /* 칩은 물러나도 **사라지지는 않는다** — 아이콘과 말줄임이 보이고 누를 수 있는 44px은 남긴다.
+     그 대신 이름표의 알약이 접힌다(알약은 줄바꿈으로 물러날 수 있다). */
+  /* flex-shrink 을 크게 줘 **줄어들 때만** 먼저 물러난다. 남는 폭까지 늘어나지는 않는다 — 늘어나면
+     이름표·✦ 무리가 가운데를 벗어나 왼쪽으로 쏠린다(W3 수정 커밋 리뷰). */
+  .own-top-main > .active-info { flex: 0 100 auto; min-width: 44px; }
   .own-top-main .active-info {
     overflow: hidden;
     white-space: nowrap;
@@ -20484,6 +20868,36 @@ body:has(.prod-skip) .toast-stack {
   margin-top: 6px;
   font-size: 13px;
   line-height: 1.5;
+}
+/* 고르기 모드(무장해제 «잠그기»·재장전 «되살리기») — 행 머리 오른쪽 끝의 주 버튼.
+   폰 전용 표면이라 손가락 과녁 44px 를 준다(✕·«모두 자세히»와 같은 높이) (2026-09-25, docs/59 U24·U32) */
+.aug-sheet-pick-note {
+  margin: 10px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(226, 220, 255, 0.95);
+}
+.aug-sheet-pick {
+  margin-left: auto;
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid #f2eeff;
+  background: rgba(196, 182, 255, 0.62);
+  color: #17142b;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.aug-sheet-pick:disabled {
+  border-color: rgba(199, 188, 255, 0.25);
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  font-weight: 600;
+  opacity: 0.6;
+  cursor: default;
 }
 
 /* 미수집 줄 (드래프트 카드) — 증강 이름 바로 위에 **제 줄 하나로** 선다.

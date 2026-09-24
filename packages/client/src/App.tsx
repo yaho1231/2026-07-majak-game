@@ -98,7 +98,7 @@ import {
   winningKinds,
 } from "@majak/core";
 import { type DisplayMode, briefOf, expandParas, forMode, splitLead } from "./augmentBrief.js";
-import { projectedDrawSeats, relativeSeatLabel } from "./drawOrder.js";
+import { bottomDealArmedSeats, projectedDrawSeats, relativeSeatLabel } from "./drawOrder.js";
 import { GLOSSARY, GLOSSARY_GROUPS, glossaryTitle, splitTerms } from "./glossary.js";
 import type { GlossaryEntry, GlossaryGroup } from "./glossary.js";
 import { askConfirm, ConfirmHost } from "./confirm.js";
@@ -795,6 +795,12 @@ function doomedTileIdsOf(
     // 그대로라 위의 «계산 두 벌 금지» 규약과 어긋나지 않는다(2026-09-25, docs/59 U36).
     return view.round.myDrawnTile !== null ? [view.round.myDrawnTile] : [];
   }
+  if (actionType === "take_back") {
+    // 무르기 — 쯔모패를 패산 맨 밑으로 되돌려 손에서 사라진다(content take_back.ts). 회수와
+    // 같이 대상이 서버가 고르는 재료가 아니라 myDrawnTile 그대로다. 쯔모패가 내 손에 없으면
+    // (후로 직후 등) null이라 아무것도 안 짚는다(2026-09-25, docs/59 U34).
+    return view.round.myDrawnTile !== null ? [view.round.myDrawnTile] : [];
+  }
   return [];
 }
 
@@ -812,6 +818,112 @@ function augActionName(
   const augId = ACTION_AUGMENT[type];
   return (augId !== undefined ? catalog[augId]?.name : undefined) ?? actionLabel(type, catalog);
 }
+
+/**
+ * 액티브 액션이 **무엇을 하는지** 짧은 동사구 — ✦ 메뉴 줄과 단일 ✦ 버튼의 부제.
+ *
+ * 이름은 증강 이름 하나라(augActionName, docs/59 §2 원칙 6) 메뉴 줄에 «승부수»·«찬탈자»만
+ * 서면 누르면 리치가 취소되는지 오야를 빼앗는지 보이지 않았다. 한 증강이 액션을 둘 낼 때는
+ * 더하다 — 이면투시의 확인·바꿔치기, 선언 간파의 간파·위조가 같은 이름으로 섰다
+ * (2026-09-25, docs/59 U38). ACTION_LABEL을 그대로 붙이면 «카르마 · 카르마 업보 청산»처럼
+ * 이름이 겹쳐서 따로 둔다. **증강 이름과 행동이 다른 것만** 적는다 — 무르기·날치기처럼
+ * 이름이 곧 행동이면 비워 둔다. 한 증강이 액션을 둘 이상 내면 전부 적어야 한다
+ * (client_active_augment_wiring.test.ts가 지킨다).
+ */
+const ACTION_VERB: Record<string, string> = {
+  cancel_riichi: "리치 취소",
+  claim_dealer: "오야 빼앗기",
+  // 이면투시 — 확인한 뒤에도 같은 이름 줄이 다시 떠 «또 확인»으로 읽혔다
+  ura_peek_reveal: "뒷도라 확인",
+  ura_swap: "뒷도라 바꿔치기",
+  // 선언 간파 — 간파한 순에 이어 뜨는 위조 줄이 간파를 또 하는 것처럼 읽혔다
+  peek_waits: "대기 간파",
+  peek_forge: "대기패 위조",
+  foresight_reveal: "패산 공개",
+  foresight_order: "패산 재배열",
+  future_arm: "미래 보기",
+  future_exchange: "버릴 패 고르기",
+  swap3: "상대 지정",
+  swap3_give: "넘길 3장 고르기",
+  swap3_take: "가져올 3장 고르기",
+  table_flip_do: "배패 다시 받기",
+  genesis_flip: "자패·수패 뒤집기",
+  bottom_deal: "밑장에서 뽑기",
+  declare_big_hand: "만관 보장 선언",
+  jackpot_roll: "룰렛 돌리기",
+  karma_burn: "업보 청산",
+  declare_fog: "바닥 가리기",
+  declare_brief_fog: "바닥 가리기",
+  even_world_flip: "홀수를 짝수로",
+  call_seal_use: "상대 후로 봉인",
+  tenpai_scan_use: "텐파이 감지",
+  triple_peek_use: "다음 쯔모 3장 보기",
+  xray_reveal: "상대 손패 보기",
+  honor_recall: "자패 회수",
+  dragons_will: "삼원 커쯔 채우기",
+  north_pull: "북 빼기",
+  dora_recall: "지난 도라 되살리기",
+  sign_flip_use: "점수 부호 뒤집기",
+  blood_contract_declare: "역 계약",
+  take_back: "쯔모패 되돌리기",
+  greed_use: "같은 패 다시 쯔모",
+  time_stop_use: "한 순 더",
+  seal_hands: "상대 패 잠그기",
+  yggdrasil_call: "자패를 발로",
+  disarm_lock: "상대 증강 잠그기",
+  reload_use: "내 증강 복구",
+  dissolve_meld: "후로 해체",
+};
+
+/**
+ * **국의 첫 순에만** 후보가 뜨는 액티브·선언 — 한 장 버리면 그 국의 기회가 조용히 사라진다.
+ *
+ * ✦ 버튼은 쓸 수 있으면 언제나 같은 빛으로 켜져서 «이번 순이 마지막 기회»가 평소와
+ * 구별되지 않았다(2026-09-25, docs/59 U40 — 증강 리치가 메뉴 안에만 있어 모르고 지나갔던
+ * 2026-08-08 보고와 같은 문제). 클라가 첫 순을 따로 판정하지 않는다: 이 후보가 프롬프트에
+ * 있다는 것 자체가 지금이 첫 순이라는 뜻이다. 첫 순 한정 규칙은 content가 정한다
+ * (table_flip·jackpot·dead_wall_master·blood_contract·big_hand·sign_flip·shapeDeclare·
+ * full_hand_swap·seat_swap·rank_gate·suit_unify·discard_lock) — 거기 새 첫 순 액티브가
+ * 생기면 여기에도 적는다.
+ */
+const FIRST_TURN_ONLY_TYPES = new Set([
+  "table_flip_do",
+  "jackpot_roll",
+  "dw_swap",
+  "blood_contract_declare",
+  "declare_big_hand",
+  "sign_flip_use",
+  "declare_mixed_triplet",
+  "declare_broken_border",
+  "declare_async_chiitoi",
+  "hand_swap",
+  "seat_swap",
+  "rank_gate_mark",
+  "mono_world",
+  "seal_hands",
+]);
+
+/**
+ * 핏빛 계약 2단계 격자의 역 한 줄 조건 — **역의 정의만** 적는다(무엇이 유리한지 같은 전략
+ * 코칭은 하지 않는다). 첫 순의 짧은 시간에 역 이름만 보고 고르던 것을 덜어 준다
+ * (2026-09-25, docs/59 U39). 긴 풀이는 용어 사전(glossary.ts)이 단일 진실이라 칸의
+ * `title`로 그쪽을 빌려 쓴다 — 키가 content의 역 id와 다른 둘은 CONTRACT_YAKU_TERM이 잇는다.
+ */
+const CONTRACT_YAKU_NOTE: Record<string, string> = {
+  tanyao: "1·9·자패 없이",
+  pinfu: "멘젠 · 슌쯔만 · 양면 대기",
+  toitoi: "커쯔만 넷",
+  honitsu: "한 무늬 + 자패",
+  chinitsu: "한 무늬만",
+  sanshoku: "세 무늬 같은 슌쯔",
+  ittsuu: "한 무늬 123·456·789",
+  chiitoitsu: "서로 다른 짝 7개",
+};
+/** content 역 id → glossary.ts 키 (같으면 생략) */
+const CONTRACT_YAKU_TERM: Record<string, string> = {
+  ittsuu: "ittsu",
+  chiitoitsu: "chiitoi",
+};
 
 /** 플레이어가 버튼으로 발동하는 액티브 증강 액션 타입 (타일 클릭 액션은 제외). */
 const AUGMENT_ACTION_TYPES = new Set([
@@ -979,6 +1091,10 @@ const ACTIVE_AUGMENT_IDS = new Set([
   "three_dragons_will",
   "palm_flip",
   "north_trader",
+  // 반전 — 2026-09-01 선발동형에서 «3국에 1회 · 자기 첫 순» 액티브로 바뀌었는데 이 목록만
+  // 갱신이 빠져, 첫 순에만 ✦ 버튼이 불쑥 섰다 사라지고 ✦ 액티브 배지·쿨다운 사유도 없었다
+  // (2026-09-25, docs/59 U41)
+  "sign_flip",
   // 2026-08-04 (6차) 신규 — 액티브 발동이 있는 것만 (나머지 5종은 패시브·자동 발동)
   "dora_afterimage",
   "soul_strike",
@@ -1028,8 +1144,12 @@ const QUEST_GOAL: Record<string, string> = {
  * - "opp-river" : 상대 바닥의 버림패를 클릭 (payload에 snatchId·graveId·tileId / fromPlayer)
  *                 — 날치기는 각 상대의 최근 3장, 도굴은 화료가 되는 과거 버림패, 정적의 손은 서버 후보 그대로
  * - "hand3"     : 내 손패 3장을 클릭해 고른 뒤 [확인] (payload에 정렬된 tileIds 3장 — 가지치기)
+ * - "opp-aug"   : 상대 이름표의 증강 pill을 클릭 (payload에 target·augmentId — 무장해제).
+ *                 상대 pill이 숨는 좁은 화면은 상대 줄을 눌러 증강 시트의 «잠그기»로 고른다
+ * - "own-aug"   : 내 이름표의 증강 pill을 클릭 (payload에 augmentId — 재장전)
+ * - "own-meld"  : 판 오른쪽 아래 내 후로(치·퐁)를 클릭 (payload에 meldIndex — 파혼)
  */
-type ArmMode = "hand" | "opp" | "own-river" | "opp-river" | "hand3";
+type ArmMode = "hand" | "opp" | "own-river" | "opp-river" | "hand3" | "opp-aug" | "own-aug" | "own-meld";
 
 /**
  * 액티브 액션 타입 → 클릭 발동 방식. 여기 등록된 액션은 버튼이 아니라
@@ -1100,6 +1220,18 @@ const ARM_MODE: Record<string, ArmMode> = {
   //   것을 걷고 판의 손패에서 그 3장만 빛나게 해 버릴 패를 누른다(끌어 놓아도 된다). ✦ 버튼으로
   //   거는 무장이 아니라 **강제 무장**이다 — FORCED_ARM_TYPES (2026-09-25, docs/59 U03)
   future_exchange: "hand",
+  // 무장해제 — 잠글 상대 증강을 ✦ 메뉴 2단계의 «봇1의 ○○» 텍스트 버튼(최대 12개)에서 고르던 것을,
+  //   상대 이름표에 이미 쿨다운·발동 중 칩을 달고 서 있는 pill을 직접 눌러 고른다. 상대 pill이 숨는
+  //   좁은 화면은 상대 줄 → 증강 시트의 «잠그기»로 (2026-09-25, docs/59 U24)
+  disarm_lock: "opp-aug",
+  // 재장전 — 되살릴 내 증강을 내 이름표 pill에서 누른다. 후보가 하나여도 무장한다: 되돌릴 수 없는
+  //   드문 액션이라 대상을 한 번 가리키는 것이 확인 구실을 한다 (2026-09-25, docs/59 U32)
+  reload_use: "own-aug",
+  // 파혼 — 해체할 후로를 ✦ 메뉴 2단계의 «파혼» 글자 버튼(후로 수만큼 똑같은 줄)에서 찍던 것을,
+  //   판 오른쪽 아래 내 후로를 직접 눌러 고른다. 후보가 하나여도 무장한다 — 국당 1회 되돌릴 수 없는
+  //   액션이라 대상을 한 번 가리키는 것이 확인 구실을 한다(예전엔 ✦ 누르는 즉시 해체됐다)
+  //   (2026-09-25, docs/59 U31)
+  dissolve_meld: "own-meld",
 };
 
 /**
@@ -1210,6 +1342,55 @@ function armModeOf(type: string): ArmMode | undefined {
 const HAND_MANIP_ACTIONS = new Set(["hand_swap", "swap3", "seat_swap"]);
 
 /**
+ * 화면에 떠 있으면 Esc가 **그쪽 몫**인 표면 — 무장 해제 Esc가 비켜선다(docs/59 U25).
+ * 창(dialog — 튜토리얼 안내 줄은 판 위에 늘 떠 있는 말풍선이라 뺀다)·연출 건너뛰기·고정한 증강 설명,
+ * 그리고 role=dialog 없이 뜨는 고르기 창(.rinshan-pick-overlay — 셋 바꾸기·영상 고르기·단색 세계·예지 등).
+ * 이 창 위에서 Esc가 밑의 무장을 풀면 창은 그대로인데 «취소했습니다»가 덮인다(B10 리뷰).
+ *
+ * 기록 서랍(.auglog)·설정 창(.settings-panel)은 뺀다(2026-09-25, B10 리뷰 라운드 2) — 둘 다 판을
+ * 가리지 않는 비모달 창이고 Esc를 **제 안에 포커스가 있을 때만** 받는다(요소 keydown +
+ * stopPropagation이라 그때는 이 창의 window 리스너까지 오지도 않는다). 떠 있다는 이유만으로
+ * 비켜서면 기록을 열어 둔 채 두는 사람은 Esc로 무장을 풀 길이 아예 없어진다(docs/59 U25).
+ */
+const ESC_OWNER_SELECTOR =
+  '[role="dialog"]:not(.coach-layer):not(.auglog):not(.settings-panel), [aria-modal="true"], .prod-skip, .aug-pill-pinned, .rinshan-pick-overlay';
+
+/**
+ * 이 사람의 **화면에 보이는** 손패 장수에서 쯔모패 한 장을 뺀 값 — 손패 장수 비교용(docs/59 U28).
+ *
+ * 서버의 비교(content util.sameHandSize = deal.handSize − 후로가 가져간 장수)는 규칙 해석이
+ * 필요해 클라가 재현할 수 없다(진짜 용이 handSize를 바꾼다). 대신 실제로 보이는 장수를 센다 —
+ * 공개패 + 뒷면(빠져나간 빈 칸은 세지 않는다). 쯔모를 마친 사람은 한 장 더 쥐므로 «3으로 나눠 2가
+ * 남는» 장수에서 한 장을 뺀다. 그렇게 뺀 값이 정상 모양(3k+1)이 아니면 비교할 근거가 없어 null —
+ * 모르는 상태에서 «장수가 다르다»고 말하지 않는다.
+ */
+function appearedHandSlots(view: PlayerView, pid: string): number | null {
+  const zone = view.zones[`hand:${pid}`];
+  if (zone === undefined) return null;
+  const n = zone.tileIds.length + zone.hiddenCount;
+  const slots = n % 3 === 2 ? n - 1 : n;
+  return slots % 3 === 1 ? slots : null;
+}
+
+/** 이 사람의 후로가 손에서 가져간 장수 — 울어 온 패는 빼고 센다(content util.concealedSlotsOf와 같은 식). */
+function meldTakenCount(view: PlayerView, pid: string): number {
+  return (view.round.byPlayer[pid]?.melds ?? []).reduce(
+    (n, m) => n + m.tileIds.length - (m.calledTileId !== undefined ? 1 : 0),
+    0,
+  );
+}
+
+/**
+ * 서버가 손패 장수를 비교할 때 쓰는 슬롯(deal.handSize − 후로가 가져간 장수)의 추정.
+ * 후로 하나는 종류와 상관없이 보이는 손패를 3장 줄이므로(퐁·치: 2장 내고 1장 버림, 깡: 영상패를
+ * 받아 같은 셈, 가깡: 후로 수도 장수도 그대로) handSize ≈ 보이는 장수 + 3·후로 수다.
+ */
+function serverSlotsGuess(view: PlayerView, pid: string, appeared: number): number {
+  const melds = view.round.byPlayer[pid]?.melds ?? [];
+  return appeared + 3 * melds.length - meldTakenCount(view, pid);
+}
+
+/**
  * 무장한 뒤 **패를 버리면서** 발동하는 리치 계열 액션.
  *
  * 이 액션들은 결국 "이 패를 버리며 리치를 건다"라서, 평소 리치와 손놀림이 같아야 한다 —
@@ -1310,6 +1491,8 @@ const OPP_ARM_TAG: Record<string, string> = {
   parasite_attach: "기생하기",
   rank_gate_mark: "4판 이하 화료 막기",
   swap3: "교환 상대로 고르기",
+  // 무장해제(opp-aug) — 줄은 대상이 아니라 입구다. 누를 것은 그 줄의 증강 pill(좁은 화면은 시트)
+  disarm_lock: "잠글 증강을 고르세요",
 };
 
 /**
@@ -1341,6 +1524,14 @@ function armPromptText(mode: ArmMode | null, type?: string | null, tapTwice = fa
       return "내 바닥의 버림패를 클릭하세요";
     case "opp-river":
       return "가져올 상대의 버림패를 클릭하세요";
+    // 폰에서는 상대 pill이 숨는다 — 거기서 할 일은 상대 줄을 눌러 고르기 시트를 여는 것이다(B09 리뷰)
+    case "opp-aug":
+      return "잠글 상대의 증강(이름표 또는 상대 줄)을 누르세요";
+    case "own-aug":
+      return "되살릴 내 증강을 이름표에서 클릭하세요";
+    // 유니언을 넓히면 default(«손패를 클릭하세요»)로 떨어진다 — 모드마다 case가 있어야 한다(U31)
+    case "own-meld":
+      return "해체할 내 치·퐁을 클릭하세요";
     case "hand":
     default:
       return "발동할 손패를 클릭하세요";
@@ -1737,10 +1928,12 @@ interface SelectionCtx {
   /** 상대 클릭 — opp 무장이면 그 상대를 대상으로 제출. */
   clickOpp: (pid: string) => void;
   /**
-   * 손패를 건드리는 증강을 무장한 채로, 이 상대가 **리치라서** 대상이 될 수 없는가.
-   * (리치 선언은 공개 정보다 — 숨은 리치는 riichiDeclared가 false라 여기 걸리지 않는다.)
+   * 손패를 건드리는 증강을 무장한 채로 이 상대가 대상이 될 수 없을 때 **그 이유**(아니면 null).
+   * 공개 정보로 계산되는 이유만 적는다 — 리치 선언, 보이는 손패 장수의 불일치.
+   * 숨은 리치는 riichiDeclared가 false라 여기 걸리지 않고, 설명할 수 없는 제외에는 null이다
+   * (일반 문구를 띄우면 그 표시가 곧 숨은 리치의 누설이 된다 — docs/59 U28).
    */
-  oppRiichiBlocked: (pid: string) => boolean;
+  oppBlockedReason: (pid: string) => string | null;
   /** 이 바닥 패가 지금 무장 액션의 클릭 대상이면 그 옵션(아니면 undefined). */
   riverOptionFor: (
     ownerId: string,
@@ -1760,6 +1953,30 @@ interface SelectionCtx {
    * 누명처럼 «어느 바닥에 놓을지»를 고르는 액션용 — 특정 버림패가 아니라 바닥이 대상이다.
    */
   riverTargetOptionFor: (ownerId: string) => ActionOption | undefined;
+  /**
+   * opp-aug: 이 상대에게 잠글 수 있는 증강이 하나라도 있는가 — 줄을 강조하고 고르기 시트의 입구로 삼는다.
+   * 이미 잠긴 증강은 세지 않는다(pill·시트의 후보 거르기와 같은 기준). 증강 하나를 고르는 옵션 찾기는
+   * 이름표 쪽 augPickOption 한 곳이다 — opp 모드의 oppOptionFor는 target만 보고 첫 옵션을 집으므로
+   * 여기 쓰면 엉뚱한 증강이 잠긴다.
+   */
+  oppAugArmable: (pid: string) => boolean;
+  /** own-meld(파혼): 내 i번째 후로가 지금 무장 액션의 대상이면 그 옵션(아니면 undefined). */
+  meldOptionFor: (meldIndex: number) => ActionOption | undefined;
+}
+
+/**
+ * 이름표 pill을 누르는 무장(opp-aug·own-aug)의 옵션 찾기 — 순수 함수라 useCallback 안에서도 쓴다.
+ * target을 주면 그 상대의 옵션만, 안 주면 augmentId만 본다(재장전은 payload에 target이 없다).
+ */
+function augPickOption(
+  options: readonly ActionOption[],
+  augId: string,
+  target?: string,
+): ActionOption | undefined {
+  return options.find((o) => {
+    const p = o.payload as { target?: unknown; augmentId?: unknown };
+    return p.augmentId === augId && (target === undefined || p.target === target);
+  });
 }
 
 const NO_SELECTION: SelectionCtx = {
@@ -1771,13 +1988,15 @@ const NO_SELECTION: SelectionCtx = {
   submit: () => {},
   oppArmable: () => false,
   clickOpp: () => {},
-  oppRiichiBlocked: () => false,
+  oppBlockedReason: () => null,
   riverOptionFor: () => undefined,
   handPicks: [],
   setHandPicks: () => {},
   frameTile: null,
   setFrameTile: () => {},
   riverTargetOptionFor: () => undefined,
+  oppAugArmable: () => false,
+  meldOptionFor: () => undefined,
 };
 
 const SelectionContext = createContext<SelectionCtx>(NO_SELECTION);
@@ -8496,7 +8715,7 @@ function coachBlockHint(lock: LessonLock): string {
     ? lock.kind === DRAWN_TILE
       ? "튜토리얼: 오른쪽 끝의 방금 가져온 패를 버려야 합니다"
       : "튜토리얼: 지금은 빛나는 패만 버릴 수 있습니다"
-    : "튜토리얼: 먼저 '✦ 액티브 증강' 버튼을 누른 뒤 그 패를 고르세요";
+    : "튜토리얼: 먼저 증강 이름이 적힌 ✦ 버튼을 누른 뒤 그 패를 고르세요";
 }
 
 /**
@@ -15577,11 +15796,36 @@ const GameTable = memo(function GameTable(props: {
   const tableRef = useRef<HTMLDivElement>(null);
   // 무장 중 게임판의 빈 곳(클릭 대상이 아닌 영역)을 누르면 무장을 해제한다.
   // 손패·상대·바닥 등 클릭 대상 영역은 data-arm-zone로 표시해 제외한다.
+  /*
+   * «빈 곳»은 **펠트의 진짜 빈 곳**만이다(2026-09-25, docs/59 U25). 쉬운 취소라는 목적은 그대로 두고
+   * 판의 실물 영역을 뺐다 — 예전엔 20px 바닥 패를 조금만 빗나가도, 고르라는 상대의 바닥·점수판을
+   * 눌러도, 📖로 설명을 찾아보려 해도 통째로 풀려 ✦ → 메뉴 → 무장을 처음부터 다시 해야 했다.
+   * - 판(tableRef) 밖 — 증강 시트·기록·도감·설정 같은 body 포털 — 은 무장을 풀지 않는다.
+   * - 판 가운데(.table-center: 네 바닥 + 점수판)와 내 후로 줄은 무장 중 data-arm-zone이다.
+   *   빗나감은 아무 일도 하지 않는다. 상대 바닥·점수판을 «그 상대 선택»으로 받지는 않는다 —
+   *   되돌릴 수 없는 지목의 확정 영역을 넓히면 오발이 는다.
+   * - 판 위 아이콘 줄(⚙·📖·?·📜)은 제 할 일이 따로 있다.
+   * 해제는 [취소]·✦ 재클릭·Esc·펠트의 빈 곳이고, 빈 곳 해제는 조용히 끝내지 않는다(§2 원칙 7).
+   */
+  /*
+   * 방금 «빈 곳 누르기»로 무장이 풀린 시각. 그 pointerdown 의 setState 가 contextmenu 보다 먼저 그려지면
+   * 우클릭 쯔모기리는 이미 «무장 없음»을 보고 쯔모패를 버린다 — 버튼 번호로 못 거르는 경로(보조
+   * 입력기·길게 누르기 에뮬레이션)가 남아도 한 박자 안에는 버리지 않는다(W3 수정 커밋 리뷰).
+   */
+  const armReleasedAtRef = useRef(0);
   useEffect(() => {
     if (selection.armedType === null) return;
     const onDown = (e: PointerEvent): void => {
+      // 무장 해제는 주 버튼(탭·왼쪽 클릭)만 — 오른쪽 버튼 pointerdown에 풀면 그 setState가 contextmenu보다
+      // 먼저 그려져, 우클릭 쯔모기리의 «무장 중엔 버리지 않는다» 가드를 비껴 쯔모패가 버려졌다(W3 통합 리뷰 interaction-4)
+      // macOS 의 Ctrl+클릭은 button 0 에 ctrlKey 로 오고 곧이어 contextmenu 가 난다 — 오른쪽 버튼과 같게 거른다
+      // (W3 수정 커밋 리뷰). 거르지 못한 경로가 남아도 아래 armReleasedAt 이 쯔모기리를 한 박자 막는다.
+      if (e.button !== 0 || e.ctrlKey) return;
       const t = e.target as HTMLElement | null;
-      if (t !== null && t.closest("[data-arm-zone]") !== null) return;
+      if (t === null || tableRef.current?.contains(t) !== true) return;
+      if (t.closest("[data-arm-zone]") !== null) return;
+      if (t.closest(".icon-btn") !== null) return;
+      const onControl = t.closest("button, [role=button], a, input, select, textarea, label") !== null;
       /*
        * 강제 무장(미래를 보는 자)은 arm(null)이 가드에 막혀 풀리지 않는다 — 판을 눌렀는데 아무
        * 말이 없으면 안내 줄이 왜 안 사라지는지 알 수 없다(§2 원칙 7). 판 **표면**을 누른 경우만
@@ -15590,19 +15834,44 @@ const GameTable = memo(function GameTable(props: {
        * 정상으로 동작하므로 «먼저 정하세요»를 덧붙이지 않는다(W2 상태 수명 재검토).
        */
       if (selection.armedType !== null && FORCED_ARM_TYPES.has(selection.armedType)) {
-        const onControl =
-          t !== null && t.closest("button, [role=button], a, input, select, textarea, label") !== null;
-        if (t !== null && !onControl && tableRef.current?.contains(t) === true) {
-          props.onToast?.(FORCED_PICK_HINT);
-        }
+        if (!onControl) props.onToast?.(FORCED_PICK_HINT);
         return;
       }
+      const armName = selection.armedType !== null ? augActionName(catalog, selection.armedType) : "";
+      armReleasedAtRef.current = Date.now();
       selection.arm(null);
+      // 판 표면을 눌러 풀렸으면 풀렸다고 말한다. 액션 바·빠른 토글 같은 컨트롤은 제 동작이 곧 답이다.
+      // 문구는 손패 클릭 해제(OwnArea)와 같게 증강 이름을 앞에 둔다 — 같은 일에 말이 둘이면 안 된다
+      if (!onControl) props.onToast?.(`${armName} 선택을 취소했습니다`);
     };
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
     // armedType이 바뀔 때만 재구독 — onDown은 상태를 null로 만들기만 하므로
     // selection이 약간 스테일해도 결과는 항상 올바르다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selection.armedType]);
+  /*
+   * 무장 중 Esc = 무장 해제 — 키보드의 «빈 곳 누르기»(2026-09-25, docs/59 U25). ActionHotkeys 안에
+   * 두지 않는다(그쪽은 Esc를 쓰지 않는다 — a11yPerfGuards). 먼저 Esc를 가져갈 임자에게 양보한다:
+   * 글자 입력 칸, 열린 창(dialog)·연출 건너뛰기(.prod-skip)·고정한 증강 설명, 그리고 캡처 단계에서
+   * 멈추는 변형 팝오버. 한 번의 Esc로 두 겹이 접히면 무엇이 닫혔는지 모른다.
+   */
+  useEffect(() => {
+    if (selection.armedType === null) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== "Escape" || e.defaultPrevented || isTypingTarget(e.target)) return;
+      if (document.querySelector(ESC_OWNER_SELECTOR) !== null) return;
+      if (selection.armedType !== null && FORCED_ARM_TYPES.has(selection.armedType)) {
+        props.onToast?.(FORCED_PICK_HINT);
+        return;
+      }
+      const armName = augActionName(catalog, selection.armedType ?? "");
+      selection.arm(null);
+      props.onToast?.(`${armName} 선택을 취소했습니다`);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // 위 pointerdown과 같은 이유로 armedType이 바뀔 때만 재구독한다
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selection.armedType]);
 
@@ -15628,6 +15897,13 @@ const GameTable = memo(function GameTable(props: {
     if (!props.settings.rightClickTsumogiri) return;
     if (props.spectator === true || view.playerId === SPECTATOR_ID) return;
     if (props.riichiMode || selection.armedType !== null) return;
+    // 같은 누름이 방금 무장을 풀었다 — 그 누름으로 쯔모패까지 버리지 않는다(위 armReleasedAtRef)
+    if (Date.now() - armReleasedAtRef.current < 600) return;
+    /*
+     * 터치의 길게 누르기도 contextmenu 를 낸다 — 이 설정은 «마우스 오른쪽 버튼»이다. 폰에서 패를
+     * 오래 누르고 있었을 뿐인데 쯔모패가 되돌릴 수 없이 버려지면 안 된다(W3 수정 커밋 리뷰).
+     */
+    if ((e.nativeEvent as PointerEvent).pointerType === "touch") return;
     if (isTypingTarget(e.target)) return;
     // 쯔모패는 **내 손패 안에 실제로 있을 때만** 나간다 — 후로 직후 버림처럼
     // 쯔모가 없는 순에는 버릴 '그 패'가 없다.
@@ -15851,11 +16127,26 @@ const GameTable = memo(function GameTable(props: {
         />
       ) : null}
 
-      {seats.top !== null ? <OpponentStrip view={view} player={seats.top} side="top" catalog={catalog} /> : null}
-      {seats.left !== null ? <OpponentStrip view={view} player={seats.left} side="left" catalog={catalog} /> : null}
-      {seats.right !== null ? <OpponentStrip view={view} player={seats.right} side="right" catalog={catalog} /> : null}
+      {seats.top !== null ? (
+        <OpponentStrip view={view} player={seats.top} side="top" catalog={catalog} onToast={props.onToast} />
+      ) : null}
+      {seats.left !== null ? (
+        <OpponentStrip view={view} player={seats.left} side="left" catalog={catalog} onToast={props.onToast} />
+      ) : null}
+      {seats.right !== null ? (
+        <OpponentStrip view={view} player={seats.right} side="right" catalog={catalog} onToast={props.onToast} />
+      ) : null}
 
-      <div className="table-center">
+      {/* 무장 중 판 가운데(네 바닥 + 점수판)는 대상 영역이다 — `.river-wrap`은 pointer-events:none이라
+          후보 바닥 패를 빗나간 클릭이 여기로 떨어진다. 빗나감은 무시한다(docs/59 U25).
+          강제 무장(미래를 보는 자)은 바닥이 대상이 아니다 — 여기서 빼야 판을 누를 때 «지금 고르는 패를
+          먼저 정하세요» 안내가 선다(W3 통합 리뷰 interaction-3, U03) */}
+      <div
+        className="table-center"
+        {...(selection.armedType !== null && !FORCED_ARM_TYPES.has(selection.armedType)
+          ? { "data-arm-zone": "1" }
+          : {})}
+      >
         <River view={view} playerId={me.id} side="bottom" />
         {seats.right !== null ? <River view={view} playerId={seats.right.id} side="right" /> : null}
         {seats.top !== null ? <River view={view} playerId={seats.top.id} side="top" /> : null}
@@ -16134,15 +16425,65 @@ function useSelection(
 
   /**
    * 손패를 조작하는 증강(통째로 바꾸기·등가교환·자리 바꿈)을 무장했는데 이 상대가
-   * 후보에 없고 **리치를 선언해 둔** 경우 — 왜 못 고르는지 화면에 적어 준다.
-   * 서버는 리치 상대를 후보에서 아예 빼므로(riichiBlocksSwap), 클라이언트는 그
-   * 빈자리에 이유만 채운다. 숨은 리치는 riichiDeclared가 false라 여기 걸리지 않는다 —
-   * 걸리면 그 표시가 곧 은닉을 깨는 누설이 된다.
+   * 후보에 없을 때 — 왜 못 고르는지 화면에 적어 준다. 서버는 그런 상대를 후보에서 아예
+   * 빼므로, 클라이언트는 그 빈자리에 **공개 정보로 계산되는** 이유만 채운다.
+   *
+   * 1. 리치 선언(riichiBlocksSwap). 숨은 리치는 riichiDeclared가 false라 여기 걸리지 않는다 —
+   *    걸리면 그 표시가 곧 은닉을 깨는 누설이 된다.
+   * 2. 손패 장수 불일치 — 통째로 바꾸기·자리 바꿈만(content util.sameHandSize). 등가교환은 3장만
+   *    맞바꾸므로 장수를 보지 않는다. 후로 수·깡/퐁 구성이 다른 상대가 모두 빠지는데 실전에서 흔하고,
+   *    표시가 없으면 고장으로 읽혔다(2026-09-25, docs/59 U28). 서버 식(deal.handSize − 후로가 가져간
+   *    장수)은 클라가 규칙을 풀 수 없어(진짜 용이 handSize를 바꾼다) 재현하지 않고, **화면에 보이는
+   *    손패 장수**를 쯔모패를 빼고 비교한다(appearedHandSlots).
+   * 3. 그 밖의 제외(숨은 리치 등)에는 아무것도 적지 않는다 — «고를 수 없음» 같은 일반 문구는
+   *    설명할 수 없는 제외가 있다는 사실 자체를 드러낸다.
    */
-  const oppRiichiBlocked = (pid: string): boolean => {
-    if (armedType === null || !HAND_MANIP_ACTIONS.has(armedType)) return false;
-    if (oppArmable(pid)) return false;
-    return view.round.byPlayer[pid]?.riichiDeclared === true;
+  const oppBlockedReason = (pid: string): string | null => {
+    if (armedType === null || !HAND_MANIP_ACTIONS.has(armedType)) return null;
+    if (oppArmable(pid)) return null;
+    if (view.round.byPlayer[pid]?.riichiDeclared === true) return "리치 중이라 대상으로 고를 수 없습니다";
+    if (armedType !== "hand_swap" && armedType !== "seat_swap") return null;
+    const meldsDiffer = meldTakenCount(view, view.playerId) !== meldTakenCount(view, pid);
+    const mine = appearedHandSlots(view, view.playerId);
+    const theirs = appearedHandSlots(view, pid);
+    if (mine !== null && theirs !== null) {
+      /*
+       * 서버가 비교하는 슬롯을 추정해 **같으면 장수 탓이 아니다** — 다른 이유(벽 부족 등)로 빠진
+       * 상대에게 장수 사유를 붙이면 거짓이 된다. 보이는 장수끼리만 비교하면 퐁 둘(보이는 7) ↔
+       * 안깡 하나(보이는 10)가 «장수가 다르다»로 잡히는데, 서버 슬롯은 둘 다 9라 통과한다
+       * (2026-09-25, B10 리뷰 라운드 2).
+       */
+      if (serverSlotsGuess(view, view.playerId, mine) === serverSlotsGuess(view, pid, theirs)) return null;
+      // 후로가 가져간 장수가 같은데 슬롯이 다르면 배패 장수 자체가 다르다(진짜 용 등)
+      if (!meldsDiffer) return "손패 장수가 달라 고를 수 없습니다";
+      // 후로가 손에서 가져간 장수가 다르면 원인을 후로로 짚는다
+      if (mine !== theirs) return "후로가 달라 손패 장수가 맞지 않습니다";
+    }
+    /*
+     * 보이는 장수는 같은데 후로 구성만 다른 경우 — 깡 ↔ 퐁·치. 깡은 영상패를 한 장 더 받아 화면의
+     * 손패는 같아지지만, 서버는 «후로가 손에서 가져간 장수»(퐁·치 2, 대명깡·가깡 3, 안깡 4)로 슬롯을
+     * 비교해 이 상대를 뺀다(content util.sameHandSize). 후로는 공개 정보라 적어도 새는 게 없다 —
+     * 이 문구가 없으면 실전에서 가장 흔한 제외가 설명 없이 남는다(2026-09-25, docs/59 U28, B10 리뷰).
+     */
+    return meldsDiffer ? "후로 구성(깡·퐁)이 달라 고를 수 없습니다" : null;
+  };
+
+  // own-meld 모드(파혼): 내 i번째 후로를 해체하는 옵션. view의 melds[i]는 서버 상태의 melds[i]를
+  // 그대로 옮긴 것이라(core PlayerView) 인덱스가 곧 payload.meldIndex다(docs/59 U31)
+  const meldOptionFor = (meldIndex: number): ActionOption | undefined => {
+    if (armMode !== "own-meld") return undefined;
+    return armedOptions.find((o) => (o.payload as { meldIndex?: unknown }).meldIndex === meldIndex);
+  };
+
+  // opp-aug 모드: 이름표 pill 하나가 대상이다(무장해제 — docs/59 U24). 이미 잠긴 증강만 남은 상대는
+  // 강조하지 않는다 — 점선 줄을 따라가 열어 본 시트의 행이 전부 «이미 잠김»으로 꺼져 있었다(B09 리뷰)
+  const oppAugArmable = (pid: string): boolean => {
+    if (armMode !== "opp-aug" || pid === view.playerId) return false;
+    const locked = disarmedAugmentsOf(view, pid);
+    return armedOptions.some((o) => {
+      const p = o.payload as { target?: unknown; augmentId?: unknown };
+      return p.target === pid && typeof p.augmentId === "string" && !locked.has(p.augmentId);
+    });
   };
 
   const clickOpp = (pid: string): void => {
@@ -16196,13 +16537,15 @@ function useSelection(
     submit,
     oppArmable,
     clickOpp,
-    oppRiichiBlocked,
+    oppBlockedReason,
     riverOptionFor,
     handPicks,
     setHandPicks,
     frameTile,
     setFrameTile,
     riverTargetOptionFor,
+    oppAugArmable,
+    meldOptionFor,
   };
 }
 
@@ -17556,10 +17899,10 @@ function augmentLogRows(
     if (head === "waits" || head === "open_riichi_reveal" || head === "free_declare_waits") continue;
     // 위험패: 내 손패 위 ⚠ (hand-danger)
     if (head === "danger_sense") continue;
-    // 삼세 예지: 손패 위 '다음 쯔모' 스트립
+    // 삼세 예지: 손패 위 «패산 정보» 줄(OwnArea의 WallPeekRow)의 삼세 예지 섹션
     if (head === "triple_peek") continue;
-    // 예지로 공개된 패산 앞 장: 증강 조작부의 예지 스트립이 그린다. head가 증강 id가 아니라
-    // 이름이 없는 채널이다 — 줄로 내리지 않는다는 뜻을 여기 적어 둔다(2026-09-25, docs/59 U64).
+    // 예지로 공개된 패산 앞 장: 같은 «패산 정보» 줄(WallPeekRow)의 예지 섹션이 그린다. head가 증강
+    // id가 아니라 이름이 없는 채널이다 — 줄로 내리지 않는다는 뜻을 여기 적어 둔다(2026-09-25, docs/59 U64·U50).
     if (head === "foresight_peek") continue;
     // 미래를 보는 자 — 가져온 패는 손패 🔮 표식·상대 줄 옆(FutureGotBadge), 쌓인 판수는 이름표 pill
     if (head === "future_sight") continue;
@@ -18984,11 +19327,14 @@ function OpponentStrip({
   player,
   side,
   catalog,
+  onToast,
 }: {
   view: PlayerView;
   player: PlayerInfo;
   side: "top" | "left" | "right";
   catalog: Record<string, AugmentCatalogEntry>;
+  /** 비후보 상대 줄을 눌렀을 때 «왜 안 되는지»를 알린다(원칙 7) */
+  onToast?: ((text: string) => void) | undefined;
 }): JSX.Element {
   const zone = view.zones[`hand:${player.id}`];
   const hidden = zone?.hiddenCount ?? 0;
@@ -19041,9 +19387,32 @@ function OpponentStrip({
   // 액티브 증강 무장 중 — 이 상대가 클릭 대상이면 강조하고 클릭 시 발동한다.
   const sel = useContext(SelectionContext);
   const oppArmable = sel.oppArmable(player.id);
-  // 손패를 건드리는 증강을 무장했는데 이 상대가 리치라 대상이 될 수 없다 —
-  // 강조도 클릭도 없는 자리에 이유만 적어 준다 (없으면 "왜 안 눌리지?"가 된다).
-  const oppRiichiBlocked = sel.oppRiichiBlocked(player.id);
+  /*
+   * 무장해제(opp-aug) — 이 상대의 증강 하나를 고른다. 줄은 대상이 아니라 **입구**다: 대상은 이름표의
+   * pill이고, pill이 숨는 좁은 화면(폰 세로·가로, 태블릿 세로의 좌우)에서는 줄을 누르면 증강 시트가
+   * 고르기 모드로 열린다. 줄 클릭이 곧바로 무언가를 잠그지는 않는다(2026-09-25, docs/59 U24).
+   */
+  const oppAugArmable = sel.oppAugArmable(player.id);
+  const [augPickOpen, setAugPickOpen] = useState(false);
+  // 무장이 풀리면(취소·제출·순 넘김) 고르기 시트도 함께 걷는다 — 남으면 누를 것 없는 «잠그기»가 선다
+  useEffect(() => {
+    if (!oppAugArmable) setAugPickOpen(false);
+  }, [oppAugArmable]);
+  // 이미 잠긴 증강은 후보에서 뺀다 — 서버는 내 주지만 두 번 잠가 봐야 한 번을 허비할 뿐이다
+  const lockedAugs = useMemo(() => disarmedAugmentsOf(view, player.id), [view, player.id]);
+  const armedOptions = sel.armedOptions;
+  /*
+   * NamePlate는 memo다 — 매 렌더 새 함수를 내리면 네 이름표가 판이 그려질 때마다 같이 그려진다.
+   * 그래서 pill 고르기 콜백은 **무장 중일 때만** 내리고(평소엔 undefined), 옵션 목록으로 묶어 둔다.
+   */
+  const pickAug = useCallback(
+    (augId: string): ActionOption | undefined =>
+      lockedAugs.has(augId) ? undefined : augPickOption(armedOptions, augId, player.id),
+    [armedOptions, lockedAugs, player.id],
+  );
+  // 손패를 건드리는 증강을 무장했는데 이 상대가 대상이 될 수 없다(리치·손패 장수) —
+  // 강조도 클릭도 없는 자리에 이유만 적어 준다 (없으면 "왜 안 눌리지?"가 된다, docs/59 U28).
+  const oppBlocked = sel.oppBlockedReason(player.id);
   /*
    * 통째로 바꾸기(hand_swap) — **내 손보다 샹텐이 빠른** 상대에게만 붙는 표식
    * (2026-08-27 사용자 지시). 서버가 보유자 전용 채널에 «누가 빠른가»만 싣고,
@@ -19074,6 +19443,24 @@ function OpponentStrip({
     if (!swapFaster) return body;
     return compact ? `⚡ 빠름. ${body}` : `⚡ 나보다 빠름. ${body}`;
   };
+  /*
+   * 상대가 대상인 무장(opp·opp-aug) 중 **후보가 아닌** 상대 줄 — 대상 영역 안의 빗나감이다(§2 원칙 7).
+   * 예전엔 이 줄이 «판의 빈 곳»으로 읽혀, 사유 태그(«리치 중이라…»)를 보고 «왜 안 되지» 하며 누르면
+   * 무장이 통째로 풀렸다(폰에서는 이름 단추가 보기 시트를 열며 조용히). 손패 무장의 «이 패는 … 대상이
+   * 아닙니다»와 같게 무장은 그대로 두고 이유만 알린다(W3 통합 리뷰 interaction-1).
+   */
+  const armMiss =
+    (sel.armMode === "opp" || sel.armMode === "opp-aug") && !oppArmable && !oppAugArmable;
+  /*
+   * 사유를 아는 제외(리치·후로 구성)만 사유를 말한다. 모르는 제외(숨은 리치 등)는 «이 상대는 대상이
+   * 아니다»라고 단정하면 그 자체가 «설명할 수 없는 제외가 있다»는 누설이다(oppBlockedReason 주석 3) —
+   * 어디를 누르면 되는지만 안내한다(W3 수정 커밋 리뷰).
+   */
+  const armMissText = (): string =>
+    oppBlocked ??
+    (sel.armMode === "opp-aug"
+      ? `${armAugName}: 빛나는 증강 중에서 고르세요`
+      : `${armAugName}: 빛나는 상대 중에서 고르세요`);
   // 무장 대상 상대에 붙일 공통 속성 (클릭 발동 + data-arm-zone로 빈곳-취소 방지)
   const armProps = oppArmable
     ? {
@@ -19087,7 +19474,55 @@ function OpponentStrip({
             : `${playerName(view, player)} 고르기`,
         ),
       }
-    : {};
+    : oppAugArmable
+      ? {
+          "data-arm-zone": "1",
+          ...clickableProps(
+            () => setAugPickOpen(true),
+            `${playerName(view, player)}의 증강 고르기 (${armAugName})`,
+          ),
+        }
+      : armMiss
+        ? {
+            // 대상이 아니라 버튼 역할은 주지 않는다 — 마우스·탭의 빗나감만 받아 이유를 말한다
+            "data-arm-zone": "1",
+            onClick: () => onToast?.(armMissText()),
+          }
+        : {};
+  /*
+   * 이름표에 내릴 무장 소품 — 상대 줄 전체가 대상인 무장(opp)이나 무장해제(opp-aug) 중에는 이름·알약이
+   * 제 동작(시트 열기·설명 고정)을 멈추고 클릭을 줄로 올린다. 그래야 «줄 어디를 눌러도 하나»가 된다
+   * — 예전엔 폰에서 이름을 누르면 시트가 뜨면서 대상 확정까지 함께 터졌다(2026-09-25, docs/59 U27).
+   */
+  const plateArm = {
+    // 비후보 줄(armMiss)도 — 이름 단추가 보기 시트를 열거나 pill이 설명을 고정하지 않고 줄로 올려
+    // 이유 토스트가 되게 한다(W3 통합 리뷰 interaction-1)
+    ...(oppArmable || oppAugArmable || armMiss ? { armTarget: true } : {}),
+    // 비후보 줄은 이름 단추가 줄을 대신해 «누구·왜»를 읽힌다(키보드·스크린리더의 유일한 입구, W3 수정 커밋 리뷰)
+    ...(armMiss ? { armMissLabel: `${playerName(view, player)}: ${armMissText()}` } : {}),
+    ...(oppAugArmable ? { pickAug, onPickAug: sel.submit } : {}),
+  };
+  // 좁은 화면의 무장해제 입구 — 줄을 누르면 연다. 행마다 «잠그기»(U24)
+  const augPickSheet =
+    augPickOpen && oppAugArmable ? (
+      <PlayerAugSheet
+        view={view}
+        player={player}
+        catalog={catalog}
+        onClose={() => setAugPickOpen(false)}
+        pick={{
+          optionFor: pickAug,
+          onPick: (o) => {
+            setAugPickOpen(false);
+            sel.submit(o);
+          },
+          icon: "🔒",
+          verb: "잠그기",
+          note: `${armAugName}: 이번 국 동안 잠글 증강을 고르세요`,
+          off: PICK_OFF_LOCK,
+        }}
+      />
+    ) : null;
   // 선언 간파로 알아낸 이 상대의 화료패 — 발동한 본인에게만 상시 노출
   const peeked = peekedWaits(view, player.id);
   // 봉인술사·손패 강탈로 알아낸 이 상대의 손패 — 오름패 간파와 같은 자리에 띄운다
@@ -19211,14 +19646,14 @@ function OpponentStrip({
   if (side === "top") {
     return (
       <div
-        className={`opp-strip opp-strip-top${oppArmable ? " opp-armable" : ""}`}
+        className={`opp-strip opp-strip-top${oppArmable ? " opp-armable" : ""}${oppAugArmable ? " opp-aug-armable" : ""}`}
         style={sizeVars}
         {...armProps}
       >
-        {oppArmable ? (
+        {oppArmable || oppAugArmable ? (
           <div className={`opp-arm-tag${swapFaster ? " opp-arm-fast" : ""}`}>{armTagText(false)}</div>
-        ) : oppRiichiBlocked ? (
-          <div className="opp-arm-tag opp-arm-blocked">리치 중이라 대상으로 고를 수 없습니다</div>
+        ) : oppBlocked !== null ? (
+          <div className="opp-arm-tag opp-arm-blocked">{oppBlocked}</div>
         ) : null}
         {badges}
         {sealPeek !== null ? <SealBadge peek={sealPeek} owner={playerName(view, player)} /> : null}
@@ -19242,27 +19677,35 @@ function OpponentStrip({
             />
           ))}
         </div>
-        <NamePlate view={view} player={player} catalog={catalog} tipAlign="center" />
+        <NamePlate view={view} player={player} catalog={catalog} tipAlign="center" {...plateArm} />
+        {augPickSheet}
       </div>
     );
   }
 
   return (
     <div
-      className={`opp-strip opp-strip-${side}${oppArmable ? " opp-armable" : ""}`}
+      className={`opp-strip opp-strip-${side}${oppArmable ? " opp-armable" : ""}${oppAugArmable ? " opp-aug-armable" : ""}`}
       style={sizeVars}
       {...armProps}
     >
-      {oppArmable ? (
+      {oppArmable || oppAugArmable ? (
           <div className={`opp-arm-tag${swapFaster ? " opp-arm-fast" : ""}`}>{armTagText(true)}</div>
-        ) : oppRiichiBlocked ? (
-          <div className="opp-arm-tag opp-arm-blocked">리치 중이라 대상으로 고를 수 없습니다</div>
+        ) : oppBlocked !== null ? (
+          <div className="opp-arm-tag opp-arm-blocked">{oppBlocked}</div>
         ) : null}
       {badges}
       {sealPeek !== null ? <SealBadge peek={sealPeek} owner={playerName(view, player)} /> : null}
       {scan !== null ? <ScanBadge scan={scan} owner={playerName(view, player)} /> : null}
       {futureGot.length > 0 ? <FutureGotBadge got={futureGot} owner={playerName(view, player)} /> : null}
-      <NamePlate view={view} player={player} catalog={catalog} tipAlign={side === "left" ? "left" : "right"} />
+      <NamePlate
+        view={view}
+        player={player}
+        catalog={catalog}
+        tipAlign={side === "left" ? "left" : "right"}
+        {...plateArm}
+      />
+      {augPickSheet}
       <div className="opp-backs-col">
         {slots.map((s, i) => (
           <OppHandSlot
@@ -19935,11 +20378,31 @@ function PlayerAugSheet({
   player,
   catalog,
   onClose,
+  pick,
 }: {
   view: PlayerView;
   player: PlayerInfo;
   catalog: Record<string, AugmentCatalogEntry>;
   onClose: () => void;
+  /**
+   * 고르기 모드 — 무장해제(상대 증강 잠그기)·재장전(내 증강 되살리기) 무장 중에만 온다.
+   * 행마다 `verb` 버튼을 세우고, 후보가 아닌 행(이미 잠김 등)은 버튼을 끈다. 이름표 pill이
+   * 숨는 좁은 화면의 대상 자리이고, pill이 없는 수상한 주사위도 여기서는 고를 수 있다
+   * (2026-09-25, docs/59 U24·U32).
+   */
+  pick?: {
+    optionFor: (augId: string) => ActionOption | undefined;
+    onPick: (o: ActionOption) => void;
+    /** 행 버튼 — 화면에는 `${icon} ${verb}`, 읽어 주는 이름은 `${증강} ${verb}` */
+    icon: string;
+    verb: string;
+    note: string;
+    /**
+     * 후보가 아닌 행의 꺼진 버튼 글자 — 읽어 주는 이름도 이걸로 적는다. 꺼진 «잠그기»만 들리면 왜
+     * 못 누르는지 모른다. 재장전은 무장해제 잠금과 상관없이 쓴 적 없는 증강이 빠진다(B09 리뷰).
+     */
+    off: (locked: boolean) => string;
+  };
 }): JSX.Element {
   const disarmed = disarmedAugmentsOf(view, player.id);
   const reloaded = reloadedAugmentsOf(view, player.id);
@@ -19973,10 +20436,25 @@ function PlayerAugSheet({
   return createPortal(
     // overlay-peekable — '누른 채로 게임판 보기'가 붙는 표면(드래프트 창과 같은 규칙).
     // ⚠ body 직속 포털이어야 한다(FIXED_SURFACE_NOTE).
+    /*
+     * ⚠ data-arm-zone과 전파 차단은 필수다(2026-09-25, docs/59 U24·U27).
+     * - 이 시트는 body로 포털되지만 React 합성 이벤트는 **컴포넌트 트리**를 따라 올라간다 — 이름표를
+     *   든 상대 줄(opp-strip)의 무장 onClick까지 닿으면, 시트 안을 누른 것이 되돌릴 수 없는 대상
+     *   확정이나 시트 다시 열기로 터진다. 클릭과 Enter·Space만 막는다(Esc는 창의 keydown이 받아야 한다).
+     * - DOM으로는 판 바깥이라 GameTable의 «빈 곳 pointerdown = 무장 해제»에 걸려, 고르기 모드에서
+     *   행을 누르는 순간 무장이 먼저 풀렸다.
+     */
     <div
       className="overlay overlay-peekable aug-sheet-overlay"
+      data-arm-zone="1"
       onClick={(e) => {
+        e.stopPropagation();
         if (e.target === e.currentTarget) onClose();
+      }}
+      // Enter·Space는 고르기 모드에서만 막는다 — 막으면 창의 keydown(연출 Space 건너뛰기)까지 끊긴다.
+      // 보기 모드 시트는 줄이 무장 대상이 되는 순간 이름표가 닫는다(NamePlate의 armTarget effect, B09 리뷰)
+      onKeyDown={(e) => {
+        if (pick !== undefined && (e.key === "Enter" || e.key === " ")) e.stopPropagation();
       }}
     >
       <div className="aug-sheet" role="dialog" aria-label={`${playerName(view, player)} 증강`}>
@@ -20002,6 +20480,7 @@ function PlayerAugSheet({
             ✕
           </button>
         </div>
+        {pick !== undefined ? <p className="aug-sheet-pick-note">{pick.note}</p> : null}
         {augs.length === 0 ? (
           <p className="aug-sheet-empty">아직 증강이 없습니다.</p>
         ) : (
@@ -20013,12 +20492,34 @@ function PlayerAugSheet({
               const cooldown = cooldownRoundsLeft(view, player.id, a);
               const cooldownTurns = cooldownTurnsLeft(view, player.id, a);
               const spent = view.augmentView[`spent:${a}:${player.id}`] === true;
+              const pickOpt = pick?.optionFor(a);
+              const pickOff = pick !== undefined && pickOpt === undefined ? pick.off(locked) : "";
               return (
-                <li className={`aug-sheet-row${locked ? " aug-sheet-row-locked" : ""}`} key={a}>
+                <li
+                  className={`aug-sheet-row${locked ? " aug-sheet-row-locked" : ""}${pickOpt !== undefined ? " aug-sheet-row-pickable" : ""}`}
+                  key={a}
+                >
                   <div className="aug-sheet-row-head">
                     <AugCatIcon id={a} />
                     <span className="aug-sheet-name">{augName(a, catalog)}</span>
                     <span className="aug-sheet-cat">{CATEGORY_META[augmentCategory(a)].label}</span>
+                    {pick !== undefined ? (
+                      <button
+                        type="button"
+                        className="aug-sheet-pick"
+                        disabled={pickOpt === undefined}
+                        aria-label={
+                          pickOpt !== undefined
+                            ? `${augName(a, catalog)} ${pick.verb}`
+                            : `${augName(a, catalog)} — ${pickOff}`
+                        }
+                        onClick={() => {
+                          if (pickOpt !== undefined) pick.onPick(pickOpt);
+                        }}
+                      >
+                        {pickOpt !== undefined ? `${pick.icon} ${pick.verb}` : pickOff}
+                      </button>
+                    ) : null}
                   </div>
                   <div className="aug-sheet-chips">
                     {locked ? <span className="aug-sheet-chip">🔒 무장해제로 이번 국 잠김</span> : null}
@@ -20062,6 +20563,10 @@ function PlayerAugSheet({
   );
 }
 
+/** 고르기 시트의 꺼진 행 글자 — 무장해제는 이미 잠긴 것, 재장전은 쓴 적 없어 되살릴 게 없는 것 */
+const PICK_OFF_LOCK = (locked: boolean): string => (locked ? "이미 잠김" : "고를 수 없음");
+const PICK_OFF_RELOAD = (): string => "되살릴 게 없음";
+
 const NamePlate = memo(function NamePlate({
   view,
   player,
@@ -20069,10 +20574,31 @@ const NamePlate = memo(function NamePlate({
   tipUp,
   tipAlign,
   glow,
+  pickAug,
+  onPickAug,
+  armTarget,
+  armMissLabel,
 }: {
   view: PlayerView;
   player: PlayerInfo;
   catalog: Record<string, AugmentCatalogEntry>;
+  /**
+   * 무장해제(상대)·재장전(나) 무장 중에만 온다 — 이 증강을 누르면 낼 옵션(후보가 아니면 undefined).
+   * 평소에는 둘 다 undefined라 memo가 깨지지 않는다(2026-09-25, docs/59 U24·U32).
+   */
+  pickAug?: (augId: string) => ActionOption | undefined;
+  onPickAug?: (o: ActionOption) => void;
+  /**
+   * 이 이름표를 든 상대 줄 전체가 무장 대상이다(opp·opp-aug) — 이름·알약이 제 동작(시트 열기·
+   * 설명 고정)을 멈추고 클릭을 줄로 올린다. hover·focus 툴팁은 그대로 — 대상을 정할 정보다(U27).
+   */
+  armTarget?: boolean;
+  /**
+   * armTarget 인데 이 줄은 **후보가 아니다**(빗나감) — 이름 단추를 숨기지 않고 이 문구(«이름: 사유»)로
+   * 읽힌다. 눌러도 되돌릴 수 없는 확정이 아니라 줄의 사유 토스트라 포커스를 막을 까닭이 없다.
+   * 알약은 설명 툴팁을 닫지 않는다 — 왜 안 되는지 읽는 중이다(W3 수정 커밋 리뷰).
+   */
+  armMissLabel?: string;
   /**
    * 지금 빛낼 증강 id들 — 액티브 증강 버튼에 손을 올린 동안 "그 버튼이 쓰는 증강"을
    * 가리킨다(내 이름표 전용). null이면 아무것도 빛나지 않는다.
@@ -20133,6 +20659,14 @@ const NamePlate = memo(function NamePlate({
   const [pinned, setPinned] = useState<ReadonlySet<string>>(() => new Set());
   /** 이름을 눌러 연 증강 보기 시트 (폰 전용 경로 — PlayerAugSheet 주석) */
   const [sheetOpen, setSheetOpen] = useState(false);
+  // 보기 시트를 연 채로 이 줄이 무장 대상이 되면 걷는다 — 시트 안의 Enter·클릭이 줄의 확정으로
+  // 새지 않게 하는 막이는 고르기 모드에만 있다(창의 Space 건너뛰기를 살리려고, B09 리뷰)
+  useEffect(() => {
+    if (armTarget === true) setSheetOpen(false);
+  }, [armTarget]);
+  /** 무장해제·재장전 무장 중 — pill이 곧 대상이다 */
+  const picking = pickAug !== undefined && onPickAug !== undefined;
+  const pickVerb = isMe ? "되살리기" : "잠그기";
   const togglePin = (a: string): void =>
     setPinned((cur) => {
       const next = new Set(cur);
@@ -20195,6 +20729,12 @@ const NamePlate = memo(function NamePlate({
   return (
     <div
       className={`nameplate${isTurn ? " nameplate-turn" : ""}${linked ? " nameplate-linked" : ""}${dense ? " nameplate-dense" : ""}${connLabel !== null ? ` nameplate-${conn}` : ""}`}
+      /*
+       * 고르는 중(재장전·무장해제)이면 이름표 전체가 대상 영역이다 — 후보 pill에만 달면 내 이름이나
+       * 후보 아닌 pill을 누른 pointerdown이 «빈 곳»으로 잡혀 재장전이 알림 없이 풀렸다. 영역 안의
+       * 빗나감은 무시하고, 이름을 누르면 고르기 시트가 열린다(2026-09-25, docs/59 §2 원칙 7, B09 리뷰).
+       */
+      {...(picking ? { "data-arm-zone": "1" } : {})}
     >
       {isTurn ? (
         awaitingCall ? (
@@ -20236,8 +20776,17 @@ const NamePlate = memo(function NamePlate({
         type="button"
         className="np-name np-name-btn"
         title={playerName(view, player)}
-        aria-label={`${playerName(view, player)}의 증강 보기`}
-        onClick={() => setSheetOpen(true)}
+        aria-label={armMissLabel ?? `${playerName(view, player)}의 증강 보기`}
+        // 줄 전체가 대상인 동안에는 줄 하나만 읽히고 포커스를 받는다 — 이 단추의 Enter도 줄의 확정이
+        // 되는데 «증강 보기»로 읽히면 되돌릴 수 없는 지목을 시트 열기로 알고 누른다(B09 리뷰).
+        // 비후보 줄(armMissLabel)은 확정이 없으니 그대로 두고 사유로 읽힌다.
+        {...(armTarget === true && armMissLabel === undefined ? { tabIndex: -1, "aria-hidden": true } : {})}
+        onClick={() => {
+          // 상대 줄 전체가 대상인 무장 중 — 시트를 열지 않고 클릭을 줄로 올린다. 줄이 대상 확정(opp)
+          // 또는 고르기 시트(opp-aug)를 맡는다. 예전엔 시트와 확정이 함께 터졌다(2026-09-25, docs/59 U27)
+          if (armTarget === true) return;
+          setSheetOpen(true);
+        }}
       >
         {playerName(view, player)}
       </button>
@@ -20247,6 +20796,21 @@ const NamePlate = memo(function NamePlate({
           player={player}
           catalog={catalog}
           onClose={() => setSheetOpen(false)}
+          {...(picking
+            ? {
+                pick: {
+                  optionFor: pickAug,
+                  onPick: (o: ActionOption) => {
+                    setSheetOpen(false);
+                    onPickAug(o);
+                  },
+                  icon: isMe ? "↺" : "🔒",
+                  verb: pickVerb,
+                  note: isMe ? "되살릴 증강을 고르세요" : "잠글 증강을 고르세요",
+                  off: isMe ? PICK_OFF_RELOAD : PICK_OFF_LOCK,
+                },
+              }
+            : {})}
         />
       ) : null}
       {/*
@@ -20291,6 +20855,8 @@ const NamePlate = memo(function NamePlate({
             const active = cooldown > 0 && !locked && firedThisRound(view, player.id, a);
             // 선발동형("이번 국만")이 이미 지나갔는가 — 설명 배지도 함께 갈아 끼운다.
             const spent = view.augmentView[`spent:${a}:${player.id}`] === true;
+            // 무장해제·재장전 무장 중 — 이 pill이 대상이면 그 옵션. 대상이 아닌 pill은 흐린다(U24·U32)
+            const armOpt = picking ? pickAug(a) : undefined;
             return (
               // tabIndex — 터치 기기에는 hover가 없다. 탭하면 포커스가 잡혀
               // :focus로 툴팁이 뜨고, 다른 곳을 탭하면 사라진다.
@@ -20301,12 +20867,65 @@ const NamePlate = memo(function NamePlate({
               // 살아서, 판이 한 번 다시 그려질 때마다 같이 다시 그려졌다.
               <span
                 key={a}
-                className={`aug-pill aug-prism${locked ? " aug-pill-locked" : ""}${(cooldown > 0 && !active) || cooldownTurns > 0 ? " aug-pill-cd" : ""}${active ? " aug-pill-active" : ""}${status !== null ? " aug-pill-live" : ""}${status?.tone === "spent" ? " aug-pill-spent" : ""}${fromDice.has(a) ? " aug-pill-dice" : ""}${pinned.has(a) ? " aug-pill-pinned" : ""}${glow?.has(a) === true ? " aug-pill-usable" : ""}`}
+                className={`aug-pill aug-prism${locked ? " aug-pill-locked" : ""}${(cooldown > 0 && !active) || cooldownTurns > 0 ? " aug-pill-cd" : ""}${active ? " aug-pill-active" : ""}${status !== null ? " aug-pill-live" : ""}${status?.tone === "spent" ? " aug-pill-spent" : ""}${fromDice.has(a) ? " aug-pill-dice" : ""}${pinned.has(a) ? " aug-pill-pinned" : ""}${glow?.has(a) === true ? " aug-pill-usable" : ""}${armOpt !== undefined ? " aug-pill-armable" : picking ? " aug-pill-unpickable" : ""}`}
+                {...(armOpt !== undefined
+                  ? (() => {
+                      // 키보드로도 고른다(Enter·Space). 클릭은 아래 onClick이 맡는다(툴팁 안쪽 걸러내기)
+                      const cp = clickableProps(() => onPickAug?.(armOpt), `${augName(a, catalog)} ${pickVerb}`);
+                      return {
+                        ...cp,
+                        "data-arm-zone": "1",
+                        // 툴팁 안쪽(자세히 칩·고정 손잡이)의 Enter가 올라온 것은 그 단추의 일이다
+                        onKeyDown: (e: React.KeyboardEvent) => {
+                          // 키보드로 고른 뒤에도 포커스를 놓는다 — 클릭 경로의 blur와 같은 이유(U27, B09 리뷰)
+                          if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " "))
+                            (e.currentTarget as HTMLElement).blur();
+                          if (e.target === e.currentTarget) cp.onKeyDown(e);
+                        },
+                      };
+                    })()
+                  : armTarget === true && !picking && armMissLabel === undefined
+                    ? {
+                        // 줄 전체가 대상(opp) — Enter는 줄로 올라가 확정이 된다. 확정 뒤 focus 툴팁이
+                        // 판 위에 남지 않게 먼저 걷는다(막지는 않는다, U27·B09 리뷰)
+                        onKeyDown: (e: React.KeyboardEvent) => {
+                          if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
+                          (e.currentTarget as HTMLElement).blur();
+                          setTipFor(null);
+                        },
+                      }
+                    : {})}
                 tabIndex={0}
                 // 눌러서 설명을 고정한다 / 다시 눌러 푼다. 툴팁 **안쪽**("자세히" 칩·용어
                 // 링크)을 누른 것은 여기까지 올라오면 안 된다 — 고정을 풀어 버린다.
                 onClick={(e) => {
                   if (e.target !== e.currentTarget && (e.target as HTMLElement).closest(".aug-tip") !== null) return;
+                  // 무장해제·재장전 무장 중 후보 pill — 누르면 이 증강이 대상이다. 줄의 고르기 시트가
+                  // 함께 열리지 않게 여기서 멈춘다(2026-09-25, docs/59 U24·U32)
+                  if (armOpt !== undefined) {
+                    e.stopPropagation();
+                    // 누른 뒤 포커스가 남으면 :focus 툴팁이 확정 뒤에도 판 위에 선다
+                    e.currentTarget.blur();
+                    onPickAug?.(armOpt);
+                    return;
+                  }
+                  // 고르는 중 후보가 아닌 pill(재장전의 내 이름표·무장해제의 흐린 상대 pill) — 대상 영역 안의
+                  // 빗나감이라 무시한다. 상대 이름표면 줄의 고르기 시트로도 번지지 않게 멈춘다 — 흐린 pill을
+                  // 눌렀는데 시트가 통째로 뜨면 놀란다. 설명은 hover·focus 툴팁으로 그대로 읽힌다(원칙 7, B09 리뷰)
+                  if (picking) {
+                    e.stopPropagation();
+                    return;
+                  }
+                  // 상대 줄 전체가 대상인 무장 중(opp) — 설명 고정을 건너뛰고 클릭을 줄로 올린다. 확정 뒤에
+                  // 툴팁이 판 위에 남지 않게 걷는다 — 탭에 포커스를 주는 브라우저에선 알약 덮개가 포커스를
+                  // 쥐고 있어도 tipFor를 비우면 속이 그려지지 않는다(U27, B09 리뷰)
+                  if (armTarget === true) {
+                    // 비후보 줄이면 줄이 사유 토스트만 띄운다 — 읽던 설명은 닫지 않는다(W3 수정 커밋 리뷰)
+                    if (armMissLabel !== undefined) return;
+                    e.currentTarget.blur();
+                    setTipFor(null);
+                    return;
+                  }
                   togglePin(a);
                 }}
                 onMouseEnter={() => setTipFor(a)}
@@ -20372,16 +20991,47 @@ const NamePlate = memo(function NamePlate({
                 <button
                   type="button"
                   className="aug-pill-sheet-hit"
-                  aria-label={`${augName(a, catalog)} 증강 보기`}
+                  aria-label={`${augName(a, catalog)} ${armOpt !== undefined ? pickVerb : "증강 보기"}`}
+                  // 줄 전체가 대상인 동안 후보가 아닌 덮개는 누르면 줄의 일(확정·고르기 시트)이 된다 —
+                  // «증강 보기»로 읽히지 않게 줄에 맡긴다(np-name-btn과 같은 이유, B09 리뷰)
+                  {...(armTarget === true && armOpt === undefined ? { tabIndex: -1, "aria-hidden": true } : {})}
                   onClick={(e) => {
+                    // 무장 중 후보 — 폰에서도 알약이 곧 대상이다. 시트를 열면 한 번 더 눌러야 한다(U24·U32)
+                    if (armOpt !== undefined) {
+                      e.stopPropagation();
+                      // 탭에 포커스를 주는 브라우저(안드로이드 크롬)에서는 focusin이 pill의 툴팁을 띄운다 —
+                      // 놓아 주지 않으면 확정 뒤에도 판 위에 남는다(pill onClick의 blur와 같은 이유, U27)
+                      e.currentTarget.blur();
+                      onPickAug?.(armOpt);
+                      return;
+                    }
+                    // 상대 줄 전체가 대상인 무장 중 — 막지 않고 올려 보낸다(pill도 올려 보낸다 → 줄, U27)
+                    if (armTarget === true) return;
                     // 알약의 «고정» 토글까지 함께 터지면 시트 뒤에 툴팁이 남는다
                     e.stopPropagation();
                     setSheetOpen(true);
                   }}
+                  // 후보 덮개의 Enter·Space는 이 단추의 클릭이다 — 줄(태블릿 세로의 위 상대)까지 올라가면
+                  // 줄의 onKeyDown이 기본 동작을 막고 고르기 시트를 대신 연다(B09 리뷰)
+                  onKeyDown={(e) => {
+                    if (armOpt !== undefined && (e.key === "Enter" || e.key === " ")) e.stopPropagation();
+                  }}
                 />
                 {/* 고정해 둔 것은 손을 떼도 그린다 — 그래야 판과 설명을 나란히 볼 수 있다 */}
                 {tipFor === a || pinned.has(a) ? (
-                <span className={`aug-tip${tipUp === true ? " aug-tip-up" : " aug-tip-down"} aug-tip-a-${tipAlign ?? "center"}`}>
+                <span
+                  className={`aug-tip${tipUp === true ? " aug-tip-up" : " aug-tip-down"} aug-tip-a-${tipAlign ?? "center"}`}
+                  // 줄 전체가 무장 대상일 때 툴팁 안(«자세히»·용어)을 누른 것은 읽는 손짓이다 — 줄까지
+                  // 올라가면 되돌릴 수 없는 대상 확정이 된다(2026-09-25, docs/59 U27)
+                  {...(armTarget === true
+                    ? {
+                        onClick: (e: React.MouseEvent) => e.stopPropagation(),
+                        onKeyDown: (e: React.KeyboardEvent) => {
+                          if (e.key === "Enter" || e.key === " ") e.stopPropagation();
+                        },
+                      }
+                    : {})}
+                >
                   <span className="aug-tip-name">
                     <AugCatIcon id={a} />
                     {augName(a, catalog)}
@@ -20564,6 +21214,28 @@ function PulledGroup({
       ))}
     </span>
   );
+}
+
+/**
+ * 후로 한 벌을 사람 말로 — «치 3-4-5만»·«퐁 발». 파혼 후보처럼 **어느 후로인지**를 글자로
+ * 가려야 하는 자리(무장 aria·✦ 메뉴 폴백)에 쓴다(2026-09-25, docs/59 U31).
+ */
+function meldBrief(view: PlayerView, meld: MeldView): string {
+  const tiles = sortTileIds(meld.tileIds, view.tiles)
+    .map((id) => view.tiles[id])
+    .filter((t): t is PublicTileView => t !== undefined);
+  const first = tiles[0];
+  if (first === undefined) return "후로";
+  if (meld.kind === "chi") {
+    const suffix = formatTile({ kind: first.kind }).replace(/^\d+/, "");
+    return `치 ${tiles.map((t) => t.kind.rank).join("-")}${suffix}`;
+  }
+  // 국사 퐁은 서로 다른 요구패 세 장이다 — «퐁 1만»이라 부르면 «치·퐁만 해체»와 말이 엇갈린다(B10 리뷰)
+  if (meld.kind === "kokushi_pon") return `국사 퐁 ${tiles.map((t) => formatTile({ kind: t.kind })).join("·")}`;
+  const head =
+    ({ pon: "퐁", kan_open: "대명깡", kan_added: "가깡", kan_closed: "안깡" } as Record<string, string>)[meld.kind] ??
+    "후로";
+  return `${head} ${formatTile({ kind: first.kind })}`;
 }
 
 function MeldGroup({
@@ -21153,6 +21825,200 @@ function PickTimer(props: { deadline: number | null }): JSX.Element | null {
  */
 const ARM_SUB_POP_GAP = 22;
 
+/** 예지가 공개한 패산 앞 장들의 kind — 뽑히는 대로 앞에서 한 장씩 줄어든다(보유자 채널 `foresight_peek`) */
+function foresightPeekOf(av: Record<string, unknown>): TileKind[] {
+  const raw = av["foresight_peek"];
+  return Array.isArray(raw)
+    ? (raw as string[]).map(parseKindKey).filter((k): k is TileKind => k !== null)
+    : [];
+}
+
+/**
+ * 손패 위 «패산 정보» 한 줄 — 예지·삼세 예지·밑장빼기가 보여 주는 «곧 나올 패»를 한 줄에 모은다.
+ *
+ * 예전엔 셋이 제각각이었다(2026-09-25, docs/59 U50): 예지는 ✦ 버튼 옆 알약(뒤→앞), 삼세 예지는
+ * 손패 위 보라 상자(왼쪽이 다음, 1·2·3), 밑장빼기는 그 아래 초록 상자(오른쪽 끝이 다음, «밑»).
+ * 함께 들면 눈이 세 군데를 오갔고, 밑장을 예약하면 **같은 패**가 삼세 예지의 왼쪽 끝과 밑장빼기의
+ * 오른쪽 끝에 동시에 떴다. 규칙을 하나로 맞춘다.
+ *
+ * - **오른쪽 끝 = 가장 먼저 나올 패**, 거기에 공통 «다음» 뱃지. 예지(2026-08-12 사용자 지적 —
+ *   뽑히며 앞에서 사라지니 뒤집어 그려야 내 칸이 제자리에 선다)와 밑장빼기는 원래 그랬고, 삼세 예지만 뒤집었다.
+ *   번호에 익은 사람이 헷갈리지 않게 «다음» 뱃지로 방향을 적는다.
+ * - 미니 패는 26×37 하나, 섹션마다 **테두리 색만** 다르다.
+ * - 예지의 자리 라벨·★와 «상시 표시, 조작은 전용 탭»(2026-08-12)은 그대로 — [순서 바꾸기]만 이 줄에 둔다.
+ * - 밑장빼기는 예약할 수 있을 때 태그와 밑장 칸이 버튼이 된다(docs/59 U35). 줄 전체가 아니라
+ *   거기만 — 손패 바로 위라 폰에서 잘못 누르지 않게 히트 영역을 좁힌다.
+ */
+function WallPeekRow(props: {
+  view: PlayerView;
+  foresight: {
+    kinds: readonly TileKind[];
+    seatLabels: readonly string[];
+    /**
+     * 초점 좌석 자신의 쯔모 칸에 붙일 호칭 — 플레이어는 «나», 관전자는 «본인». 관전 화면에서
+     * «나 ★»는 관전자 자신으로 읽힌다(2026-09-25, docs/59 U50 리뷰). seatLabels는 늘 «나»로 온다.
+     */
+    selfLabel: string;
+    /** 재배열 탭을 여는 [순서 바꾸기] — 못 열면 null */
+    onReorder: (() => void) | null;
+  };
+  /** 삼세 예지 — 내 다음 쯔모(앞이 먼저) */
+  triple: readonly TileKind[];
+  bottom: {
+    /** 패산 맨 밑 장들(마지막이 맨 밑장 = 다음에 빼 올 패) */
+    ids: readonly number[];
+    armed: boolean;
+    /** 밑장 칸을 눌러 예약 — 못 누르면(관전·강제 선택·예약됨·후보 없음) null */
+    onReserve: (() => void) | null;
+  };
+}): JSX.Element | null {
+  const { view, foresight, triple, bottom } = props;
+  if (foresight.kinds.length === 0 && triple.length === 0 && bottom.ids.length === 0) return null;
+  const nextBadge = <span className="wall-peek-badge">다음</span>;
+  /*
+   * 밑장은 **예약해야** 다음 쯔모가 된다. 예약 전에도 «다음»을 달면 예지·삼세 예지의 «다음»(패산 위)과
+   * 다른 패에 같은 뱃지가 둘 붙어 «무엇이 먼저 오나»가 다시 헷갈린다(2026-09-25, docs/59 U50 리뷰).
+   * 그래서 예약 전엔 예전 «밑», 예약 뒤에야 «다음» — 그때는 삼세 예지도 같은 패를 «다음»으로 보인다.
+   */
+  const bottomBadge = bottom.armed ? nextBadge : <span className="wall-peek-badge">밑</span>;
+  return (
+    <div className="wall-peek-row" role="group" aria-label="패산 정보">
+      {foresight.kinds.length > 0 ? (
+        <div
+          className="wall-peek-sec wall-peek-foresight"
+          title="예지: 공개된 패산 앞 장입니다. 오른쪽 끝이 가장 먼저 뽑히고, 아래 이름이 그 패를 뽑을 사람입니다."
+        >
+          <span className="wall-peek-tag">
+            <span className="wall-peek-icon" aria-hidden="true">🔮</span>
+            <span className="wall-peek-name">예지</span>
+          </span>
+          <span className="wall-peek-tiles">
+            {foresight.kinds
+              .map((kind, pos) => ({ kind, pos }))
+              .reverse()
+              .map(({ kind, pos }) => {
+                const seatLabel = foresight.seatLabels[pos] ?? "";
+                const isMine = seatLabel === "나";
+                const shown = isMine ? foresight.selfLabel : seatLabel;
+                return (
+                  <span
+                    key={pos}
+                    className={`wall-peek-cell${pos === 0 ? " wall-peek-next" : ""}${
+                      isMine ? " foresight-mine" : ""
+                    }`}
+                    title={`${pos + 1}번째 쯔모: ${shown}`}
+                  >
+                    <TileImg tile={{ kind }} size="mini" />
+                    {/* «다음»은 **내** 다음 쯔모일 때만 — 남의 쯔모 칸에 달면 삼세 예지의 «다음»(내 쯔모)과
+                        다른 패에 같은 뱃지가 둘 붙는다(밑장 «밑»과 같은 이유, 2026-09-25 docs/59 U50 리뷰).
+                        맨 앞 칸은 wall-peek-next 테두리와 아래 자리 이름으로 읽힌다. */}
+                    {/* 밑장 예약 중이거나 삼세 예지가 떠 있으면 그쪽이 내 다음 쯔모를 더 정확히 말한다 —
+                        밑장 «다음»·삼세 예지 «다음»(서버가 밑장·쯔모 변형 예약까지 반영)과 다른 패에
+                        같은 뱃지가 둘 서지 않게 예지 쪽은 뺀다(W3 통합 리뷰). 평소엔 triple[0]이 이 패다. */}
+                    {pos === 0 && isMine && !bottom.armed && triple.length === 0 ? nextBadge : null}
+                    <span className="wall-peek-label">
+                      {shown}
+                      {isMine ? " ★" : ""}
+                    </span>
+                  </span>
+                );
+              })}
+          </span>
+          {foresight.onReorder !== null ? (
+            <button type="button" className="wall-peek-reorder" onClick={foresight.onReorder}>
+              순서 바꾸기 (국에 1회)
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {/* 삼세 예지 — 서버가 쯔모·버림·후로마다 다시 계산해 올린다(후로로 차례가 밀려도
+          맞는다). 국 끝물에 내 몫의 쯔모가 모자라면 두 칸·한 칸으로 줄어든다. */}
+      {triple.length > 0 ? (
+        <div
+          className="wall-peek-sec wall-peek-triple"
+          title="삼세 예지: 내 다음 쯔모 패를 최대 세 장까지 미리 보여 줍니다. 오른쪽 끝이 바로 다음 쯔모입니다. 상황에 따라 바뀝니다."
+        >
+          <span className="wall-peek-tag">
+            <span className="wall-peek-icon" aria-hidden="true">👁</span>
+            <span className="wall-peek-name">삼세 예지</span>
+          </span>
+          <span className="wall-peek-tiles">
+            {triple
+              .map((kind, i) => ({ kind, i }))
+              .reverse()
+              .map(({ kind, i }) => (
+                <span key={i} className={`wall-peek-cell${i === 0 ? " wall-peek-next" : ""}`}>
+                  <TileImg tile={{ kind }} size="mini" />
+                  {i === 0 ? nextBadge : <span className="wall-peek-badge wall-peek-ord">{i + 1}</span>}
+                </span>
+              ))}
+          </span>
+        </div>
+      ) : null}
+      {/* 밑장빼기 — 열람 증강이 visibility.wall을 peek(back)으로 열어 주는 실물 tileId다.
+          예약할 수 있으면 태그와 밑장 칸이 버튼이다(docs/59 U35). «고를 자리가 없는 단순 예약이라
+          모달을 쓰지 않는다»(docs/10 §2a-1)는 그대로 — 모달이 아니라 보이는 밑장을 누른다. */}
+      {bottom.ids.length > 0 ? (
+        <div
+          className={`wall-peek-sec wall-peek-bottom${bottom.armed ? " bottom-deal-armed" : ""}`}
+          title="밑장빼기: 패산 맨 밑 3장입니다. 예약하면 오른쪽 끝 패를 다음 쯔모로 가져옵니다."
+        >
+          {bottom.onReserve !== null ? (
+            <button
+              type="button"
+              className="wall-peek-tag wall-peek-arm"
+              title="눌러서 다음 쯔모를 패산 맨 밑장(오른쪽 끝)으로 예약합니다"
+              aria-label="밑장빼기 — 다음 쯔모를 패산 맨 밑장으로 예약"
+              onClick={bottom.onReserve}
+            >
+              <span className="wall-peek-icon" aria-hidden="true">🃏</span>
+              <span className="wall-peek-name">밑장빼기</span>
+              <span className="wall-peek-cta"> — 눌러서 다음 쯔모 예약</span>
+              <span className="wall-peek-cta-short">예약</span>
+            </button>
+          ) : (
+            <span className="wall-peek-tag">
+              <span className="wall-peek-icon" aria-hidden="true">🃏</span>
+              {/* 괄호를 둘 잇지 않는다 — 예약 뒤엔 «(예약됨)»만, 전엔 «(밑에서)»만(docs/59 U50 리뷰) */}
+              <span className="wall-peek-name">밑장빼기{bottom.armed ? "" : " (밑에서)"}</span>
+              {bottom.armed ? <span className="wall-peek-armed-note"> (예약됨)</span> : null}
+            </span>
+          )}
+          <span className="wall-peek-tiles">
+            {bottom.ids.map((id, i) => {
+              const isNext = i === bottom.ids.length - 1;
+              const tile = view.tiles[id];
+              // 밑장 칸도 같은 예약 버튼이다 — 키보드 초점은 태그 버튼 하나로 충분해 칸은 탭 순서에서 뺀다
+              return isNext && bottom.onReserve !== null ? (
+                <button
+                  key={id}
+                  type="button"
+                  className="wall-peek-cell wall-peek-next wall-peek-arm-cell"
+                  tabIndex={-1}
+                  aria-label="이 밑장을 다음 쯔모로 예약"
+                  title="눌러서 다음 쯔모를 이 밑장으로 예약합니다"
+                  onClick={bottom.onReserve}
+                >
+                  <TileImg tile={tile} size="mini" />
+                  {bottomBadge}
+                </button>
+              ) : (
+                <span
+                  key={id}
+                  className={`wall-peek-cell${isNext ? " wall-peek-next" : " wall-peek-dim"}`}
+                >
+                  <TileImg tile={tile} size="mini" />
+                  {isNext ? bottomBadge : null}
+                </span>
+              );
+            })}
+          </span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function OwnArea(props: {
   view: PlayerView;
   me: PlayerInfo;
@@ -21353,6 +22219,17 @@ function OwnArea(props: {
   const [usableHint, setUsableHint] = useState<ReadonlySet<string> | null>(null);
   const armedAug = sel.armedType;
   /*
+   * 재장전(own-aug) — 되살릴 내 증강을 ✦ 메뉴 2단계 글자 목록이 아니라 **바로 옆 내 이름표 pill**에서
+   * 누른다. 결과(♻·잔량 칩)도 그 pill에 붙으니 조작과 결과가 한 자리다(2026-09-25, docs/59 U32).
+   * NamePlate는 memo라 무장 중일 때만 콜백을 내린다(평소엔 undefined).
+   */
+  const ownAugArmed = sel.armMode === "own-aug";
+  const ownArmedOptions = sel.armedOptions;
+  const pickOwnAug = useCallback(
+    (augId: string): ActionOption | undefined => augPickOption(ownArmedOptions, augId),
+    [ownArmedOptions],
+  );
+  /*
    * 한 패에 변형 선택지가 여럿일 때(염색 무늬·연금술 ±1·분열·위조) 누른 패 위에 붙는 팝오버.
    * `anchor`는 **레이아웃 좌표**다(x = 누른 패의 가운데, top = 손패 상자의 위끝) — 팝오버는
    * body 포털이라 `.own-area`의 transform 밖에 서므로 화면 좌표(getBoundingClientRect)를
@@ -21399,8 +22276,10 @@ function OwnArea(props: {
     if (armedAug === "recall") return doomedNow;
     const hovered = (t: string): boolean => usableHint?.has(ACTION_AUGMENT[t] ?? t) ?? false;
     if (!hovered("recall")) return new Set<number>();
+    // 무르기도 쯔모패를 손에서 없앤다(패산 밑으로) — 회수와 함께 올라가면 쯔모패가 겹치니
+    // 사라지는 쪽 말을 남긴다(2026-09-25, docs/59 U34·U36 리뷰).
     const burn = new Set(
-      ["bluff_pon", "dragons_will", "split_tile"].filter(hovered).flatMap((t) => doomedTileIdsOf(view, t)),
+      ["bluff_pon", "dragons_will", "split_tile", "take_back"].filter(hovered).flatMap((t) => doomedTileIdsOf(view, t)),
     );
     return new Set(doomedTileIdsOf(view, "recall").filter((id) => doomedNow.has(id) && !burn.has(id)));
   }, [armedAug, view, doomedNow, usableHint]);
@@ -22104,6 +22983,71 @@ function OwnArea(props: {
   const swap3Pending = !isSpectator && swap3Pick.stage !== null;
   /** 강제 선택 중 — 액션 바(쯔모 화료만 남긴다)와 ✦ 메뉴를 잠근다(FORCED_PICK_TYPES) */
   const forcedPick = !isSpectator && isForcedPickPrompt(myPrompt);
+  /*
+   * ── 예지 — 손패 위 «패산 정보» 줄(WallPeekRow)의 첫 섹션 ──
+   *
+   * 예전엔 ActiveAugmentControl이 ✦ 버튼 옆에 따로 그렸다. 삼세 예지·밑장빼기는 손패 위에
+   * 각자 한 줄씩 떠서, 셋을 함께 들면 «곧 나올 패»를 세 군데서 읽어야 했다(2026-09-25, docs/59 U50).
+   * 이제 여기서 focusAv로 읽는다 — 관전자도 초점 좌석이 본 예지를 본다(예전엔 !isSpectator로
+   * 컨트롤째 빠져 관전 화면에만 예지가 없었다).
+   */
+  const foresightPeek = useMemo<TileKind[]>(() => foresightPeekOf(focusAv), [focusAv]);
+  /*
+   * 재배열을 열 수 있는가의 **단일 출처** — [순서 바꾸기] 버튼·탭 자동 열기가 보고, 탭(모달)을 그리는
+   * ActiveAugmentControl에도 prop으로 내려 준다. 두 곳에 같은 식을 따로 두면 어긋나는 순간 누르면
+   * 아무것도 안 뜨는 버튼이 된다(2026-09-25, docs/59 U50 리뷰). 강제 선택 중엔 열지 않는다(U03·U07).
+   */
+  const foresightReorderable =
+    (myPrompt?.options ?? []).some((o) => o.type === "foresight_order") &&
+    foresightPeek.length === 4 &&
+    !forcedPick;
+  /** 공개된 패가 각각 누구의 쯔모가 되는지 — 관전이면 초점 좌석(me) 기준이다 */
+  const foresightSeatLabels = useMemo<string[]>(() => {
+    const seatCount = view.players.length;
+    const dir = view.round.direction;
+    // 밑장을 예약해 둔 자리의 다음 쯔모는 맨 밑장이다 — 그 한 번은 패산 앞을 쓰지 않으니 건너뛴다.
+    // 내 예약만이 아니라 상대의 예약(전원 공개)도 — 안 그러면 라벨이 한 칸씩 밀린다
+    // (W3 통합 리뷰: 예지 맨 앞 칸에 «나 ★ 다음»이 밑장 «다음»과 함께 서던 것 · 수정 커밋 리뷰)
+    return projectedDrawSeats(
+      view.round.turnSeat,
+      dir,
+      seatCount,
+      foresightPeek.length,
+      bottomDealArmedSeats(view.players, focusAv),
+    ).map((s) => relativeSeatLabel(me.seat, s, dir, seatCount));
+  }, [
+    view.players,
+    view.round.turnSeat,
+    view.round.direction,
+    me.seat,
+    foresightPeek.length,
+    focusAv,
+  ]);
+  /**
+   * 예지 재배열 탭이 열려 있는가 — 탭(모달)은 ActiveAugmentControl에 남고 여닫이만 여기서 쥔다.
+   * [순서 바꾸기] 버튼이 패산 정보 줄로 옮겨 오면서 그 버튼과 탭이 한 상태를 봐야 했다(docs/59 U50).
+   */
+  const [foresightTab, setForesightTab] = useState(false);
+  // 재배열이 열리면 전용 탭을 곧바로 띄우고, 닫히면(제출·턴 종료·소진) 탭도 접는다.
+  // 발동=공개는 취소할 수 없으므로, 열자마자 크게 보여주는 편이 흐름에 맞는다.
+  useEffect(() => {
+    setForesightTab(foresightReorderable);
+  }, [foresightReorderable]);
+  /*
+   * 밑장빼기 — 스트립의 밑장 칸을 눌러 바로 예약한다(2026-09-25, docs/59 U35). 발동 대상인
+   * «다음에 빼 올 밑장»이 손패 바로 위에 늘 보이는데 ✦ → 메뉴를 거쳐야 했다. payload 없는
+   * 후보 하나라 ✦ 경로(activate)와 똑같이 즉시 제출한다 — ✦ 메뉴 경로는 보조로 남는다.
+   * 관전자·강제 선택 중(✦ 메뉴도 잠긴다)·이미 예약한 뒤에는 누를 수 없다.
+   */
+  const bottomDealOpt = (myPrompt?.options ?? []).find((o) => o.type === "bottom_deal");
+  const reserveBottomDeal =
+    !isSpectator && !forcedPick && !bottomDealArmed && bottomDealOpt !== undefined
+      ? (): void => {
+          // ✦ 경로와 같다 — 리치 중에도 쓰는 증강이라 리치 모드를 풀어 다음 손패 클릭이 선언으로 새지 않게
+          sel.exitRiichiMode();
+          sel.submit(bottomDealOpt);
+        }
+      : null;
   /** 고른 3장에 딱 맞는 서버 후보 — 3장이 차고 조합이 후보에 있을 때만 [확정]이 켜진다(U10) */
   const swap3Option =
     swap3Sel.length === 3 ? swap3Pick.byKey.get([...swap3Sel].sort((a, b) => a - b).join(",")) : undefined;
@@ -22711,6 +23655,7 @@ function OwnArea(props: {
               catalog={props.catalog}
               tipUp
               glow={usableHint}
+              {...(ownAugArmed ? { pickAug: pickOwnAug, onPickAug: sel.submit } : {})}
             />
             {!isSpectator ? (
               <ActiveAugmentControl
@@ -22720,6 +23665,9 @@ function OwnArea(props: {
                 catalog={props.catalog}
                 promptDeadline={props.promptDeadline}
                 forcedPick={forcedPick}
+                foresightReorderable={foresightReorderable}
+                foresightTabOpen={foresightTab}
+                onForesightTab={setForesightTab}
                 {...(props.onToast !== undefined ? { onToast: props.onToast } : {})}
                 onUsableHint={(ids) => setUsableHint(ids === null ? null : new Set(ids))}
                 onDoomedHint={(ids) => setDoomedHint(ids === null ? null : new Set(ids))}
@@ -23032,19 +23980,20 @@ function OwnArea(props: {
             />
           </>
         ) : null}
-        {/* 삼세 예지 — 서버가 쯔모·버림·후로마다 다시 계산해 올린다(후로로 차례가 밀려도
-            맞는다). 국 끝물에 내 몫의 쯔모가 모자라면 두 칸·한 칸으로 줄어든다. */}
-        {nextTsumoKinds.length > 0 ? (
-          <div className="next-tsumo-strip" title="삼세 예지: 내 다음 쯔모 패를 최대 세 장까지 미리 보여 줍니다. 상황에 따라 바뀝니다.">
-            <span className="next-tsumo-tag">삼세 예지: 다음 쯔모</span>
-            {nextTsumoKinds.map((kind, i) => (
-              <span key={i} className="next-tsumo-cell">
-                <TileImg tile={{ kind }} size="mini" />
-                <span className="next-tsumo-ord">{i + 1}</span>
-              </span>
-            ))}
-          </div>
-        ) : null}
+        {/* 패산 정보 — 예지·삼세 예지·밑장빼기를 손패 위 한 줄에 모은다(2026-09-25, docs/59 U50).
+            셋 다 «패산에서 곧 나올 패»인데 자리·모양·순서 표기가 제각각이었다. */}
+        <WallPeekRow
+          view={view}
+          foresight={{
+            kinds: foresightPeek,
+            seatLabels: foresightSeatLabels,
+            selfLabel: isSpectator ? "본인" : "나",
+            onReorder:
+              !isSpectator && foresightReorderable && !foresightTab ? () => setForesightTab(true) : null,
+          }}
+          triple={nextTsumoKinds}
+          bottom={{ ids: bottomWallIds, armed: bottomDealArmed, onReserve: reserveBottomDeal }}
+        />
         {isSpectator && props.spectateChoice !== undefined && props.spectateChoice.mixed !== true ? (
           <SpectateChoicePanel
             choice={props.spectateChoice}
@@ -23052,26 +24001,6 @@ function OwnArea(props: {
             catalog={props.catalog}
             focus={props.spectateChoice.seat === me.id}
           />
-        ) : null}
-        {bottomWallIds.length > 0 ? (
-          <div
-            className={`bottom-deal-strip${bottomDealArmed ? " bottom-deal-armed" : ""}`}
-            title="밑장빼기: 패산 맨 밑 3장입니다. 오른쪽 끝 패를 다음에 가져옵니다."
-          >
-            <span className="bottom-deal-tag">
-              밑장빼기: 패산 밑{bottomDealArmed ? " (예약됨)" : ""}
-            </span>
-            {bottomWallIds.map((id, i) => (
-              <span
-                key={id}
-                className={`bottom-deal-cell${
-                  i === bottomWallIds.length - 1 ? " bottom-deal-next" : ""
-                }`}
-              >
-                <TileImg tile={view.tiles[id]} size="mini" />
-              </span>
-            ))}
-          </div>
         ) : null}
         {/* 등가교환 — 공개받은 상대 손패 참고 줄(docs/59 U08). 누르는 곳이 아니라 비교용이라
             흐리게 두고 클릭을 받지 않는다. 가져올 3장은 take 모달에서 고른다(U08-take 보류).
@@ -23560,6 +24489,10 @@ function OwnArea(props: {
       {myMelds.length > 0 || myPulled.length > 0 ? (
         <div
           className="own-corner-right"
+          /* 무장 중에는 이 줄 전체가 대상 영역이다 — `.own-area`의 형제라 빗나간 클릭이 «판의 빈 곳»으로
+             읽혀 무장이 풀렸다. 후로 사이를 빗나가도 아무 일도 없게 한다(2026-09-25, docs/59 U25) */
+          /* 강제 무장(미래를 보는 자)에서는 후로가 대상이 아니다 — 판 표면의 안내(FORCED_PICK_HINT)가 서게 뺀다 */
+          {...(sel.armedType !== null && !FORCED_ARM_TYPES.has(sel.armedType) ? { "data-arm-zone": "1" } : {})}
           /* 후로 개수 — CSS가 «몇 개를 이 폭에 담아야 하는지»를 알아야 타일 크기를
              줄여 덜 넘치게 할 수 있다(styles.css `.own-corner-right`의 --mt-w).
              북풍 상인의 빼놓은 北도 같은 줄에 서므로 하나로 센다. */
@@ -23569,9 +24502,42 @@ function OwnArea(props: {
             } as CSSProperties
           }
         >
-          {myMelds.map((m, i) => (
-            <MeldGroup key={i} view={view} meld={m} owner={me} layout="row" />
-          ))}
+          {myMelds.map((m, i) => {
+            if (sel.armMode !== "own-meld") {
+              return <MeldGroup key={i} view={view} meld={m} owner={me} layout="row" />;
+            }
+            /*
+             * 파혼(own-meld) — 해체할 후로를 ✦ 메뉴 2단계의 «파혼» 글자 버튼(후로 수만큼 똑같은 줄)이
+             * 아니라 판의 실물에서 누른다(2026-09-25, docs/59 U31). 후보(치·퐁)는 보랏빛으로 뛰고
+             * «해체» 표를 달며, 깡처럼 해체할 수 없는 후로는 흐리게 둔다 — 눌러도 무장은 그대로다
+             * (대상 영역 안의 빗나감, §2 원칙 7). 북풍 상인의 빼놓은 北(PulledGroup)은 후로가 아니다.
+             */
+            const opt = sel.meldOptionFor(i);
+            const brief = meldBrief(view, m);
+            return (
+              <button
+                key={i}
+                type="button"
+                className={`meld-armable${opt === undefined ? " meld-unpickable" : ""}`}
+                data-arm-zone="1"
+                aria-disabled={opt === undefined}
+                aria-label={opt !== undefined ? `${brief} 해체` : `${brief} (해체할 수 없음)`}
+                onClick={() => {
+                  if (opt === undefined) {
+                    haptics.reject();
+                    props.onToast?.("치·퐁만 해체할 수 있습니다");
+                    return;
+                  }
+                  sel.submit(opt);
+                }}
+              >
+                <MeldGroup view={view} meld={m} owner={me} layout="row" />
+                {opt !== undefined ? (
+                  <span className="meld-arm-tag" aria-hidden="true">해체</span>
+                ) : null}
+              </button>
+            );
+          })}
           <PulledGroup view={view} owner={me} layout="row" />
         </div>
       ) : null}
@@ -24976,11 +25942,13 @@ function DockNextDraw({
   if (rewinding) return <p className="dock-note dock-note-warn">{REWIND_NOTE}</p>;
   const N = 6;
   const ids = (view.zones["wall"]?.tileIds ?? []).slice(0, N);
+  // 밑장을 예약해 둔 자리의 다음 쯔모는 패산 앞을 쓰지 않는다 — 예지 라벨과 같은 규칙(drawOrder.ts)
   const seats = projectedDrawSeats(
     view.round.turnSeat,
     view.round.direction,
     view.players.length,
     ids.length,
+    bottomDealArmedSeats(view.players, view.augmentView),
   );
   return (
     <div className="dock-next">
@@ -25889,6 +26857,17 @@ function ActiveAugmentControl(props: {
    * 전면 모달이 이 버튼을 덮어 막았다(2026-09-25, docs/59 U03·U07).
    */
   forcedPick?: boolean;
+  /**
+   * 예지 재배열 탭이 열려 있는가 — 상태는 OwnArea가 쥔다. [순서 바꾸기] 버튼이 손패 위 «패산 정보»
+   * 줄(WallPeekRow)로 옮겨 가 그 버튼과 이 탭이 한 상태를 봐야 한다(2026-09-25, docs/59 U50).
+   */
+  foresightTabOpen?: boolean;
+  onForesightTab?: (open: boolean) => void;
+  /**
+   * 예지 재배열을 열 수 있는가 — OwnArea가 한 번 계산해 내려 준다(강제 선택 중 false 포함).
+   * 여기서 따로 계산하면 줄의 [순서 바꾸기]와 이 탭이 어긋날 수 있다(2026-09-25, docs/59 U50 리뷰).
+   */
+  foresightReorderable?: boolean;
   /** 못 쓰는 이유처럼 터치에서 `title=` 로는 못 읽는 안내를 띄운다. */
   onToast?: (text: string) => void;
   /**
@@ -25925,14 +26904,15 @@ function ActiveAugmentControl(props: {
   const [foresightArr, setForesightArr] = useState<number[] | null>(null);
   const [foresightDragFrom, setForesightDragFrom] = useState<number | null>(null);
   /**
-   * 예지 재배열 탭이 열려 있는가.
+   * 예지 재배열 탭이 열려 있는가 — 여닫이 상태는 OwnArea가 쥔다(props.foresightTabOpen).
    *
    * 재배열은 여태 액티브 버튼 옆의 **작은 스트립 안에서** 해야 했다. 미니 패 넉 장이
    * 손가락보다 작고, 판 구석에 붙어 있어 무엇을 어디로 끌고 있는지 보이지 않았다
    * (2026-08-12 사용자 보고: "예지 조작이 어색하다"). 분열·염색처럼 **전용 탭**을
-   * 크게 띄운다. 닫아도 스트립은 남아 공개된 패는 계속 보인다.
+   * 크게 띄운다. 닫아도 손패 위 «패산 정보» 줄에 공개된 패는 계속 보인다.
    */
-  const [foresightTab, setForesightTab] = useState(false);
+  const foresightTab = props.foresightTabOpen === true;
+  const setForesightTab = (open: boolean): void => props.onForesightTab?.(open);
   /**
    * 영상 정찰 — 재배열 중인 순서. arr[새 자리] = 원래 인덱스. null이면 아직 안 열었다.
    * (예지와 같은 규약이라 조작감도 같다 — 드래그 / 두 번 누르기 / 좌우 이동 버튼.)
@@ -25997,22 +26977,18 @@ function ActiveAugmentControl(props: {
 
   // 예지 — 공개된 패산 앞 장들의 kind (뽑히는 대로 앞에서 한 장씩 줄어든다).
   // 훅은 조기 반환보다 위에 있어야 한다(Rules of Hooks).
-  const foresightPeek = useMemo<TileKind[]>(() => {
-    const raw = view.augmentView["foresight_peek"];
-    return Array.isArray(raw)
-      ? (raw as string[]).map(parseKindKey).filter((k): k is TileKind => k !== null)
-      : [];
-  }, [view.augmentView]);
+  const foresightPeek = useMemo<TileKind[]>(
+    () => foresightPeekOf(view.augmentView),
+    [view.augmentView],
+  );
   /*
-   * 강제 선택(미래를 보는 자·등가교환 넘길 3장) 중에는 재배열을 열지 않는다 — 같은 프롬프트에
-   * foresight_order가 실려 오면 [순서 바꾸기] 버튼과 탭 자동 열기가 «다른 수는 막는다»의
-   * 빈틈이 된다. 예전엔 전면 모달이 그 버튼을 덮고 있었다(2026-09-25, docs/59 U03·U07).
-   * 강제 선택이 끝나고 후보가 남아 있으면 다시 열린다.
+   * 재배열을 열 수 있는가 — OwnArea가 계산한 값을 그대로 쓴다(foresight_order 후보·공개 4장·
+   * 강제 선택 아님). 강제 선택(미래를 보는 자·등가교환 넘길 3장) 중에 열리면 «다른 수는 막는다»의
+   * 빈틈이 된다(docs/59 U03·U07). 식을 여기 따로 두던 때는 줄의 [순서 바꾸기]와 어긋날 수 있었다
+   * (2026-09-25, docs/59 U50 리뷰). 길이 검사는 드래그 순서가 foresightPeek을 [0..3]으로 짚기 때문에
+   * 남긴다 — 이 컨트롤은 관전 화면에 없어 OwnArea의 focusAv와 같은 view.augmentView를 본다.
    */
-  const foresightReorderable =
-    (myPrompt?.options ?? []).some((o) => o.type === "foresight_order") &&
-    foresightPeek.length === 4 &&
-    props.forcedPick !== true;
+  const foresightReorderable = props.foresightReorderable === true && foresightPeek.length === 4;
   /**
    * 공개된 패들이 각각 **누구의 쯔모가 되는지** — 렌더 시점의 차례·진행 방향에서 계산한다.
    * 고정 배열(["하가","대면","상가","나"])이던 시절에는 역행(turn.direction = −1)에서
@@ -26022,21 +26998,24 @@ function ActiveAugmentControl(props: {
     const seatCount = view.players.length;
     const mySeat = view.players.find((p) => p.id === view.playerId)?.seat ?? 0;
     const dir = view.round.direction;
+    // 밑장을 예약해 둔 자리(나·상대)의 다음 쯔모 한 번은 패산 앞을 쓰지 않는다 — 패산 정보 줄과 같은 규칙
     return projectedDrawSeats(
       view.round.turnSeat,
       dir,
       seatCount,
       foresightPeek.length,
+      bottomDealArmedSeats(view.players, view.augmentView),
     ).map((s) => relativeSeatLabel(mySeat, s, dir, seatCount));
   }, [
     view.players,
     view.playerId,
+    view.augmentView,
     view.round.turnSeat,
     view.round.direction,
     foresightPeek.length,
   ]);
   // 재배열 후보가 뜨면 드래그용 항등 순서를 깐다. 후보가 사라지면(제출·턴 종료·국에 1회
-  // 소진) 비운다 — 그래도 공개된 패는 아래 스트립에 계속 보인다(열람만 되는 재발동 포함).
+  // 소진) 비운다 — 그래도 공개된 패는 손패 위 «패산 정보» 줄에 계속 보인다(열람만 되는 재발동 포함).
   useEffect(() => {
     if (foresightReorderable) {
       if (foresightArr === null) setForesightArr([0, 1, 2, 3]);
@@ -26044,11 +27023,7 @@ function ActiveAugmentControl(props: {
       setForesightArr(null);
     }
   }, [foresightReorderable, foresightArr]);
-  // 재배열이 열리면 전용 탭을 곧바로 띄우고, 닫히면(제출·턴 종료·소진) 탭도 접는다.
-  // 발동=공개는 취소할 수 없으므로, 열자마자 크게 보여주는 편이 흐름에 맞는다.
-  useEffect(() => {
-    setForesightTab(foresightReorderable);
-  }, [foresightReorderable]);
+  // (재배열이 열리면 탭을 곧바로 띄우는 effect는 여닫이 상태와 함께 OwnArea로 옮겼다 — docs/59 U50)
 
   // 모달이 떠 있는 동안 그 액션이 프롬프트에서 사라지면(교환 소진·턴 종료·리치 등)
   // 탭을 자동으로 닫는다. 예전엔 남아 있어서 이미 끝난 선택창을 손으로 닫아야 했다.
@@ -26218,9 +27193,56 @@ function ActiveAugmentControl(props: {
         return "상대 버림패 클릭으로 선택";
       case "hand3":
         return "손패 3장 클릭 후 확인";
+      case "opp-aug":
+        return "상대 증강 클릭으로 선택";
+      case "own-aug":
+        return "내 증강 클릭으로 선택";
+      case "own-meld":
+        return "내 후로 클릭으로 선택";
       default:
         return "손패 클릭으로 선택";
     }
+  };
+  // 단일 ✦ 버튼의 부제용 짧은 꼴 — 이름표 줄은 한 줄 폭 예산(styles.css .own-aug 가로 블록)이라
+  // armHint 전체(«상대 클릭으로 선택»)를 못 싣는다.
+  const armShort = (t: string): string => {
+    switch (armModeOf(t)) {
+      case "opp":
+        return "상대 고르기";
+      case "own-river":
+        return "내 버림패 고르기";
+      case "opp-river":
+        return "버림패 고르기";
+      case "hand3":
+        return "손패 3장 고르기";
+      case "opp-aug":
+        return "상대 증강 고르기";
+      case "own-aug":
+        return "내 증강 고르기";
+      case "own-meld":
+        return "후로 고르기";
+      default:
+        return "손패 고르기";
+    }
+  };
+  /*
+   * 단일 ✦ 버튼의 부제 — 누르면 **무엇이 일어나는지**. 동사(ACTION_VERB)가 있으면 그것이 먼저다:
+   * 이면투시 바꿔치기처럼 무장형이어도 «손패 고르기»보다 «뒷도라 바꿔치기»가 결과를 말한다.
+   * 없으면 조작 방식(무장·모달·후보 여럿)을 말한다. 이름과 같으면 두 번 쓰지 않는다
+   * (2026-09-25, docs/59 U37).
+   */
+  const actionSub = (t: string): string => {
+    const opts = byType.get(t) ?? [];
+    const sub =
+      ACTION_VERB[t] ??
+      (armType(t)
+        ? armShort(t)
+        : MODAL_PICK_TYPES.has(t)
+          ? "패 보고 고르기"
+          : opts.length > 1
+            ? `${opts.length}가지 중 고르기`
+            : "");
+    return sub === augNameFor(t) ? "" : sub;
   };
 
   // 이 타입 발동 — 클릭형이면 무장, 모달형이면 전용 모달, 옵션 1개면 즉시 제출,
@@ -26257,6 +27279,20 @@ function ActiveAugmentControl(props: {
   // 예전엔 후보 옵션 수를 셌다 — 회수(버림패마다 후보 1개)·연금술(패×방향)처럼 후보가
   // 패 수만큼 나오는 증강이 "액티브 증강 (17)"처럼 떠 패 개수로 읽혔다(2026-08-01 보고).
   const displayCount = usableAugIds.length;
+  /*
+   * **누르면 곧바로 그 하나가 발동하는가** — click()의 `types.length === 1` 분기와 같은 기준.
+   *
+   * 버튼 글자는 언제나 «✦ 액티브 증강 (1)»이라, 쓸 수 있는 것이 하나일 때 무엇이 나가는지는
+   * title 툴팁과 hover 발광에만 있었다. 터치에는 둘 다 없어 «이게 뭐지» 하고 한 번 누르는
+   * 순간 귀환·밥상 뒤엎기·리치 취소 같은 되돌릴 수 없는 선언이 나갔다. 단계(확인창)는 늘리지
+   * 않는다 — 후보 1개면 즉시 제출·개수 = 쓸 수 있는 증강 수(2026-08-01)는 그대로 두고,
+   * 버튼에 증강 이름과 행동을 적는다(2026-09-25, docs/59 U37). 개수 «(n)»은 메뉴가 열릴
+   * 때(둘 이상)만 붙는다.
+   */
+  const single = usable && types.length === 1 ? (types[0] ?? null) : null;
+  const singleSub = single !== null ? actionSub(single) : "";
+  // 첫 순 한정 액티브가 지금 후보에 있다 — 한 장 버리면 사라지는 기회라 평소 켜짐과 구별한다(U40)
+  const firstTurnNow = usable && types.some((t) => FIRST_TURN_ONLY_TYPES.has(t));
 
   const click = (): void => {
     // 강제 선택 중 — 다른 증강으로 새면 교환 없이 넘어가거나 무장이 바뀐다. 이유는 말한다(U26)
@@ -26312,7 +27348,7 @@ function ActiveAugmentControl(props: {
   //  «상대 셋의 바닥만» 규칙과 어긋난 «내 바닥» 행이 남아 있었다. 그 모달에만 있던 «이어서
   //  한 장을 버려야 한다»는 ARM_PROMPT로 옮겼다 — 2026-09-25, docs/59 U11)
 
-  // ── 예지 — 공개된 패를 버튼 옆 스트립에 늘어놓고, 재배열 가능할 때만 드래그시킨다 ──
+  // ── 예지 — 재배열 가능할 때만 전용 탭에서 드래그시킨다 (공개 패 표시는 WallPeekRow) ──
   // (후보 매핑·핸들러; 훅은 위에)
   const foresightOpts = byType.get("foresight_order") ?? [];
   const foresightByKey = new Map<string, ActionOption>();
@@ -26320,7 +27356,7 @@ function ActiveAugmentControl(props: {
     const ord = (o.payload as { order?: unknown }).order;
     if (Array.isArray(ord)) foresightByKey.set(ord.join(","), o);
   }
-  // 스트립에 그릴 순서 — 재배열 중이면 드래그 순서, 아니면 공개된 그대로.
+  // 탭에 그릴 순서 — 재배열 중이면 드래그 순서, 아니면 공개된 그대로.
   const foresightOrder: number[] =
     foresightReorderable && foresightArr !== null
       ? foresightArr
@@ -26740,14 +27776,33 @@ function ActiveAugmentControl(props: {
         menuType !== null ? (
           // 2단계 — 고른 증강의 후보들. 이름은 머리글에 한 번만 쓰고 후보만 나열한다.
           // 이 층은 통째로 한 증강의 이야기라, 열려 있는 동안 그 pill을 계속 빛낸다.
-          <div className="aug-menu" onMouseEnter={() => hintOne(menuType)} onMouseLeave={hintNone}>
+          // 후보가 6개 이상이면(핏빛 계약의 역 8개) 세로 목록 대신 격자로 편다 — 폰 가로에서
+          // 60cqh 상자에 4~5줄만 보여 스크롤하며 고르던 것을 한눈에 담는다. 버튼 수는 그대로다:
+          // 역처럼 대상이 추상적인 선택은 버튼이 맞다(docs/59 §2 원칙 4, 2026-09-25 U39).
+          <div
+            className={`aug-menu${(byType.get(menuType)?.length ?? 0) >= 6 ? " aug-menu-grid" : ""}`}
+            onMouseEnter={() => hintOne(menuType)}
+            onMouseLeave={hintNone}
+          >
             <div className="aug-menu-head">{augNameFor(menuType)}</div>
+            {warnBlankMenuDetails(view, menuType, byType.get(menuType) ?? [])}
             {(byType.get(menuType) ?? []).map((o, i) => {
               const detail = optionDetail(view, o);
+              // 핏빛 계약 — 역 이름 밑에 정의 한 줄, 긴 풀이는 용어 사전에서(U39)
+              const yaku =
+                o.type === "blood_contract_declare"
+                  ? (o.payload as { yaku?: unknown }).yaku
+                  : undefined;
+              const yakuNote = typeof yaku === "string" ? CONTRACT_YAKU_NOTE[yaku] : undefined;
               return (
                 <button
                   key={`${menuType}-${i}`}
                   className="aug-menu-item"
+                  title={
+                    typeof yaku === "string"
+                      ? glossaryTitle(CONTRACT_YAKU_TERM[yaku] ?? yaku) || undefined
+                      : undefined
+                  }
                   onClick={() => {
                     sel.submit(o);
                     setOpen(false);
@@ -26758,6 +27813,7 @@ function ActiveAugmentControl(props: {
                   <strong className="aug-menu-name">
                     {detail !== "" ? detail : augNameFor(menuType)}
                   </strong>
+                  {yakuNote !== undefined ? <span className="act-target">{yakuNote}</span> : null}
                   <ActionTiles view={view} option={o} />
                 </button>
               );
@@ -26782,13 +27838,16 @@ function ActiveAugmentControl(props: {
             <div className="aug-menu-head">사용할 증강 선택</div>
             {types.map((type) => {
               const opts = byType.get(type) ?? [];
-              const hint = armType(type)
+              const how = armType(type)
                 ? armHint(type)
                 : MODAL_PICK_TYPES.has(type)
                   ? "패를 보고 고르기"
                   : opts.length > 1
                     ? `${opts.length}가지 중 고르기`
                     : optionDetail(view, opts[0] as ActionOption);
+              // 이름 뒤에 **무엇을 하는지**(ACTION_VERB)를 먼저, 조작 방식은 그 뒤에 — {} 선언형은
+              // 조작 방식이 비어 «승부수»만 섰다(2026-09-25, docs/59 U38)
+              const hint = [ACTION_VERB[type] ?? "", how].filter((x) => x !== "").join(" · ");
               return (
                 <button
                   key={type}
@@ -26801,7 +27860,13 @@ function ActiveAugmentControl(props: {
                   onFocus={() => hintOne(type)}
                   onBlur={hintAll}
                 >
-                  <strong className="aug-menu-name">{augNameFor(type)}</strong>
+                  <strong className="aug-menu-name">
+                    {augNameFor(type)}
+                    {/* 첫 순 한정 — 한 장 버리면 이 국의 기회가 사라진다(docs/59 U40) */}
+                    {FIRST_TURN_ONLY_TYPES.has(type) ? (
+                      <span className="aug-first-badge">이번 순만</span>
+                    ) : null}
+                  </strong>
                   {hint !== "" ? <span className="act-target">{hint}</span> : null}
                   {!armType(type) && !MODAL_PICK_TYPES.has(type) && opts.length === 1 ? (
                     <ActionTiles view={view} option={opts[0] as ActionOption} />
@@ -26814,7 +27879,7 @@ function ActiveAugmentControl(props: {
       ) : null}
       <button
         /* 증강 리치로 무장한 것은 액션 바의 몫이라 여기선 켜진 것처럼 보이지 않게 한다 */
-        className={`aug-btn${usable ? " aug-btn-on" : ""}${
+        className={`aug-btn${usable ? " aug-btn-on" : ""}${firstTurnNow ? " aug-btn-first" : ""}${
           // 강제 무장(미래를 보는 자)은 ✦ 로 건 것도 풀 수 있는 것도 아니다 — 버튼은 잠겨
           // (aria-disabled) 있으니 켜진 것처럼 보이면 신호가 엇갈린다(2026-09-25, docs/59 U03 리뷰)
           sel.armedType !== null && !DRAG_DISCARD_ARM_TYPES.has(sel.armedType) && props.forcedPick !== true
@@ -26843,59 +27908,24 @@ function ActiveAugmentControl(props: {
         onFocus={hintAll}
         onBlur={hintNone}
       >
-        ✦ 액티브 증강{usable ? ` (${displayCount})` : ""}
+        ✦{" "}
+        {/* 좁은 화면의 5em 말줄임은 증강 이름에만 건다(aug-btn-name-aug) — 평소 라벨까지 자르지 않게 */}
+        <span className={`aug-btn-name${single !== null ? " aug-btn-name-aug" : ""}`}>
+          {single !== null ? augNameFor(single) : "액티브 증강"}
+        </span>
+        {single !== null && singleSub !== "" ? (
+          <span className="aug-btn-sub">· {singleSub}</span>
+        ) : null}
+        {usable && single === null ? ` (${displayCount})` : ""}
+        {firstTurnNow ? (
+          <span className="aug-first-badge">{single !== null ? "이번 순만" : "첫 순"}</span>
+        ) : null}
       </button>
       {/*
-        예지 — 공개된 패산 앞장을 **액티브 증강 버튼 옆에 상시로** 늘어놓는다.
-        예전에는 재배열 후보가 있을 때만 뜨는 모달이 유일한 표시 수단이라,
-        재배열을 이미 쓴 국에 다시 발동하면(열람만 가능) 이펙트만 나오고
-        정작 본 패는 어디에도 안 보였다 — 정보 증강이 정보를 안 주는 셈이었다.
-        이제 공개 채널이 살아 있는 동안 계속 보인다.
-
-        조작(재배열)은 여기서 하지 않는다 — 미니 패 넉 장이 손가락보다 작고 판 구석에
-        붙어 있어 무엇을 어디로 끄는지 보이지 않았다(2026-08-12 사용자 보고).
-        분열·염색처럼 아래 전용 탭에서 크게 고른다. 여기는 "지금 무엇이 오는가"만 읽는 자리다.
+        예지 공개 패는 손패 위 «패산 정보» 줄(OwnArea의 WallPeekRow)에 상시로 뜬다 — 이 버튼 옆에
+        따로 그리던 스트립은 삼세 예지·밑장빼기와 한 줄로 합쳤다(2026-09-25, docs/59 U50).
+        [순서 바꾸기]도 그 줄로 옮겼고, 여기엔 재배열 탭만 남는다.
       */}
-      {foresightPeek.length > 0 ? (
-        <div className="foresight-strip">
-          <span className="foresight-strip-tag">🔮 예지</span>
-          {/*
-            **뒤에서 앞으로** 그린다 — 마지막(내 쯔모)이 왼쪽 끝, 가장 먼저 뽑히는 패가
-            오른쪽 끝이다. 공개된 패는 뽑히는 대로 **앞에서** 사라지므로, 순서대로
-            그리면 줄이 줄어들 때마다 남은 패가 통째로 왼쪽으로 밀렸다 — 방금 보던
-            "내 패"가 매 순 자리를 옮겼다(2026-08-12 사용자 지적). 뒤집어 그리면
-            사라지는 쪽이 오른쪽 끝이라 내 패는 늘 같은 자리에 서 있는다.
-          */}
-          <div className="foresight-strip-tiles">
-            {foresightOrder
-              .map((origIdx, pos) => ({ origIdx, pos }))
-              .reverse()
-              .map(({ origIdx, pos }) => {
-                const kind = foresightPeek[origIdx];
-                const seatLabel = foresightSeatLabels[pos] ?? "";
-                const isMine = seatLabel === "나";
-                return (
-                  <div
-                    key={pos}
-                    className={`foresight-cell${isMine ? " foresight-mine" : ""}`}
-                    title={`${pos + 1}번째 쯔모: ${seatLabel}`}
-                  >
-                    {kind !== undefined ? <TileImg tile={{ kind }} size="mini" /> : null}
-                    <span className="foresight-cell-label">
-                      {seatLabel}
-                      {isMine ? " ★" : ""}
-                    </span>
-                  </div>
-                );
-              })}
-          </div>
-          {foresightReorderable && !foresightTab ? (
-            <button className="foresight-strip-confirm" onClick={() => setForesightTab(true)}>
-              순서 바꾸기 (국에 1회)
-            </button>
-          ) : null}
-        </div>
-      ) : null}
       {/*
         예지 재배열 탭 — 분열·염색의 선택 탭(`rinshan-pick-*`)과 같은 자리·같은 뼈대다.
         ⚠ 포털은 필수다: 이 컨트롤의 조상 중에 transform을 가진 것이 있으면
@@ -27291,6 +28321,32 @@ function ActionHotkeys({
 
 function ActionTiles({ view, option }: { view: PlayerView; option: ActionOption }): JSX.Element | null {
   const p = (option.payload ?? {}) as Record<string, unknown>;
+  /*
+   * 무르기·욕심 — payload가 `{}`라 여태 줄에 이름만 섰다. 둘 다 대상은 손패 오른쪽 끝의
+   * **방금 쯔모한 패**다: 무르기는 그 패가 사라지고, 욕심은 다음 순에 같은 패가 한 장 더
+   * 온다(그래서 «패 → 같은 패» 전→후). 버튼을 늘리지 않고 기존 줄에 대상을 그린다
+   * (2026-09-25, docs/59 U34). 쯔모패가 손에 없으면(null) 예전처럼 아무것도 안 그린다.
+   */
+  if (
+    (option.type === "take_back" || option.type === "greed_use") &&
+    view.round.myDrawnTile !== null
+  ) {
+    const drawn = view.tiles[view.round.myDrawnTile];
+    if (option.type === "take_back" || drawn === undefined) {
+      return (
+        <span className="act-tiles">
+          <TileImg tile={drawn} size="mini" />
+        </span>
+      );
+    }
+    return (
+      <span className="act-tiles">
+        <TileImg tile={drawn} size="mini" />
+        <span className="act-tiles-arrow" aria-hidden="true">→</span>
+        <TileImg tile={{ kind: drawn.kind, attrs: { conjured: true } }} size="mini" />
+      </span>
+    );
+  }
   // 무늬 변환(염색 등): '바꾸기 전'이 아니라 '바꾼 뒤'가 헷갈리지 않게 전→후로 보여준다
   if (typeof p.suit === "string" && typeof p.tileId === "number") {
     const src = view.tiles[p.tileId]?.kind;
@@ -27325,6 +28381,11 @@ function ActionTiles({ view, option }: { view: PlayerView; option: ActionOption 
   }
   // 배열 타일 id (안깡·강탈 등)
   const ids: number[] = Array.isArray(p.tileIds) ? (p.tileIds as number[]).slice() : [];
+  // 파혼 — 해체할 내 후로의 패(docs/59 U31). payload에는 인덱스뿐이라 뷰의 후로에서 찾는다
+  if (option.type === "dissolve_meld" && typeof p.meldIndex === "number") {
+    const meld = view.round.byPlayer[view.playerId]?.melds[p.meldIndex];
+    if (meld !== undefined) ids.push(...sortTileIds(meld.tileIds, view.tiles));
+  }
   // 단일 타일 id (회수·염색·도라 옹립·날치기 등)
   for (const key of ["tileId", "recallTileId", "snatchId"]) {
     if (typeof p[key] === "number") ids.push(p[key] as number);
@@ -27482,6 +28543,27 @@ function unifyPreview(
   return out;
 }
 
+/** 이미 경고한 액션 타입 — 렌더마다 콘솔을 채우지 않게 한 번만 알린다. */
+const warnedBlankMenuTypes = new Set<string>();
+
+/**
+ * ✦ 메뉴 2단계에서 **글자로 구별되지 않는 후보**가 둘 이상이면 개발 모드에서 알린다.
+ *
+ * 라벨이 빈 후보는 증강 이름으로 떨어지므로(`detail !== "" ? detail : 증강 이름`), 구별 정보 없는
+ * 후보가 여럿이면 똑같은 버튼이 N개 선다 — 파혼이 그렇게 «파혼» 줄만 후로 수만큼 세웠다
+ * (2026-09-25, docs/59 U31). 새 액션이 같은 함정에 빠지면 optionDetail·ActionTiles에 분기를 넣거나
+ * 판의 실물을 누르는 무장(ARM_MODE)으로 옮긴다. 렌더할 것은 없다(항상 null).
+ */
+function warnBlankMenuDetails(view: PlayerView, type: string, options: readonly ActionOption[]): null {
+  if (!import.meta.env.DEV || warnedBlankMenuTypes.has(type)) return null;
+  const blank = options.filter((o) => optionDetail(view, o) === "").length;
+  if (blank >= 2) {
+    warnedBlankMenuTypes.add(type);
+    console.warn(`[ui] ✦ 메뉴 2단계 "${type}" 후보 ${blank}개가 라벨 없이 같은 이름으로 섭니다 — optionDetail에 분기를 넣으세요.`);
+  }
+  return null;
+}
+
 /**
  * 액션 옵션의 payload에서 사람이 읽을 상세 라벨을 뽑는다 —
  * 대상 플레이어 이름 / 지정 역 / 무늬 변환 / 증감 / 영상패 슬롯 등.
@@ -27489,6 +28571,12 @@ function unifyPreview(
  */
 function optionDetail(view: PlayerView, option: ActionOption): string {
   const p = (option.payload ?? {}) as Record<string, unknown>;
+  // 파혼 — 후보는 {meldIndex}뿐이라 예전엔 후로 수만큼 «파혼» 줄이 똑같이 섰다. 판에서 후로를 직접
+  // 누르는 것이 주 경로이고(own-meld), 이 글자는 관전·폴백 경로용이다(2026-09-25, docs/59 U31)
+  if (option.type === "dissolve_meld" && typeof p.meldIndex === "number") {
+    const meld = view.round.byPlayer[view.playerId]?.melds[p.meldIndex];
+    return meld !== undefined ? meldBrief(view, meld) : "";
+  }
   const who = p.target ?? p.fromPlayer ?? p.host;
   // 무장해제처럼 "누구의 어떤 증강"까지 골라야 하는 액션은 둘 다 적는다 —
   // 이름만 적으면 상대의 증강 수만큼 똑같은 버튼이 늘어서 무엇을 잠그는지 알 수 없다.

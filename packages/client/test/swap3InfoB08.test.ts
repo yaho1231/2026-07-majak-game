@@ -146,7 +146,11 @@ describe("U09 교환 상대·넘길 패", () => {
 
 describe("U11 도달 불가한 옛 swap3 무장 경로가 없다", () => {
   it("ArmMode·SelectionCtx·useSelection에 swap3 잔재가 없다", () => {
-    expect(APP_CODE).toMatch(/^type ArmMode = "hand" \| "opp" \| "own-river" \| "opp-river" \| "hand3";/m);
+    // B09(2026-09-25, docs/59 U24·U32)가 이름표 pill 무장 "opp-aug"·"own-aug"를, B10(U31)이 내 후로 무장
+    // "own-meld"를 더했다 — swap3는 여전히 없다
+    expect(APP_CODE).toMatch(
+      /^type ArmMode = "hand" \| "opp" \| "own-river" \| "opp-river" \| "hand3" \| "opp-aug" \| "own-aug" \| "own-meld";/m,
+    );
     // (넘길 3장 기억 swapGives/setSwapGives는 U09의 새 상태라 단어 경계로 가른다)
     for (const s of ["swapTarget", "swapGive", "setSwapTarget", "setSwapGive", "pickSwapTile"]) {
       expect(APP_CODE, s).not.toMatch(new RegExp(`\\b${s}\\b`));

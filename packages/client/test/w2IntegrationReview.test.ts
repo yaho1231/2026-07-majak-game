@@ -125,9 +125,12 @@ describe("regression-3 변형 팝오버 닫기의 터치 목표", () => {
 
 describe("W2 상태 수명 재검토 — 강제 선택 중 판 안 컨트롤", () => {
   it("설정·나가기·토글 같은 컨트롤을 누르면 «먼저 정하세요» 토스트를 덧붙이지 않는다", () => {
-    const watch = between(APP_CODE, "FORCED_ARM_TYPES.has(selection.armedType)", "selection.arm(null);");
+    // B10(2026-09-25, docs/59 U25)이 «판 밖이면 아무것도 안 한다»를 onDown 맨 앞으로 올렸다 — 판 밖
+    // 조작은 강제 분기에 닿기 전에 끝나고, 컨트롤 판정(onControl)은 강제 분기와 일반 해제가 함께 쓴다
+    const watch = between(APP_CODE, "const onDown = (e: PointerEvent): void => {", "selection.arm(null);");
+    expect(watch).toMatch(/if \(t === null \|\| tableRef\.current\?\.contains\(t\) !== true\) return;/);
     expect(watch).toMatch(/closest\("button, \[role=button\], a, input, select, textarea, label"\)/);
-    expect(watch).toMatch(/!onControl && tableRef\.current\?\.contains\(t\) === true/);
+    expect(watch).toMatch(/FORCED_ARM_TYPES\.has\(selection\.armedType\)\) \{\n\s*if \(!onControl\) props\.onToast\?\.\(FORCED_PICK_HINT\);/);
   });
 });
 
