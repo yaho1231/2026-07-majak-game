@@ -267,7 +267,8 @@ describe("예지 재배열만 남은 순에 «(0)» 버튼이 서지 않는다",
     expect(APP_CODE).toContain(
       'const menuOptions = augOptions.filter((o) => o.type !== "foresight_order");',
     );
-    expect(APP_CODE).toContain("const usable = menuOptions.length > 0;");
+    // B07(2026-09-25, docs/59 U03·U07): 강제 선택 중에는 쓸 수 없는 것처럼 꺼진다 — 기준 목록은 그대로 menuOptions
+    expect(APP_CODE).toContain("const usable = menuOptions.length > 0 && props.forcedPick !== true;");
     expect(APP_CODE).toContain("if (!hasActive && menuOptions.length === 0) return null;");
   });
 

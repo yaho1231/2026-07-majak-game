@@ -166,7 +166,11 @@ describe("U23 버리지 않는 무장 중에는 «버리면 대기» 툴팁을 �
     expect(APP_CODE).toMatch(
       /const armNoDiscard =\s*armedAug !== null && !DRAG_DISCARD_ARM_TYPES\.has\(armedAug\) && armedAug !== "frame_discard";/,
     );
-    expect(APP_CODE).toContain("const showWaits = hoverId === id && hoverWaits.length > 0 && !armNoDiscard;");
+    // B07(2026-09-25, docs/59 U07): 등가교환 넘길 3장을 손패에서 고르는 동안도 끈다 — 무장이 아니라
+    // OwnArea 로컬 상태(swapGiveInHand)라 armNoDiscard 밖에서 함께 건다
+    expect(APP_CODE).toContain(
+      "const showWaits = hoverId === id && hoverWaits.length > 0 && !armNoDiscard && !swapGiveInHand;",
+    );
   });
 
   it("누명으로 심는 패는 내 바닥에 남지 않으므로 후리텐 셈에서 뺀다", () => {
