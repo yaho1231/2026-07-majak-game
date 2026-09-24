@@ -2037,6 +2037,76 @@ function ScreenOverlay(props: {
 }
 
 /**
+ * 도감·규칙 오버레이 맨 위에 서는 «내 차례» 띠 (2026-09-25, docs/59 U70).
+ *
+ * 두 오버레이는 게임을 멈추지 않는다(App 의 오버레이 주석 — 의도된 설계). 그런데 판
+ * 전체를 덮어서, 상대 증강 하나를 찾아보는 사이 내 차례·론/퐁 기회가 와도 화면에 아무
+ * 표시가 없었다 — 소리를 끈 데스크톱이면 타이머가 끝나 자동 쯔모기리·패스로 흘렀다.
+ * 멈추는 대신 **알리기만** 한다: 자동으로 닫지 않는다(읽던 자리를 날리지 않게).
+ *
+ * `ScreenOverlay` 의 **children** 으로 들어간다 — 오버레이 안쪽이라 inert 에 안 걸리고,
+ * 오버레이 본문(포커스·Esc·inert 처리)은 손대지 않는다.
+ *
+ * ⚠ «판으로 돌아가기» 단추는 **마운트 한 박자 뒤에** 그린다. `ScreenOverlay` 는 열리는
+ * 순간 안쪽 첫 버튼으로 포커스를 옮기는데, 내 차례에 도감을 열면 이 단추가 그 첫 버튼이
+ * 되어 포커스를 빼앗는다(Enter 한 번에 방금 연 도감이 닫힌다). 자식의 effect 가 부모의
+ * effect 보다 먼저 돌지만 여기서 세운 state 는 부모 effect 뒤에 그려지므로, 부모가 첫
+ * 버튼을 찾을 때 이 단추는 아직 없다. 띠가 나중에 나타나는 경우(열어 둔 채 차례가
+ * 온다)는 부모 effect 가 다시 돌지 않으니 처음부터 문제없다.
+ */
+function OverlayTurnBar(props: {
+  /** 지금 보고 있는 좌석이 답해야 할 프롬프트 */
+  prompt: PromptMessage["prompt"];
+  deadline: number | null;
+  onBack: () => void;
+}): JSX.Element {
+  const { deadline } = props;
+  const paused = useContext(PausedContext);
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
+  const [left, setLeft] = useState<number | null>(
+    deadline === null ? null : Math.max(0, deadline - Date.now()),
+  );
+  useEffect(() => {
+    if (deadline === null) {
+      setLeft(null);
+      return;
+    }
+    // 판이 서 있으면 마지막 값에서 멈춘다 (PickTimer 와 같은 규칙).
+    if (paused) return;
+    setLeft(Math.max(0, deadline - Date.now()));
+    const t = setInterval(() => setLeft(Math.max(0, deadline - Date.now())), 500);
+    return () => clearInterval(t);
+  }, [deadline, paused]);
+  const opts = props.prompt.options;
+  // 선택지에 pass 가 있으면 남의 버림패에 대한 반응(론·퐁·치·깡) — 버림 차례와 구별해
+  // 적는다(프롬프트 수신부의 «삑» 판정과 같은 기준).
+  const reaction = opts.some((o) => o.type === "pass") && opts.some((o) => o.type !== "pass");
+  const urgent = left !== null && left <= TIMER_URGENT_MS;
+  return (
+    <div
+      className={`overlay-turn-bar${urgent ? " overlay-turn-bar-urgent" : ""}`}
+      role="status"
+      aria-live="polite"
+    >
+      <span className="overlay-turn-bar-text">
+        {reaction ? "론·퐁 선택 대기" : "내 차례"}
+        {/* 초는 따로 읽히지 않게 한다 — status(polite) 안에서 0.5초마다 바뀌면 스크린리더가
+            매번 읽는다. 띠가 뜰 때 «내 차례» 한 번이면 된다(PickTimer 의 timer/off 와 같은 식). */}
+        {left !== null ? (
+          <span role="timer" aria-live="off"> · <strong>{Math.ceil(left / 1000)}</strong>초</span>
+        ) : null}
+      </span>
+      {ready ? (
+        <button type="button" className="overlay-turn-bar-back" onClick={props.onBack}>
+          판으로 돌아가기
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/**
  * 게임 위에 뜨는 **비모달** 패널(설정·기록)용 — Esc로 닫고, 열 때 포커스를 옮긴다.
  *
  * 이쪽에는 `aria-modal`도 `inert`도 걸지 않는다. 판은 뒤에서 계속 돌고 결정 타이머도
@@ -3536,8 +3606,6 @@ export function App(): JSX.Element {
   const seatMoveByMe = useRef(0);
   /** 직전 상세설정 — 무엇이 바뀌었는지 말해 주려고 둔다(로비와 같은 이유로 ref). */
   const prevRoomRules = useRef<RoomRules | null>(null);
-  /** 중단 투표를 이미 알렸는가 — 투표가 갱신될 때마다 토스트가 쌓이지 않게 한 번만 띄운다 */
-  const abortVoteNoticed = useRef(false);
   /** 지금 화면(=보고 있는 좌석)이 답해야 할 프롬프트 */
   const prompt = view === null ? null : (prompts[view.playerId] ?? null);
   /**
@@ -4554,7 +4622,6 @@ export function App(): JSX.Element {
     setRoomRules(DEFAULT_ROOM_RULES);
     prevRoomRules.current = null;
     prevLobby.current = null;
-    abortVoteNoticed.current = false;
     setSandbox(null);
     setControlling(null);
     setView(null);
@@ -5516,7 +5583,9 @@ export function App(): JSX.Element {
           showToast(`제한 시간이 ${ROOM_PACE_LABEL[msg.pace] ?? msg.pace}(${paceSub(msg.pace)})로 바뀌었습니다`, "info");
         }
         if (prev.botDifficulty !== msg.botDifficulty) {
-          showToast(`봇 난이도가 ${BOT_DIFFICULTY_LABEL[msg.botDifficulty] ?? msg.botDifficulty}(으)로 바뀌었습니다`, "info");
+          // 이름표에 없는 난이도(탭이 낡았다)면 `hard` 같은 원문 대신 문장만 남긴다(2026-09-25, docs/59 U74).
+          const diffLabel = BOT_DIFFICULTY_LABEL[msg.botDifficulty];
+          showToast(diffLabel !== undefined ? `봇 난이도가 ${diffLabel}(으)로 바뀌었습니다` : "봇 난이도가 바뀌었습니다", "info");
         }
         const seatOf = (m: LobbyMessage): number | null =>
           m.players.find((p) => p.playerId === m.youId)?.seat ?? null;
@@ -5820,17 +5889,10 @@ export function App(): JSX.Element {
       return;
     }
     if (msg.type === "abortVote") {
-      // 투표 현황은 설정 패널 맨 아래에만 있어서, 남이 판을 접자고 해도 나는 몰랐다.
-      // 처음 한 번만 알린다 — 갱신마다 띄우면 잡음이 된다.
-      if (msg.votes > 0 && !abortVoteNoticed.current) {
-        abortVoteNoticed.current = true;
-        showToast(
-          `게임 무효 투표가 시작되었습니다 (${msg.votes}/${msg.needed}). 설정 맨 아래에서 응답할 수 있습니다`,
-          "info",
-          5000,
-        );
-      }
-      if (msg.votes === 0) abortVoteNoticed.current = false;
+      // 투표 시작 토스트(«설정 맨 아래에서 응답할 수 있습니다»)는 걷었다 (2026-09-25,
+      // docs/59 U71). 그 토스트는 «투표 현황이 설정 패널 맨 아래에만 있던» 시절의 것인데,
+      // 지금은 같은 순간 GameTable 이 화면 위에 AbortVoteBanner(aria-live=assertive)를
+      // 띄운다 — 눈앞에 응답 버튼이 있는데 ⚙ → 맨 아래로 가라고 안내하고 있었다.
       setAbortVote(msg);
       return;
     }
@@ -6917,6 +6979,16 @@ export function App(): JSX.Element {
   const inGame = (joined !== null || isSpectator) && view !== null;
   const inWaiting = joined !== null && view === null && rankings === null && !isSpectator;
   const draftVisible = inGame && draft !== null && !intro && roundResult === null && !isSpectator;
+  /**
+   * 도감·규칙 오버레이 위에 «내 차례» 띠를 세울 프롬프트(docs/59 U70) — 대국 중이고,
+   * 관전이 아니고, 지금 보는 좌석이 답해야 할 것이 있을 때만. 관전자는 답할 차례가 없다.
+   */
+  const overlayTurnPrompt = inGame && !isSpectator ? prompt : null;
+  /** 띠의 [판으로 돌아가기] — 겹쳐 열린 도움말까지 한 번에 걷어 판을 바로 보인다. */
+  const backToTable = (): void => {
+    setCodexOpen(false);
+    setHelpOpen(false);
+  };
 
   /*
    * ── 배포 뒤 낡은 탭 ── (2026-09-24)
@@ -7602,6 +7674,11 @@ export function App(): JSX.Element {
           도감이 그 위에 얹히고, 닫으면 읽던 자리로 그대로 돌아온다. */}
       {helpOpen ? (
         <ScreenOverlay label="규칙 · 도움말" onClose={() => setHelpOpen(false)}>
+          {/* 둘이 겹쳐 열렸으면(도움말 → 도감) 띠는 위에 얹힌 도감 쪽 하나만 — 두 개가
+              동시에 읽히지 않게(docs/59 U70). */}
+          {overlayTurnPrompt !== null && !codexOpen ? (
+            <OverlayTurnBar prompt={overlayTurnPrompt} deadline={promptDeadline} onBack={backToTable} />
+          ) : null}
           <HelpScreen
             augmentKinds={augmentKinds}
             /* 예전에는 `auth === null ? "← 로그인으로" : "← 닫기"` 였다 — 로그인 전
@@ -7619,6 +7696,9 @@ export function App(): JSX.Element {
       ) : null}
       {codexOpen ? (
         <ScreenOverlay label="증강 도감" onClose={() => setCodexOpen(false)}>
+          {overlayTurnPrompt !== null ? (
+            <OverlayTurnBar prompt={overlayTurnPrompt} deadline={promptDeadline} onBack={backToTable} />
+          ) : null}
           <CodexScreen
             catalog={catalog}
             career={stats?.career.find((e) => e.nickname === auth?.username)?.stats ?? null}
@@ -7986,8 +8066,14 @@ function PauseOverlay({
         <div className="pause-reason">{pause.reason ?? "관리자가 게임을 일시정지했습니다"}</div>
         <div className="pause-hint">
           제한 시간도 함께 멈춰 있습니다. 재개하면 멈춘 곳부터 이어집니다.
-          {pause.by !== undefined ? ` (${pause.by})` : ""}
         </div>
+        {/* 세운 사람(관리자 계정명)은 **관전석에만** 적는다 (2026-09-25, docs/59 U83).
+            대국자 화면에서는 문장 끝 «(yaho1231)»처럼 설명 없는 괄호값이 오류 코드로
+            읽혔고, docs/36 C4 «운영의 신원은 판에 필요 없다»와도 어긋났다. 관전석은
+            관리자만 앉으므로, 누가 세웠는지 알아야 하는 운영 쪽 필요는 여기서 채운다. */}
+        {!blocking && pause.by !== undefined ? (
+          <div className="pause-hint">세운 사람: {pause.by}</div>
+        ) : null}
       </div>
     </div>
   );
@@ -9943,8 +10029,23 @@ function AugDesc({
   );
 }
 
-/** "자세히 ▾ / 간단히 ▴" 토글 — Shift가 없는 터치 기기의 통로 */
-function MoreToggle({ open, onToggle }: { open: boolean; onToggle: () => void }): JSX.Element {
+/**
+ * "자세히 ▾ / 간단히 ▴" 토글 — Shift가 없는 터치 기기의 통로.
+ *
+ * `showKey` — «Shift» 키 칩은 **Shift 가 실제로 연결된 곳**(이름표 툴팁·드래프트 카드,
+ * `useShiftHeld`)에서만 붙인다. 예전에는 늘 붙어서, Shift 를 듣지 않는 증강 시트에서도
+ * 누를 수 없는 키 이름이 떴다. 터치 기기에서는 CSS `(hover: none)` 이 이 칩을 또 걷는다
+ * (2026-09-25, docs/59 U75).
+ */
+function MoreToggle({
+  open,
+  onToggle,
+  showKey = false,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  showKey?: boolean;
+}): JSX.Element {
   return (
     <span
       className={`augdesc-more${open ? " augdesc-more-on" : ""}`}
@@ -9952,7 +10053,7 @@ function MoreToggle({ open, onToggle }: { open: boolean; onToggle: () => void })
       onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggle(); }}
     >
       {open ? "간단히 ▴" : "자세히 ▾"}
-      <span className="augdesc-more-key">Shift</span>
+      {showKey ? <span className="augdesc-more-key">Shift</span> : null}
     </span>
   );
 }
@@ -15357,8 +15458,18 @@ const GameTable = memo(function GameTable(props: {
         <div className={`room-notice${props.spectator === true ? " room-notice-spec" : ""}`} role="status">
           <span className="room-notice-mark">📢</span>
           <span className="room-notice-text">{props.roomNotice.text}</span>
+          {/* 공지한 사람 — 서버가 싣는 `by` 는 «튜토리얼»·«관리자» 같은 역할 이름일 때도,
+              관리자 계정명일 때도 있다. 계정명만 알약에 덩그러니 두면 무슨 값인지 알 수
+              없어 «— 관리자»로 적는다(2026-09-25, docs/59 U83 · docs/36 C4 «운영의 신원은
+              판에 필요 없다»). 계정명은 title 로만 남긴다. */}
           {props.roomNotice.by !== undefined ? (
-            <span className="room-notice-by">{props.roomNotice.by}</span>
+            props.roomNotice.by === "튜토리얼" || props.roomNotice.by === "관리자" ? (
+              <span className="room-notice-by">{props.roomNotice.by}</span>
+            ) : (
+              <span className="room-notice-by" title={`공지한 사람: ${props.roomNotice.by}`}>
+                — 관리자
+              </span>
+            )
           ) : null}
         </div>
       ) : null}
@@ -15388,12 +15499,14 @@ const GameTable = memo(function GameTable(props: {
       {props.botDifficulty != null &&
       BOT_DIFFICULTY_LABEL[props.botDifficulty] !== undefined &&
       view.players.some((p) => p.isBot) ? (
-        <div
+        /* 옆 ModeBadge와 같은 InfoNote — `title=`만 두면 터치에서 설명이 영영 안 뜨고,
+           나란히 선 두 배지의 조작이 달랐다(2026-09-25, docs/59 U74). */
+        <InfoNote
           className="mode-badge bot-diff-badge"
-          title={`봇 난이도: ${BOT_DIFFICULTY.find(([id]) => id === props.botDifficulty)?.[2] ?? ""}`}
+          note={`봇 난이도 ${BOT_DIFFICULTY_LABEL[props.botDifficulty] ?? "봇"}: ${BOT_DIFFICULTY.find(([id]) => id === props.botDifficulty)?.[2] ?? ""}`}
         >
           <span className="mode-badge-name">🤖 {BOT_DIFFICULTY_LABEL[props.botDifficulty]}</span>
-        </div>
+        </InfoNote>
       ) : null}
       <button
         className="icon-btn settings-btn"
@@ -15402,15 +15515,23 @@ const GameTable = memo(function GameTable(props: {
           setLogOpen(false);
         }}
         title="설정"
+        aria-label="설정"
       >⚙</button>
       {/* 게임 중에도 찾아볼 수 있어야 한다 — 상대 증강 위의 `title=` 툴팁은 터치에서
           아예 뜨지 않아, 모바일에서는 그게 무엇인지 알 길이 전혀 없었다.
-          아래 화면은 그대로 살아 있으므로 결정 타이머도 게임 상태도 멈추지 않는다. */}
+          아래 화면은 그대로 살아 있으므로 결정 타이머도 게임 상태도 멈추지 않는다.
+
+          ⚙·📖·?·나가기 모두 `aria-label` 을 단다 — `title` 만으로는 스크린리더가 이름을
+          못 읽는 경우가 있고 📜(AugmentLog)만 달려 있었다. 규칙은 📘 대신 «?» 글자다:
+          📖·📘 둘 다 책 그림이라 무엇이 도감이고 무엇이 규칙인지 구별되지 않았다
+          (2026-09-25, docs/59 U69 — docs/35 의 판 밖 이모지 걷어내기와 같은 방향).
+          두 버튼을 하나로 합치는 것은 보류(docs/59 §6 U69-2). */}
       {props.onOpenCodex !== undefined ? (
         <button
           className="icon-btn codex-btn"
           onClick={props.onOpenCodex}
           title="증강 도감 (게임은 그대로 진행됩니다)"
+          aria-label="증강 도감"
         >📖</button>
       ) : null}
       {props.onOpenHelp !== undefined ? (
@@ -15418,7 +15539,8 @@ const GameTable = memo(function GameTable(props: {
           className="icon-btn help-btn"
           onClick={props.onOpenHelp}
           title="규칙 · 도움말 (게임은 그대로 진행됩니다)"
-        >📘</button>
+          aria-label="규칙 도움말"
+        >?</button>
       ) : null}
       {/* 게임 중 나가기 = 포기(좌석은 자동 진행으로 완주한다) — 되돌릴 수 없으니 한 번 묻는다.
           관전은 그냥 화면을 닫는 것이라 묻지 않는다.
@@ -15455,7 +15577,13 @@ const GameTable = memo(function GameTable(props: {
           });
         }}
         title="나가기"
-      >✕</button>
+        aria-label="나가기"
+      >
+        {/* ✕ 대신 글자 — 설정·기록 패널의 닫기 ✕(`settings-x`)가 바로 아래에 붙어 서서
+            «패널 닫기»와 «판 나가기»가 같은 모양이었다(2026-09-25, docs/59 U69).
+            확인 창(askConfirm)은 그대로 한 번 묻는다. */}
+        나가기
+      </button>
       {settingsOpen ? (
         <SettingsPanel
           settings={props.settings}
@@ -15463,7 +15591,6 @@ const GameTable = memo(function GameTable(props: {
           onClose={() => setSettingsOpen(false)}
           hintsOn={props.hintsOn !== false}
           abortVote={props.spectator === true ? null : (props.abortVote ?? null)}
-          iVoted={(props.abortVote?.voters ?? []).includes(view.playerId)}
           onVoteAbort={props.spectator === true ? undefined : props.onVoteAbort}
         />
       ) : null}
@@ -15477,6 +15604,7 @@ const GameTable = memo(function GameTable(props: {
         <AbortVoteBanner
           abortVote={props.abortVote}
           iVoted={props.abortVote.voters.includes(view.playerId)}
+          isRequester={props.abortVote.voters[0] === view.playerId}
           requesterName={playerNameById(view, props.abortVote.voters[0] ?? view.playerId)}
           onVote={props.onVoteAbort}
         />
@@ -15870,10 +15998,13 @@ function EmoteFeed({ entries }: { entries: EmoteEntry[] }): JSX.Element | null {
     <div className="emote-feed" aria-live="polite">
       {entries.map((e) => {
         const def = EMOTES.find((x) => x.id === e.id);
+        // 모르는 문구(서버 목록이 늘었는데 이 탭이 낡았다)는 `gg` 같은 원문 id 대신
+        // 그 항목을 건너뛴다 (2026-09-25, docs/59 U86 · §2 원칙 3 «원문 노출 금지»).
+        if (def === undefined) return null;
         return (
           <div key={e.key} className="emote-bubble">
             <span className="emote-bubble-name">{e.nickname}</span>
-            <span className="emote-bubble-text">{def?.text ?? e.id}</span>
+            <span className="emote-bubble-text">{def.text}</span>
           </div>
         );
       })}
@@ -16257,7 +16388,6 @@ function SettingsPanel(props: {
    */
   hintsOn?: boolean;
   abortVote?: AbortVoteMessage | null;
-  iVoted?: boolean;
   onVoteAbort?: ((vote: "agree" | "withdraw" | "reject") => void) | undefined;
 }): JSX.Element {
   // 불리언(토글) 설정만 — 숫자 설정(리치 BGM 볼륨)은 아래 슬라이더로 따로 렌더한다.
@@ -16512,12 +16642,19 @@ function SettingsPanel(props: {
                 {needed > 0 ? ` 현재 ${votes}/${needed} 동의.` : ""}
               </span>
             </div>
-            <button
-              className={`abort-btn${props.iVoted === true ? " abort-btn-on" : ""}`}
-              onClick={() => props.onVoteAbort?.(props.iVoted === true ? "withdraw" : "agree")}
-            >
-              {props.iVoted === true ? "동의 취소" : "게임 무효 요청"}
-            </button>
+            {/* 투표가 진행 중이면 여기서는 응답하지 않는다 — 화면 위 배너가 같은 투표의
+                동의·동의 취소·반대를 모두 맡는다(2026-09-25, docs/59 U72). 예전에는 이
+                버튼이 투표 중에도 «게임 무효 요청»이라 적힌 채 agree 를 보냈고, 동의
+                취소는 여기에만 있어 두 곳이 할 수 있는 일이 달랐다. */}
+            {votes > 0 ? (
+              <span className="abort-voting-note" role="status">
+                투표 진행 중 — 화면 위 배너에서 응답하세요 ({votes}/{needed})
+              </span>
+            ) : (
+              <button className="abort-btn" onClick={() => props.onVoteAbort?.("agree")}>
+                게임 무효 요청
+              </button>
+            )}
           </div>
         ) : null}
       </div>
@@ -16529,10 +16666,22 @@ function SettingsPanel(props: {
 /**
  * 게임 무효 투표 배너 — 투표가 진행 중(votes>0)이면 설정과 무관하게 화면 상단에 크게 뜬다.
  * 동의(agree)/반대(reject)를 명확히 노출한다. 반대는 만장일치가 불가능해진 투표를 즉시 취소한다.
+ *
+ * 이 투표에 대한 응답은 **여기 한 곳**에서 다 한다(2026-09-25, docs/59 U72) — 동의 취소가
+ * 설정 패널에만 있어 두 곳이 할 수 있는 일이 달랐다. 버튼은 세 경우로 나뉜다:
+ *   - 요청자: [요청 취소] 하나(= reject). 서버에서 reject 는 투표 전체를 지우므로, 요청자에게
+ *     «반대»는 사실상 요청 취소였다. 요청자에게 withdraw 를 주지 않는다 — 요청자가 빠지면
+ *     `voters[0]` 이 남은 첫 동의자가 되어 엉뚱한 사람이 «요청자»로 보인다.
+ *   - 동의한 사람: [동의 취소](withdraw) · [반대](reject).
+ *   - 아직 안 누른 사람: [동의] · [반대].
+ * 요청자 문구는 «내가 무효를 요청했습니다» — `playerNameById` 는 나를 «나»로 돌려줘서
+ * «나님이 …»라는 어색한 문장이 나왔다.
  */
 function AbortVoteBanner(props: {
   abortVote: AbortVoteMessage;
   iVoted: boolean;
+  /** 내가 이 투표를 연 사람인가(`voters[0]` — 서버 Set 삽입 순서) */
+  isRequester: boolean;
   requesterName: string;
   onVote: ((vote: "agree" | "withdraw" | "reject") => void) | undefined;
 }): JSX.Element {
@@ -16543,20 +16692,34 @@ function AbortVoteBanner(props: {
       <div className="abort-banner-info">
         <span className="abort-banner-title">게임 무효 투표</span>
         <span className="abort-banner-sub">
-          {props.requesterName}님이 무효를 요청했습니다. 동의 {votes}/{needed}
+          {props.isRequester ? "내가 무효를 요청했습니다" : `${props.requesterName}님이 무효를 요청했습니다`}
+          . 동의 {votes}/{needed}
         </span>
       </div>
       <div className="abort-banner-actions">
-        <button
-          className={`abort-yes${props.iVoted ? " abort-yes-on" : ""}`}
-          disabled={props.iVoted}
-          onClick={() => props.onVote?.("agree")}
-        >
-          {props.iVoted ? "동의함 ✓" : "동의"}
-        </button>
-        <button className="abort-no" onClick={() => props.onVote?.("reject")}>
-          반대
-        </button>
+        {props.isRequester ? (
+          <button className="abort-no" onClick={() => props.onVote?.("reject")}>
+            요청 취소
+          </button>
+        ) : props.iVoted ? (
+          <>
+            <button className="abort-no" onClick={() => props.onVote?.("withdraw")}>
+              동의 취소
+            </button>
+            <button className="abort-no" onClick={() => props.onVote?.("reject")}>
+              반대
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="abort-yes" onClick={() => props.onVote?.("agree")}>
+              동의
+            </button>
+            <button className="abort-no" onClick={() => props.onVote?.("reject")}>
+              반대
+            </button>
+          </>
+        )}
       </div>
     </div>,
     document.body,
@@ -19422,8 +19585,21 @@ function PlayerAugSheet({
   const reloaded = reloadedAugmentsOf(view, player.id);
   const fromDice = cornucopiaGrantsOf(view, player.id);
   const arch = player.isBot ? archetypeInfo(player.archetype) : null;
-  /** 상세 설명을 펼쳐 둔 증강 — 시트는 자리가 넉넉하지만 기본은 요약 한 줄이다 */
-  const [detailFor, setDetailFor] = useState<string | null>(null);
+  /**
+   * 상세 설명을 펼쳐 둔 증강들 — 시트는 자리가 넉넉하지만 기본은 요약 한 줄이다.
+   *
+   * 하나만 펼치던(문자열 하나) 시절에는 두 번째를 펼치면 첫 번째가 접혀, 상대 증강
+   * 여럿을 읽으려면 차례로 누르며 앞 것이 닫히는 걸 봐야 했다. 여러 행을 함께 펼칠 수
+   * 있게 하고, 머리에 «모두 자세히» 하나를 둔다(2026-09-25, docs/59 U73). 기본 접힘은 유지.
+   */
+  const [detailFor, setDetailFor] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleDetail = (a: string): void =>
+    setDetailFor((cur) => {
+      const next = new Set(cur);
+      if (next.has(a)) next.delete(a);
+      else next.add(a);
+      return next;
+    });
   // Esc — 오버레이의 공통 손잡이
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -19433,6 +19609,7 @@ function PlayerAugSheet({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   const augs = player.augments;
+  const allOpen = augs.length > 0 && augs.every((a) => detailFor.has(a));
   return createPortal(
     // overlay-peekable — '누른 채로 게임판 보기'가 붙는 표면(드래프트 창과 같은 규칙).
     // ⚠ body 직속 포털이어야 한다(FIXED_SURFACE_NOTE).
@@ -19449,6 +19626,17 @@ function PlayerAugSheet({
             <span className="aug-sheet-arch" title={arch.desc}>{arch.label}</span>
           ) : null}
           <span className="aug-sheet-score">{player.score.toLocaleString()}점</span>
+          {/* 둘 이상일 때만 — 하나뿐이면 그 행의 «자세히»와 같은 일이다. */}
+          {augs.length > 1 ? (
+            <button
+              type="button"
+              className="aug-sheet-all"
+              aria-pressed={allOpen}
+              onClick={() => setDetailFor(allOpen ? new Set() : new Set(augs))}
+            >
+              {allOpen ? "모두 간단히" : "모두 자세히"}
+            </button>
+          ) : null}
           <button type="button" className="aug-sheet-close" onClick={onClose} aria-label="닫기">
             ✕
           </button>
@@ -19496,14 +19684,12 @@ function PlayerAugSheet({
                       id={a}
                       description={entry?.description}
                       detail={entry?.detail}
-                      expanded={detailFor === a}
+                      expanded={detailFor.has(a)}
                       useOverride={spent ? "효과 종료" : undefined}
                     />
                   </div>
-                  <MoreToggle
-                    open={detailFor === a}
-                    onToggle={() => setDetailFor((cur) => (cur === a ? null : a))}
-                  />
+                  {/* Shift 칩은 달지 않는다 — 이 시트는 Shift 를 듣지 않는다(폰 전용 경로). */}
+                  <MoreToggle open={detailFor.has(a)} onToggle={() => toggleDetail(a)} />
                 </li>
               );
             })}
@@ -19884,6 +20070,7 @@ const NamePlate = memo(function NamePlate({
                   <MoreToggle
                     open={shiftHeld || detailFor === a}
                     onToggle={() => setDetailFor((cur) => (cur === a ? null : a))}
+                    showKey
                   />
                   {/* 고정 손잡이 — 툴팁 안에서도 내릴 수 있어야 한다. 툴팁이 pill을
                       덮고 있어 "다시 누르기"가 사실상 툴팁을 누르는 것이 되는데, 툴팁
@@ -19896,10 +20083,12 @@ const NamePlate = memo(function NamePlate({
                       e.stopPropagation();
                       togglePin(a);
                     }}
+                    // 문구는 짧게, 해제 방법은 툴팁·보조기술로 (2026-09-25, docs/59 U73) —
+                    // 긴 문장 버튼이 설명 아래 한 줄을 통째로 먹었다. 해제 수단 자체는 그대로.
+                    title={pinned.has(a) ? "눌러서 고정 해제 · Esc나 바깥 클릭으로도 해제됩니다" : "눌러서 이 설명을 고정합니다"}
+                    aria-label={pinned.has(a) ? "고정 해제 (Esc나 바깥 클릭으로도 해제됩니다)" : "설명 고정"}
                   >
-                    {pinned.has(a)
-                      ? "📌 고정됨. 눌러서 해제 (Esc는 전부 해제, 바깥 클릭도 해제)"
-                      : "📌 눌러서 고정하기"}
+                    {pinned.has(a) ? "📌 고정 해제" : "📌 고정"}
                   </button>
                 </span>
                 ) : null}
@@ -27791,18 +27980,13 @@ function DraftOverlay({
                   style={{ animationDelay: `${i * 120}ms` }}
                   onClick={lockedOut || picked ? undefined : () => onPick(c.id)}
                   /*
-                   * 잠긴 카드는 `disabled`가 아니라 `aria-disabled`다. `disabled`를 걸면
-                   * 카드 **안**의 «자세히 ▾»까지 함께 죽어(포인터 이벤트가 통째로 꺼진다)
-                   * 바로 앞 강의에서 "자세히를 눌러 보세요"라고 가르친 조작이 석 장 중
-                   * 두 장에서 안 먹는다(2026-08-19 실측). 고를 수 없는 것과 읽을 수 없는
-                   * 것은 다르다 — 고르기만 막는다.
-                   */
-                  /*
-                   * ⚠ `picked`에도 `disabled`를 걸면 안 된다 — 바로 위 주석이 잠긴
-                   * 카드에 대해 말한 것과 **같은 이유**다. 고른 뒤에는 카드 안의
-                   * «자세히 ▾»까지 함께 죽어, 다른 사람을 기다리는 동안(= 시간이
-                   * 가장 남는 구간) 설명을 펼칠 수가 없었다. 고르기는 onClick과
-                   * `.draft-cards-locked`가 막고, 읽기는 열어 둔다.
+                   * 잠긴 카드·고른 뒤의 카드는 `disabled`가 아니라 `aria-disabled`다.
+                   * 예전에는 «자세히 ▾»가 카드 **안**에 있어서 `disabled`를 걸면 그것까지
+                   * 죽었다(2026-08-19 실측 — 강의가 "자세히를 눌러 보세요"라고 한 조작이
+                   * 석 장 중 두 장에서 안 먹었다). 지금 «자세히»는 카드 밖(아래 줄)이라
+                   * 그 이유는 사라졌지만, 고를 수 없는 카드도 포커스·스크린리더로 **읽을
+                   * 수는** 있어야 해서 그대로 둔다. 고르기는 onClick과
+                   * `.draft-cards-locked`가 막는다.
                    */
                   aria-disabled={lockedOut || picked || undefined}
                   title={lockedOut ? "튜토리얼에서는 이 증강을 고를 수 없습니다" : undefined}
@@ -27828,34 +28012,46 @@ function DraftOverlay({
                       expanded={shiftHeld || moreFor === c.id}
                     />
                   </span>
-                  <MoreToggle
-                    open={shiftHeld || moreFor === c.id}
-                    onToggle={() => setMoreFor((cur) => (cur === c.id ? null : c.id))}
-                  />
                   {isActiveAugment(c.id) ? (
                     <span className="draft-active-note">액티브 증강: 내 턴에 직접 사용합니다</span>
                   ) : null}
                 </button>
-                {hasRerollRow ? (
-                  <button
-                    type="button"
-                    className={`draft-reroll${canReroll ? "" : " draft-reroll-spent"}`}
-                    onClick={() => onReroll(i)}
-                    disabled={!canReroll}
-                    title={
-                      canReroll
-                        ? "이 카드를 다른 증강으로 바꿉니다. 한 번만 가능합니다"
-                        : "이미 새로고침한 카드입니다"
-                    }
-                    aria-label={
-                      canReroll
-                        ? `${c.name} 대신 다른 증강 보기 (한 번만 가능합니다)`
-                        : `${c.name}: 새로고침을 이미 사용했습니다`
-                    }
-                  >
-                    <span className="draft-reroll-icon" aria-hidden="true">↻</span>
-                  </button>
-                ) : null}
+                {/*
+                 * «자세히 ▾»는 카드(= 한 번 누르면 되돌릴 수 없이 확정되는 과녁) **밖**,
+                 * 바로 아래 ↻ 새로고침과 같은 줄에 선다(2026-09-25, docs/59 U78). 카드 안에
+                 * 있을 때는 작은 칩을 누르려다 조금만 빗나가도 그 카드가 곧바로 골라졌다
+                 * (버튼 안에 누를 것을 겹친 구조 자체도 접근성 위반이었다). 확인 단계를
+                 * 더하지 않고 과녁만 떼어 한 번 눌러 고르는 흐름은 그대로 둔다.
+                 * ↻ 줄 높이(22~28px) 안에 앉으므로 카드 아래 끝은 거의 안 움직이고,
+                 * 카드 안에서는 칩 한 줄만큼 설명 자리가 는다.
+                 */}
+                <div className="draft-slot-foot">
+                  <MoreToggle
+                    open={shiftHeld || moreFor === c.id}
+                    onToggle={() => setMoreFor((cur) => (cur === c.id ? null : c.id))}
+                    showKey
+                  />
+                  {hasRerollRow ? (
+                    <button
+                      type="button"
+                      className={`draft-reroll${canReroll ? "" : " draft-reroll-spent"}`}
+                      onClick={() => onReroll(i)}
+                      disabled={!canReroll}
+                      title={
+                        canReroll
+                          ? "이 카드를 다른 증강으로 바꿉니다. 한 번만 가능합니다"
+                          : "이미 새로고침한 카드입니다"
+                      }
+                      aria-label={
+                        canReroll
+                          ? `${c.name} 대신 다른 증강 보기 (한 번만 가능합니다)`
+                          : `${c.name}: 새로고침을 이미 사용했습니다`
+                      }
+                    >
+                      <span className="draft-reroll-icon" aria-hidden="true">↻</span>
+                    </button>
+                  ) : null}
+                </div>
               </div>
             );
           })}

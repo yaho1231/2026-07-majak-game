@@ -404,7 +404,8 @@ describe("증강을 고른 뒤에도 설명을 읽을 수 있다", () => {
   });
 
   it("잠긴 카드 묶음에서도 «자세히»만은 클릭이 산다", () => {
-    expect(CSS_CODE).toContain(".draft-cards-locked .draft-card .augdesc-more");
+    // «자세히»는 카드 밖(카드 아래 줄)으로 나갔다(docs/59 U78) — 선택자도 카드를 거치지 않는다.
+    expect(CSS_CODE).toContain(".draft-cards-locked .augdesc-more");
     expect(ruleBody(".draft-cards-locked")).not.toContain("pointer-events: none");
   });
 });

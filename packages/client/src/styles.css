@@ -661,6 +661,21 @@ button {
 .leave-btn {
   right: 14px;
 }
+/* 나가기는 ✕ 대신 «나가기» 글자다(2026-09-25, docs/59 U69 — 바로 아래 패널 닫기 ✕와
+   구별). 폭은 다른 아이콘과 같은 칸(좁은 판 34px까지)에 그대로 들어가야 옆 버튼 좌표가
+   안 흔들린다 — 글자를 줄여 칸에 맞춘다. `.icon-btn` 두 칸 선택자라 좁은 화면
+   변형의 `.icon-btn { font-size }` 를 모두 이긴다. */
+.icon-btn.leave-btn {
+  padding: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: -0.6px;
+  white-space: nowrap;
+}
+/* 규칙 단추는 📘 대신 «?» 글자 — 이모지보다 획이 가늘어 굵게 세운다(docs/59 U69). */
+.icon-btn.help-btn {
+  font-weight: 700;
+}
 
 .settings-btn {
   right: 64px;
@@ -4296,6 +4311,10 @@ button {
 /* 키보드 안내는 터치에서 뜻이 없다 — 마우스가 있는 화면에만 붙인다. */
 @media (hover: none) {
   .draft-howto-key { display: none; }
+  /* 같은 원칙을 카드·툴팁의 «자세히 [Shift]»와 연출 «건너뛰기 [Esc]» 칩에도
+     (2026-09-25, docs/59 U75) — 한 창 안에서 한 곳만 숨고 한 곳은 보였다. */
+  .augdesc-more-key,
+  .prod-skip-key { display: none; }
 }
 
 /* 드래프트 카운트다운 */
@@ -4436,6 +4455,28 @@ button {
   gap: 9px;
 }
 
+/* 카드 아래 한 줄 — «자세히 ▾» + ↻ 새로고침. «자세히»를 확정 과녁(카드) 밖으로
+   뺀 자리다(2026-09-25, docs/59 U78). 높이는 ↻(22~28px)가 정해서, 칩이 들어와도
+   카드 아래 끝이 움직이지 않는다. */
+.draft-slot-foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: nowrap;
+  gap: 8px;
+  max-width: 100%;
+}
+.draft-slot-foot .augdesc-more {
+  align-self: center;
+  margin-top: 0;
+}
+/* 터치에서는 두 단추 모두 투명한 껍데기(`::after`, inset −9px)로 과녁을 44px 까지
+   넓힌다(§9-2). 8px 간격이면 두 껍데기가 10px 겹쳐, 칩을 누르려던 손가락이 새로고침
+   (한 번뿐인 것)을 누를 수 있다 — 껍데기끼리 닿지 않게 벌린다. */
+@media (pointer: coarse) {
+  .draft-slot-foot { gap: 20px; }
+}
+
 /* ── 슬롯 새로고침 — 마음에 안 드는 카드 한 장을 갈아 끼운다 (슬롯당 1회) ──
    카드 밑에 작게 둔다. 그 아래에 '누른 채로 게임판 보기'가 패널 바깥으로 붙으므로
    (App.tsx PeekButton이 .draft-panel을 재서 따라온다) 세로 순서는
@@ -4494,11 +4535,13 @@ button {
 .draft-cards-locked .draft-reroll {
   cursor: default;
 }
-/* 카드 본체의 «고르기»만 막는다 — 안쪽의 «자세히 ▾»는 다시 살린다 */
+/* 카드 본체의 «고르기»만 막는다 — «자세히 ▾»는 카드 밖(아래 줄)이라 이 규칙에
+   안 걸리지만, 묶음이 잠겨도 늘 눌린다는 것을 선택자로 못 박아 둔다
+   (2026-09-25, docs/59 U78 — 예전에는 카드 안 칩을 여기서 되살렸다). */
 .draft-cards-locked .draft-card {
   pointer-events: none;
 }
-.draft-cards-locked .draft-card .augdesc-more {
+.draft-cards-locked .augdesc-more {
   pointer-events: auto;
   cursor: pointer;
 }
@@ -7629,10 +7672,15 @@ button {
   background: rgba(152, 32, 50, 0.3);
 }
 
-.abort-btn-on {
-  background: rgba(152, 32, 50, 0.85);
-  border-color: rgba(247, 128, 144, 0.9);
-  color: #f7f3e8;
+/* 투표 중에는 버튼 대신 이 안내만 선다 — 응답은 화면 위 배너 한 곳(docs/59 U72). */
+.abort-voting-note {
+  flex: 0 1 auto;
+  max-width: 180px;
+  color: #f7c9cf;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: right;
 }
 
 .settings-label {
@@ -8843,8 +8891,6 @@ button {
   white-space: nowrap;
 }
 
-/* 드래프트 카드는 내용이 가운데 정렬이다 — 칩만 왼쪽에 붙으면 어긋나 보인다 */
-.draft-card .augdesc-more { align-self: center; }
 
 .augdesc-more:hover {
   background: rgba(199, 188, 255, 0.16);
@@ -9849,8 +9895,6 @@ button {
     font-size: 11.5px;
     line-height: 1.4;
   }
-  /* 펼쳤을 때 다섯 줄 제한이 걸려 있으면 스크롤할 것이 없다 — 여기서는 다 편다 */
-  .draft-card .augdesc-more { flex: 0 0 auto; margin-top: 2px; }
   .draft-active-note { margin-top: 2px; font-size: 10.5px; }
   /* 리롤(↻)이 화면 밖으로 나가면 «다시 뽑기»가 존재하지 않는 것과 같다 — 한 급 줄여
      카드 아래 22px 안에 앉힌다. 폭은 손가락이 닿게 52px 를 지킨다. */
@@ -9874,7 +9918,7 @@ button {
  *      37px)·타이머 안내문(30px)·조작 안내(30px)로 ≈97px 가 카드 위에서 사라진다.
  *      「⏳ 남은 시간」 알약은 **절대 못 뺀다**(이 화면의 이유다). 접는 셋은 같은 정보가
  *      다른 데 있다: 국 표시는 창 뒤 판에, 「랜덤으로 결정된다」는 타이머가 10초에
- *      붉게 뛰는 것으로, 「자세히 ▾」는 카드 «안»에 칩으로 그대로 보인다.
+ *      붉게 뛰는 것으로, 「자세히 ▾」는 카드 바로 아래 칩으로 그대로 보인다.
  *   ② 카드 높이를 화면에서 역산해 못 박는다. 세로 한 줄의 주기는
  *      카드 + 슬롯 간격 5 + 리롤 22 + 카드 사이 12 = 카드 + 39 이고, 머리글을 접은
  *      뒤 첫 카드 top 은 ≈154 다. 셋째 카드가 화면 안에 h 만큼 걸치려면
@@ -9963,8 +10007,6 @@ button {
     font-size: 13px;
     line-height: 1.45;
   }
-  /* 펼쳤을 때 다섯 줄 제한이 걸려 있으면 스크롤할 것이 없다 — 여기서는 다 편다 */
-  .draft-card .augdesc-more { flex: 0 0 auto; }
 
   /*
    * ④ «자세히 ▾»를 펼치면 **카드가 자란다** (2026-08-27 사용자 지적).
@@ -10982,6 +11024,55 @@ button {
   position: absolute;
   inset: 0;
   z-index: 90;
+}
+
+/* 도감·규칙 오버레이 맨 위의 «내 차례» 띠 (2026-09-25, docs/59 U70) — 오버레이는
+   게임을 멈추지 않으므로, 덮여 있는 사이 차례가 오면 여기서만 알린다. 오버레이가
+   스크롤돼도 늘 보이게 sticky. 움직임은 넣지 않는다(맥동 없이 색으로만 급함을 말한다). */
+.overlay-turn-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 8px 14px;
+  padding-top: max(8px, env(safe-area-inset-top, 0px));
+  border-bottom: 1px solid rgba(240, 200, 106, 0.55);
+  background: rgba(30, 24, 10, 0.96);
+  color: #f4ecda;
+  font-size: 14px;
+  font-weight: 700;
+}
+.overlay-turn-bar strong {
+  color: #f0c86a;
+  font-variant-numeric: tabular-nums;
+}
+.overlay-turn-bar-urgent {
+  border-bottom-color: #f08a7c;
+  background: rgba(48, 16, 12, 0.96);
+}
+.overlay-turn-bar-urgent strong {
+  color: #ff9c8d;
+}
+.overlay-turn-bar-back {
+  min-height: 32px;
+  padding: 4px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(240, 200, 106, 0.7);
+  background: rgba(240, 200, 106, 0.16);
+  color: #f4ecda;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.overlay-turn-bar-back:hover {
+  background: rgba(240, 200, 106, 0.28);
+}
+@media (pointer: coarse) {
+  .overlay-turn-bar-back { min-height: 44px; }
 }
 
 /* ─────────────── 규칙 · 도움말 ─────────────── */
@@ -15073,11 +15164,6 @@ body.reconnecting .abort-banner {
   color: #f7f3e8;
 }
 
-.abort-yes-on {
-  opacity: 0.65;
-  cursor: default;
-}
-
 .abort-no {
   border: 1px solid rgba(249, 156, 165, 0.7);
   background: rgba(42, 61, 51, 0.9);
@@ -16872,6 +16958,10 @@ body.peeking .overlay-peekable > * {
      안 걷히면 폰 세로에서 좌상단 뱃지가 그대로 남아 맞은편 뒷패 줄을 63~71% 덮는다
      (375×812 실측, 2026-08-24). */
   .game-root .info-note.mode-badge { display: none; }
+  /* 봇 난이도 칩도 InfoNote가 되면서(2026-09-25, docs/59 U74) 바로 위 줄에 함께
+     걸린다 — 전에는 맨 div라 폰 세로에서도 남아 있었다. 조작만 바꾸고 보이는 자리는
+     그대로 두려고 되돌린다(가로 폰은 아래 landscape 블록이 따로 접는다). */
+  .game-root .info-note.mode-badge.bot-diff-badge { display: flex; }
   .np-arch { display: none; }
   .auglog,
   .settings-panel {
@@ -17320,6 +17410,22 @@ body.peeking .overlay-peekable > * {
   border-radius: var(--r-md);
   background: var(--surface-2);
   box-shadow: var(--shadow-3);
+}
+/*
+ * 대국판의 정형구 목록은 **2열 격자**다 (2026-09-25, docs/59 U86). 여덟 줄 세로 목록은
+ * 터치(44px)에서 ≈396px 로, 360px 높이의 폰 가로 화면을 넘어 첫 문구(「잘 부탁드립니다」)가
+ * 화면 밖으로 밀렸다. 2열 4행이면 ≈204px. 그래도 모자라는 화면에서는 목록 안에서만
+ * 스크롤한다(토글 44 + 간격 8 + 위아래 숨통을 뺀 높이).
+ * ⚠ `.table >` 로 대국판만 짚는다 — 대기실 머리줄(`.wr-head .emote-list`)은 같은 클래스를
+ *   쓰지만 자리가 넉넉하고 드롭다운 모양이 따로 잡혀 있다.
+ */
+.table > .emote-bar .emote-list {
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  max-width: calc(100cqw - 16px);
+  max-height: calc(100cqh - 76px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .emote-btn {
   display: flex;
@@ -17777,6 +17883,16 @@ body:has(.rinshan-pick-overlay):not(.peeking) .game-root .quick-toggles {
     font-size: 11px;
     letter-spacing: 0;
   }
+  /* 여기서는 알약이 오른쪽에서 240px 들어온 자리라, 2열 목록을 알약 기준으로 펼치면
+     왼쪽 끝이 화면 밖으로 나간다(375px 폭에서 ≈276px 목록). 알약 **아래**로 떨어뜨리고
+     오른쪽 끝을 아이콘 줄 오른쪽 끝(= 알약의 right 에서 240px 더)에 맞춘다
+     (2026-09-25, docs/59 U86). absolute 라 알약 자체는 제자리를 지킨다. */
+  .table > .emote-bar .emote-list {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: -240px;
+    max-height: calc(100cqh - var(--chrome-top) - var(--icon-h) - 16px);
+  }
 
   /* ③ 아래 띠를 폰 크기로 ─────────────────────────────
      내 이름표 줄은 **한 줄을 지킨다.** 접히는 순간 아래 띠가 31px 두꺼워지고 그만큼
@@ -17874,7 +17990,9 @@ body:has(.rinshan-pick-overlay):not(.peeking) .game-root .quick-toggles {
    * 봇 난이도는 **대국 중에 바뀌지 않는 값**이고 대기실에서 고르며 거기 그대로
    * 적혀 있으므로, 세로가 360px 뿐인 화면에서는 모드 뱃지와 같은 이유로 접는다.
    */
-  .game-root .mode-badge.bot-diff-badge { display: none; }
+  /* `.info-note` 까지 짚는다 — 폰 세로 블록이 InfoNote 칩을 되살리는 규칙(특정도 4)을
+     이 블록이 파일 뒤에서 같은 특정도로 이기게(2026-09-25, docs/59 U74). */
+  .game-root .info-note.mode-badge.bot-diff-badge { display: none; }
   .emote-bar {
     top: auto;
     bottom: max(8px, env(safe-area-inset-bottom, 0px));
