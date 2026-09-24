@@ -8300,6 +8300,26 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* 좌·우 줄의 비후보 사유는 말줄임 대신 두 줄로 접는다 — 이 문장은 aria-label·안내 줄 어디에도
+   없어 자르면 사유가 사라진다. 가장 긴 «후로 구성(깡·퐁)이 달라 고를 수 없습니다»가 굵은 12px로
+   300px 남짓이라, 폭을 막지 않으면 바깥 모서리에서 안쪽으로 늘어나 740×360에서 바닥·점수판을
+   덮었다(2026-09-25, docs/59 U28, B10 리뷰 라운드 2). 어절 단위로 끊고 붙은 쪽으로 정렬한다. */
+.opp-strip-left > .opp-arm-tag.opp-arm-blocked,
+.opp-strip-right > .opp-arm-tag.opp-arm-blocked {
+  /* 줄 폭이 좁아 그대로 두면 shrink-to-fit가 줄 폭에서 접는다 — 글 폭을 기준으로 잡고 180px에서만 접는다 */
+  width: max-content;
+  max-width: 180px;
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
+}
+.opp-strip-left > .opp-arm-tag.opp-arm-blocked {
+  text-align: left;
+}
+.opp-strip-right > .opp-arm-tag.opp-arm-blocked {
+  text-align: right;
+}
 /* 리치라서 대상이 될 수 없는 상대 — 강조 대신 '왜 못 고르는지'만 적는다 */
 .opp-arm-tag.opp-arm-blocked {
   border-color: rgba(255, 150, 150, 0.75);

@@ -1230,9 +1230,14 @@ const HAND_MANIP_ACTIONS = new Set(["hand_swap", "swap3", "seat_swap"]);
  * 창(dialog — 튜토리얼 안내 줄은 판 위에 늘 떠 있는 말풍선이라 뺀다)·연출 건너뛰기·고정한 증강 설명,
  * 그리고 role=dialog 없이 뜨는 고르기 창(.rinshan-pick-overlay — 셋 바꾸기·영상 고르기·단색 세계·예지 등).
  * 이 창 위에서 Esc가 밑의 무장을 풀면 창은 그대로인데 «취소했습니다»가 덮인다(B10 리뷰).
+ *
+ * 기록 서랍(.auglog)·설정 창(.settings-panel)은 뺀다(2026-09-25, B10 리뷰 라운드 2) — 둘 다 판을
+ * 가리지 않는 비모달 창이고 Esc를 **제 안에 포커스가 있을 때만** 받는다(요소 keydown +
+ * stopPropagation이라 그때는 이 창의 window 리스너까지 오지도 않는다). 떠 있다는 이유만으로
+ * 비켜서면 기록을 열어 둔 채 두는 사람은 Esc로 무장을 풀 길이 아예 없어진다(docs/59 U25).
  */
 const ESC_OWNER_SELECTOR =
-  '[role="dialog"]:not(.coach-layer), [aria-modal="true"], .prod-skip, .aug-pill-pinned, .rinshan-pick-overlay';
+  '[role="dialog"]:not(.coach-layer):not(.auglog):not(.settings-panel), [aria-modal="true"], .prod-skip, .aug-pill-pinned, .rinshan-pick-overlay';
 
 /**
  * 이 사람의 **화면에 보이는** 손패 장수에서 쯔모패 한 장을 뺀 값 — 손패 장수 비교용(docs/59 U28).
@@ -1257,6 +1262,16 @@ function meldTakenCount(view: PlayerView, pid: string): number {
     (n, m) => n + m.tileIds.length - (m.calledTileId !== undefined ? 1 : 0),
     0,
   );
+}
+
+/**
+ * 서버가 손패 장수를 비교할 때 쓰는 슬롯(deal.handSize − 후로가 가져간 장수)의 추정.
+ * 후로 하나는 종류와 상관없이 보이는 손패를 3장 줄이므로(퐁·치: 2장 내고 1장 버림, 깡: 영상패를
+ * 받아 같은 셈, 가깡: 후로 수도 장수도 그대로) handSize ≈ 보이는 장수 + 3·후로 수다.
+ */
+function serverSlotsGuess(view: PlayerView, pid: string, appeared: number): number {
+  const melds = view.round.byPlayer[pid]?.melds ?? [];
+  return appeared + 3 * melds.length - meldTakenCount(view, pid);
 }
 
 /**
@@ -16283,9 +16298,18 @@ function useSelection(
     const meldsDiffer = meldTakenCount(view, view.playerId) !== meldTakenCount(view, pid);
     const mine = appearedHandSlots(view, view.playerId);
     const theirs = appearedHandSlots(view, pid);
-    if (mine !== null && theirs !== null && mine !== theirs) {
+    if (mine !== null && theirs !== null) {
+      /*
+       * 서버가 비교하는 슬롯을 추정해 **같으면 장수 탓이 아니다** — 다른 이유(벽 부족 등)로 빠진
+       * 상대에게 장수 사유를 붙이면 거짓이 된다. 보이는 장수끼리만 비교하면 퐁 둘(보이는 7) ↔
+       * 안깡 하나(보이는 10)가 «장수가 다르다»로 잡히는데, 서버 슬롯은 둘 다 9라 통과한다
+       * (2026-09-25, B10 리뷰 라운드 2).
+       */
+      if (serverSlotsGuess(view, view.playerId, mine) === serverSlotsGuess(view, pid, theirs)) return null;
+      // 후로가 가져간 장수가 같은데 슬롯이 다르면 배패 장수 자체가 다르다(진짜 용 등)
+      if (!meldsDiffer) return "손패 장수가 달라 고를 수 없습니다";
       // 후로가 손에서 가져간 장수가 다르면 원인을 후로로 짚는다
-      return meldsDiffer ? "후로가 달라 손패 장수가 맞지 않습니다" : "손패 장수가 달라 고를 수 없습니다";
+      if (mine !== theirs) return "후로가 달라 손패 장수가 맞지 않습니다";
     }
     /*
      * 보이는 장수는 같은데 후로 구성만 다른 경우 — 깡 ↔ 퐁·치. 깡은 영상패를 한 장 더 받아 화면의

@@ -157,9 +157,10 @@ describe("U25 무장 해제 범위 — 펠트의 진짜 빈 곳만", () => {
     // 강제 무장(미래를 보는 자)은 풀 수 없다 — 이유를 말하고 끝낸다
     before(esc, "FORCED_ARM_TYPES.has(selection.armedType)", "selection.arm(null);");
     before(esc, "selection.arm(null);", "props.onToast?.(`${armName} 선택을 취소했습니다`);");
-    // role=dialog 없이 뜨는 고르기 창(.rinshan-pick-overlay)도 Esc 임자다(B10 리뷰)
+    // role=dialog 없이 뜨는 고르기 창(.rinshan-pick-overlay)도 Esc 임자다(B10 리뷰).
+    // 포커스가 있을 때만 Esc를 받는 비모달 창(기록 서랍·설정)은 임자가 아니다(B10 리뷰 라운드 2)
     expect(APP_CODE).toMatch(
-      /const ESC_OWNER_SELECTOR =\n\s*'\[role="dialog"\]:not\(\.coach-layer\), \[aria-modal="true"\], \.prod-skip, \.aug-pill-pinned, \.rinshan-pick-overlay';/,
+      /const ESC_OWNER_SELECTOR =\n\s*'\[role="dialog"\]:not\(\.coach-layer\):not\(\.auglog\):not\(\.settings-panel\), \[aria-modal="true"\], \.prod-skip, \.aug-pill-pinned, \.rinshan-pick-overlay';/,
     );
     const hotkeys = between("function ActionHotkeys(", "\n}\n");
     expect(hotkeys).not.toContain('"Escape"');
@@ -186,11 +187,19 @@ describe("U28 비후보 상대의 사유 — 공개 정보만", () => {
     before(fn, "riichiDeclared === true", "appearedHandSlots(view, pid)");
     // 등가교환(swap3)은 3장만 맞바꿔 장수를 보지 않는다(content hand_swap3.ts)
     expect(fn).toContain('if (armedType !== "hand_swap" && armedType !== "seat_swap") return null;');
-    expect(fn).toContain("if (mine !== null && theirs !== null && mine !== theirs) {");
+    expect(fn).toContain("if (mine !== null && theirs !== null) {");
+    // 서버 슬롯 추정이 같으면 장수 탓이 아니다 — 다른 이유로 빠진 상대에게 장수 사유를 붙이지 않는다
+    // (퐁 둘 ↔ 안깡 하나는 보이는 장수가 달라도 서버 슬롯은 같다, B10 리뷰 라운드 2)
+    before(
+      fn,
+      "if (serverSlotsGuess(view, view.playerId, mine) === serverSlotsGuess(view, pid, theirs)) return null;",
+      'if (!meldsDiffer) return "손패 장수가 달라 고를 수 없습니다";',
+    );
+    before(fn, 'if (!meldsDiffer) return "손패 장수가', 'if (mine !== theirs) return "후로가 달라 손패 장수가 맞지 않습니다";');
     // 보이는 장수가 같아도 후로 구성(깡 ↔ 퐁·치)이 다르면 서버가 뺀다 — 그 사유도 적는다(B10 리뷰).
     // 후로 구성이 같고 장수도 같으면(숨은 리치 등) 아무것도 적지 않는다
     expect(fn).toContain('return meldsDiffer ? "후로 구성(깡·퐁)이 달라 고를 수 없습니다" : null;');
-    before(fn, "if (mine !== null && theirs !== null && mine !== theirs) {", 'return meldsDiffer ? "후로 구성(깡·퐁)이 달라');
+    before(fn, "if (mine !== null && theirs !== null) {", 'return meldsDiffer ? "후로 구성(깡·퐁)이 달라');
     // 설명할 수 없는 제외에 일반 문구(«고를 수 없음»)를 띄우지 않는다 — 문구는 네 가지뿐이다
     const phrases = [...fn.matchAll(/"([^"]*[가-힣][^"]*)"/g)].map((m) => m[1]);
     expect(phrases.sort()).toEqual(
@@ -210,5 +219,8 @@ describe("U28 비후보 상대의 사유 — 공개 정보만", () => {
     expect(fn).toContain("return slots % 3 === 1 ? slots : null;");
     const taken = between("function meldTakenCount(", "\n}\n");
     expect(taken).toContain("m.tileIds.length - (m.calledTileId !== undefined ? 1 : 0)");
+    // 서버 슬롯 추정 = 보이는 장수 + 3·후로 수 − 후로가 가져간 장수(B10 리뷰 라운드 2)
+    const guess = between("function serverSlotsGuess(", "\n}\n");
+    expect(guess).toContain("return appeared + 3 * melds.length - meldTakenCount(view, pid);");
   });
 });
