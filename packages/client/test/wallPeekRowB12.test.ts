@@ -132,4 +132,37 @@ describe("B12 U35 — 밑장 칸을 눌러 예약", () => {
     expect(row).toContain("(예약됨)");
     expect(CSS).toContain(".wall-peek-bottom.bottom-deal-armed");
   });
+
+  it("좁은 화면에서도 «(예약됨)» 글자는 숨기지 않는다 — 테두리 색만으로는 예약 여부를 못 읽는다(리뷰)", () => {
+    const start = CSS.indexOf("@container ui (max-width: 700px) {\n  .wall-peek-sec");
+    expect(start).toBeGreaterThan(-1);
+    const narrow = CSS.slice(start, CSS.indexOf("\n}\n", start));
+    expect(narrow).toContain(".wall-peek-name");
+    expect(narrow).not.toContain(".wall-peek-armed-note");
+  });
+
+  it("밑장 «다음» 뱃지는 예약 뒤에만 — 예약 전엔 «밑»이라 예지·삼세 예지의 «다음»과 겹치지 않는다(리뷰)", () => {
+    expect(row).toContain('const bottomBadge = bottom.armed ? nextBadge : <span className="wall-peek-badge">밑</span>;');
+    const sec = row.indexOf("{bottom.ids.length > 0 ? (");
+    expect(sec).toBeGreaterThan(-1);
+    // 밑장 섹션은 nextBadge를 직접 쓰지 않는다
+    expect(row.slice(sec)).not.toContain("{nextBadge}");
+    expect(row.slice(sec)).not.toContain("? nextBadge");
+  });
+
+  it("예약 태그 버튼은 좁은 화면에서도 접근 가능한 이름이 있다(리뷰)", () => {
+    expect(row).toContain('aria-label="밑장빼기 — 다음 쯔모를 패산 맨 밑장으로 예약"');
+    expect(row).not.toContain('className="wall-peek-cta-short" aria-hidden');
+  });
+});
+
+describe("B12 U50 리뷰 — 관전 화면의 예지 자리 라벨", () => {
+  it("관전자에게는 초점 좌석 자기 칸을 «나»가 아니라 «본인»으로 적는다", () => {
+    const row = fnBody("WallPeekRow");
+    const own = fnBody("OwnArea");
+    expect(own).toContain('selfLabel: isSpectator ? "본인" : "나",');
+    expect(row).toContain("const shown = isMine ? foresight.selfLabel : seatLabel;");
+    // ★·푸른 테두리(isMine)는 그대로 «나» 판정으로 붙는다
+    expect(row).toContain('const isMine = seatLabel === "나";');
+  });
 });

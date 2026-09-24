@@ -2902,9 +2902,10 @@ button {
     padding: 3px 7px;
     gap: 6px;
   }
+  /* «(예약됨)»은 남긴다 — 되돌릴 수 없는 예약이라 폰에서도 글자로 보여야 한다. 테두리 색만으로는
+     예약 여부를 읽기 어렵다(2026-09-25, docs/59 U35 리뷰). */
   .wall-peek-name,
-  .wall-peek-cta,
-  .wall-peek-armed-note {
+  .wall-peek-cta {
     display: none;
   }
   .wall-peek-cta-short {

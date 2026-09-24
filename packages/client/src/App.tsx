@@ -21781,6 +21781,11 @@ function WallPeekRow(props: {
   foresight: {
     kinds: readonly TileKind[];
     seatLabels: readonly string[];
+    /**
+     * 초점 좌석 자신의 쯔모 칸에 붙일 호칭 — 플레이어는 «나», 관전자는 «본인». 관전 화면에서
+     * «나 ★»는 관전자 자신으로 읽힌다(2026-09-25, docs/59 U50 리뷰). seatLabels는 늘 «나»로 온다.
+     */
+    selfLabel: string;
     /** 재배열 탭을 여는 [순서 바꾸기] — 못 열면 null */
     onReorder: (() => void) | null;
   };
@@ -21797,6 +21802,12 @@ function WallPeekRow(props: {
   const { view, foresight, triple, bottom } = props;
   if (foresight.kinds.length === 0 && triple.length === 0 && bottom.ids.length === 0) return null;
   const nextBadge = <span className="wall-peek-badge">다음</span>;
+  /*
+   * 밑장은 **예약해야** 다음 쯔모가 된다. 예약 전에도 «다음»을 달면 예지·삼세 예지의 «다음»(패산 위)과
+   * 다른 패에 같은 뱃지가 둘 붙어 «무엇이 먼저 오나»가 다시 헷갈린다(2026-09-25, docs/59 U50 리뷰).
+   * 그래서 예약 전엔 예전 «밑», 예약 뒤에야 «다음» — 그때는 삼세 예지도 같은 패를 «다음»으로 보인다.
+   */
+  const bottomBadge = bottom.armed ? nextBadge : <span className="wall-peek-badge">밑</span>;
   return (
     <div className="wall-peek-row" role="group" aria-label="패산 정보">
       {foresight.kinds.length > 0 ? (
@@ -21815,18 +21826,19 @@ function WallPeekRow(props: {
               .map(({ kind, pos }) => {
                 const seatLabel = foresight.seatLabels[pos] ?? "";
                 const isMine = seatLabel === "나";
+                const shown = isMine ? foresight.selfLabel : seatLabel;
                 return (
                   <span
                     key={pos}
                     className={`wall-peek-cell${pos === 0 ? " wall-peek-next" : ""}${
                       isMine ? " foresight-mine" : ""
                     }`}
-                    title={`${pos + 1}번째 쯔모: ${seatLabel}`}
+                    title={`${pos + 1}번째 쯔모: ${shown}`}
                   >
                     <TileImg tile={{ kind }} size="mini" />
                     {pos === 0 ? nextBadge : null}
                     <span className="wall-peek-label">
-                      {seatLabel}
+                      {shown}
                       {isMine ? " ★" : ""}
                     </span>
                   </span>
@@ -21877,12 +21889,13 @@ function WallPeekRow(props: {
               type="button"
               className="wall-peek-tag wall-peek-arm"
               title="눌러서 다음 쯔모를 패산 맨 밑장(오른쪽 끝)으로 예약합니다"
+              aria-label="밑장빼기 — 다음 쯔모를 패산 맨 밑장으로 예약"
               onClick={bottom.onReserve}
             >
               <span className="wall-peek-icon" aria-hidden="true">🃏</span>
               <span className="wall-peek-name">밑장빼기</span>
               <span className="wall-peek-cta"> — 눌러서 다음 쯔모 예약</span>
-              <span className="wall-peek-cta-short" aria-hidden="true">예약</span>
+              <span className="wall-peek-cta-short">예약</span>
             </button>
           ) : (
             <span className="wall-peek-tag">
@@ -21907,7 +21920,7 @@ function WallPeekRow(props: {
                   onClick={bottom.onReserve}
                 >
                   <TileImg tile={tile} size="mini" />
-                  {nextBadge}
+                  {bottomBadge}
                 </button>
               ) : (
                 <span
@@ -21915,7 +21928,7 @@ function WallPeekRow(props: {
                   className={`wall-peek-cell${isNext ? " wall-peek-next" : " wall-peek-dim"}`}
                 >
                   <TileImg tile={tile} size="mini" />
-                  {isNext ? nextBadge : null}
+                  {isNext ? bottomBadge : null}
                 </span>
               );
             })}
@@ -23878,6 +23891,7 @@ function OwnArea(props: {
           foresight={{
             kinds: foresightPeek,
             seatLabels: foresightSeatLabels,
+            selfLabel: isSpectator ? "본인" : "나",
             onReorder:
               !isSpectator && foresightReorderable && !foresightTab ? () => setForesightTab(true) : null,
           }}
