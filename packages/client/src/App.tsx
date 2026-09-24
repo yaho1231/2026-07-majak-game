@@ -1437,6 +1437,57 @@ const RIICHI_AUG_IDS = new Set(
 );
 
 /**
+ * 액션 바가 전담하는 증강 id — 증강 리치(RIICHI_AUG_IDS)에 **승부수(리치 취소)** 를 더한다.
+ *
+ * 리치 취소는 되돌릴 수 없고 그 국의 재리치까지 잠그는 수인데 ✦ 메뉴 안에 이름(«승부수»)만으로
+ * 숨어 있었고, 쓸 수 있는 액티브가 그것 하나면 «✦ 액티브 증강 (1)» 한 탭에 곧바로 나갔다. 같은
+ * «리치 중에만 쓰는» 손바닥 뒤집기는 액션 바 전용 버튼이다(2026-08-16) — 리치 순간 눈이 가는
+ * 곳이 액션 바라는 2026-08-08 결정을 리치 취소에도 적용해 [리치] 자리로 옮긴다(2026-09-25,
+ * docs/59 U51). ✦ 버튼의 목록·개수·안내에서는 이 집합을 뺀다(같은 증강이 두 군데서 뜨지 않게).
+ * ⚠ cancel_riichi 자체는 AUGMENT_ACTION_TYPES에 그대로 둔다 — 빼면 후로 줄(rawButtons)에 샌다.
+ */
+const ACTIONBAR_AUG_IDS = new Set([...RIICHI_AUG_IDS, "last_stand"]);
+
+/**
+ * 증강 리치 ⚡ 버튼의 보조 줄 — 이 버튼이 **리치를 거는** 것이라는 말과 무엇이 더 붙는지.
+ *
+ * 본문은 카드 이름(«위압감»·«모 아니면 도»)이라 pill과 이어지지만, 리치 계열이라는 것이 자리와 ⚡에만
+ * 기대 «위압감»이 리치 버튼인지 한눈에 안 읽혔다. 올인은 타가 화료 때 잃는 판돈을 모른 채 걸었다
+ * (2026-09-25, docs/59 U53). 이름에 이미 «리치»가 있는 것(오픈·스텔스)은 덧붙는 효과만 적는다.
+ * 증강 규칙이 바뀌면 그 증강 파일(content/src/augments/*)의 description과 대조한다.
+ */
+const RIICHI_AUG_SUB: Record<string, (view: PlayerView) => string> = {
+  all_in_riichi: (view) => {
+    // content all_or_nothing.ts의 allInAmount와 **같은 식**이다(현재 점수 절반, 1000 단위 내림).
+    // 서버 공식이 바뀌면 여기도 함께 바꾼다 — 선언 전이라 서버가 실어 주는 값이 아직 없다.
+    const score = view.players.find((p) => p.id === view.playerId)?.score ?? 0;
+    const amount = Math.max(0, Math.floor(score / 2 / 1000) * 1000);
+    return `리치 · 판돈 ${amount.toLocaleString()}점`;
+  },
+  no_retreat_riichi: () => "리치 · 공탁 면제",
+  intimidate_riichi: () => "리치 · 타가 1순 쯔모기리",
+  soul_strike: () => "리치",
+  flip_riichi: () => "리치 유지 · 다른 패 버리기",
+  open_riichi: () => "손패 공개",
+  stealth_riichi: () => "상대에게 숨김",
+};
+
+function riichiAugSub(view: PlayerView, type: string): string {
+  return RIICHI_AUG_SUB[type]?.(view) ?? "";
+}
+
+/**
+ * 손패를 **태우거나 바꾸는** 선언 — «두 번 눌러 버리기»(tapTwiceToDiscard)가 켜져 있으면 첫 탭은
+ * 미리보기(사라질 패를 손패에 고정해 짚기)만 하고, 한 번 더 눌러야 발동한다.
+ *
+ * 재료 짚기(doomedTileIdsOf, 2026-09-07 사용자 요청 «누르기 전에 사라질 패를 짚는다»)는 hover·focus
+ * 전용이라, 폰에서는 탭이 곧 focus이자 click이어서 짚는 순간 이미 제출됐다(2026-09-25, docs/59 U61).
+ * 새 확인창은 만들지 않는다(§2 원칙 5) — 손패 버리기의 두 번 누르기 설정을 그대로 쓴다. 마우스는
+ * 설정이 꺼져 있는 한 지금처럼 hover 미리보기 + 한 번 클릭이다.
+ */
+const PREVIEW_FIRST_TYPES = new Set(["bluff_pon", "dragons_will", "even_world_flip"]);
+
+/**
  * 무장 안내 문구 — 무엇을 클릭하면 **무슨 일이 생기는지**. 안내 줄은 `{증강 이름}: {문구}`다.
  *
  * 예전엔 대부분이 모드 기본값(«발동할 손패를 클릭하세요»·«대상 상대를 클릭하세요»)이었고,
@@ -17189,7 +17240,9 @@ function SettingsPanel(props: {
     {
       key: "tapTwiceToDiscard",
       label: "두 번 눌러 버리기",
-      desc: "패를 한 번 누르면 들어 올려지고, 한 번 더 눌러야 버려집니다. 다른 패를 누르면 그 패가 대신 선택됩니다. 휴대폰에서는 패 사이가 좁아 옆 패를 잘못 누르기 쉬우므로 기본으로 켜져 있습니다",
+      // 버리기만이 아니라 되돌릴 수 없는 발동까지 이 설정이 맡는다 — 손패 무장(U16)과 손패를 태우거나
+      // 바꾸는 선언(PREVIEW_FIRST_TYPES, U61). 이름은 저장 키와 익숙함 때문에 그대로 둔다(2026-09-25)
+      desc: "패를 한 번 누르면 들어 올려지고, 한 번 더 눌러야 버려집니다. 다른 패를 누르면 그 패가 대신 선택됩니다. 손패를 쓰거나 바꾸는 되돌릴 수 없는 발동(허장성세 퐁·삼원의 의지·짝수의 세계 등)도 첫 번째 누름은 미리보기만 하고, 한 번 더 눌러야 발동합니다. 휴대폰에서는 패 사이가 좁아 옆 패를 잘못 누르기 쉬우므로 기본으로 켜져 있습니다",
     },
     {
       key: "showMyWaits",
@@ -24071,6 +24124,12 @@ function OwnArea(props: {
                 부른다(2026-09-25, docs/59 U03 리뷰) */}
             {armedAug === "future_exchange"
               ? "🀫 여기에 놓으면 이 패를 버리고 교환"
+              : armedAug !== null && DRAG_DISCARD_ARM_TYPES.has(armedAug)
+                ? // 증강 리치는 버튼(⚡ 증강 이름)·평범한 리치 드롭존(⚡ … 리치)과 같은 말로 부른다.
+                  // 손바닥 뒤집기는 리치를 거는 게 아니고, 이름에 이미 «리치»가 있으면 두 번 쓰지 않는다(U55)
+                  armedAug === "flip_riichi" || armName.includes("리치")
+                  ? `⚡ 여기에 놓으면 ${armName}`
+                  : `⚡ 여기에 놓으면 ${armName} 리치`
               : armedAug !== null
                 ? `✦ 여기에 놓으면 ${armName} 발동`
                 : props.riichiMode
@@ -24125,6 +24184,7 @@ function OwnArea(props: {
                 catalog={props.catalog}
                 promptDeadline={props.promptDeadline}
                 forcedPick={forcedPick}
+                tapTwiceToDiscard={props.tapTwiceToDiscard}
                 foresightReorderable={foresightReorderable}
                 foresightTabOpen={foresightTab}
                 onForesightTab={setForesightTab}
@@ -24281,7 +24341,9 @@ function OwnArea(props: {
         ) : armedAug === "dw_swap" ? (
           // 왕패의 주인 — 안내·[이대로 교환]·[취소]는 도킹 패널(DeadWallDock)이 함께 든다(docs/59 U04)
           null
-        ) : armedAug !== null ? (
+        ) : armedAug !== null && !DRAG_DISCARD_ARM_TYPES.has(armedAug) ? (
+          /* 증강 리치(DRAG형) 무장은 액션 바가 평범한 리치 모드와 같은 한 줄로 안내·[취소]를 든다 —
+             여기까지 세우면 안내가 두 줄, 취소 수단이 둘이 된다(2026-09-25, docs/59 U55) */
           <div className="arm-hint">
             <span className="arm-hint-text">
               {armName}: {uraSwapPreview ?? armPromptText(sel.armMode, armedAug, props.tapTwiceToDiscard)}
@@ -24426,6 +24488,7 @@ function OwnArea(props: {
               riichiMode={props.riichiMode}
               catalog={props.catalog}
               forcedPick={forcedPick}
+              tapTwiceToDiscard={props.tapTwiceToDiscard}
               onRiichiMode={props.onRiichiMode}
               onSubmit={props.onSubmit}
               onDoomedHint={(ids) => setDoomedHint(ids === null ? null : new Set(ids))}
@@ -27394,6 +27457,11 @@ function ActiveAugmentControl(props: {
    */
   forcedPick?: boolean;
   /**
+   * «두 번 눌러 버리기» 설정 — 켜져 있으면 손패를 태우거나 바꾸는 선언(PREVIEW_FIRST_TYPES)의
+   * 첫 탭은 미리보기만 한다(2026-09-25, docs/59 U61).
+   */
+  tapTwiceToDiscard?: boolean;
+  /**
    * 예지 재배열 탭이 열려 있는가 — 상태는 OwnArea가 쥔다. [순서 바꾸기] 버튼이 손패 위 «패산 정보»
    * 줄(WallPeekRow)로 옮겨 가 그 버튼과 이 탭이 한 상태를 봐야 한다(2026-09-25, docs/59 U50).
    */
@@ -27459,6 +27527,13 @@ function ActiveAugmentControl(props: {
    * 따라가야 한다. 제출할 때 재배열 후 자리(take 규약, content rinshan_preview)로 바꾼다(docs/59 U44).
    */
   const [rinshanTake, setRinshanTake] = useState<number | null>(null);
+  /*
+   * 미리보기 먼저(PREVIEW_FIRST_TYPES) — 첫 탭을 받은 액션 타입. 이 동안 짚은 재료는 손을 떼도
+   * 그대로 두고, 한 번 더 누르면 발동한다. 프롬프트가 바뀌거나 다른 곳을 누르면 푼다
+   * (2026-09-25, docs/59 U61).
+   */
+  const [primed, setPrimed] = useState<string | null>(null);
+  const onDoomed = props.onDoomedHint;
   const rootRef = useRef<HTMLDivElement>(null);
   // 강제 선택이 시작되면 열린 메뉴를 접는다 — 그 메뉴의 항목이 강제 선택을 건너뛰는 길이다(docs/59 U03·U07)
   useEffect(() => {
@@ -27481,20 +27556,42 @@ function ActiveAugmentControl(props: {
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
   }, [open, onHint]);
-  // 증강 리치만 들고 있다면 이 버튼은 아예 안 뜬다 — 그건 액션 바가 맡는다.
+  // 증강 리치·승부수만 들고 있다면 이 버튼은 아예 안 뜬다 — 그건 액션 바가 맡는다(U51).
+  // 승부수만 가진 사람은 리치 전에 ✦가 사라지지만, 남은 횟수는 pill이 말한다.
   const hasActive = me.augments.some(
-    (a) => ACTIVE_AUGMENT_IDS.has(a) && !RIICHI_AUG_IDS.has(a),
+    (a) => ACTIVE_AUGMENT_IDS.has(a) && !ACTIONBAR_AUG_IDS.has(a),
   );
   const myPrompt = prompt !== null && prompt.player === view.playerId ? prompt : null;
+  // 프롬프트가 바뀌면 첫 탭을 푼다 — 지난 순의 첫 탭이 남아 한 번에 발동되지 않게(U61)
+  useEffect(() => {
+    setPrimed(null);
+  }, [myPrompt]);
+  // 첫 탭을 받은 줄·버튼 밖을 누르면 푼다 — 짚어 둔 재료 표시도 함께 끈다(U61)
+  useEffect(() => {
+    if (primed === null) return;
+    const onDown = (e: PointerEvent): void => {
+      const t = e.target as Element | null;
+      if (t !== null && typeof t.closest === "function" && t.closest('[data-confirm-pending="1"]') !== null) {
+        return;
+      }
+      setPrimed(null);
+      onHint?.(null);
+      onDoomed?.(null);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [primed, onHint, onDoomed]);
   // 영상패 선택(bloom_pick)은 전용 모달이 담당하므로 이 버튼에서는 제외한다.
   // (예지 foresight_order는 byType에는 남겨 두되 아래 menuTypes에서 빼 메뉴엔 안 띄운다.)
   // 증강 리치(오픈·스텔스·올인·영혼의 일격)는 액션 바가 [리치] 옆에 전용 버튼으로
   // 세운다 — 여기까지 겹쳐 놓으면 같은 액션이 두 군데서 뜨고, 정작 이 메뉴에서만
   // 고를 수 있는 다른 액티브 증강이 개수에 묻힌다 (2026-08-08 사용자 요청).
+  // 리치 취소(승부수)도 액션 바 [리치] 자리가 맡는다(2026-09-25, docs/59 U51).
   const augOptions = (myPrompt?.options ?? []).filter(
     (o) =>
       AUGMENT_ACTION_TYPES.has(o.type) &&
       !DRAG_DISCARD_ARM_TYPES.has(o.type) &&
+      o.type !== "cancel_riichi" &&
       o.type !== "bloom_pick" &&
       o.type !== "swap3_give" &&
       o.type !== "swap3_take" &&
@@ -27623,7 +27720,7 @@ function ActiveAugmentControl(props: {
   // 누르면 click()이 이유(FORCED_PICK_HINT)를 말한다(2026-09-25, docs/59 U03·U07)
   const usable = menuOptions.length > 0 && props.forcedPick !== true;
   const activeIds = me.augments.filter(
-    (a) => ACTIVE_AUGMENT_IDS.has(a) && !RIICHI_AUG_IDS.has(a),
+    (a) => ACTIVE_AUGMENT_IDS.has(a) && !ACTIONBAR_AUG_IDS.has(a),
   );
   /*
    * 못 쓰는 이유 — 예전에는 `지금은 사용할 수 없습니다 — {이름들}`이 전부였다.
@@ -27707,12 +27804,20 @@ function ActiveAugmentControl(props: {
   const hintAll = (): void => {
     // 강제 선택 중에는 쓸 수 있는 것이 없다 — 버튼이 꺼져 있는데 pill만 빛나면 거짓말이 된다(U03·U07)
     if (props.forcedPick === true) return;
+    // 첫 탭을 받은 동안에는 그 하나의 재료를 짚은 채로 둔다 — 터치의 호환 mouseleave·blur가
+    // 짚은 패를 «전부»나 «없음»으로 바꿔 놓으면 미리보기가 사라진다(U61)
+    if (primed !== null) return;
     props.onUsableHint?.(usableAugIds);
     props.onDoomedHint?.([...new Set(types.flatMap((t) => doomedTileIdsOf(view, t)))]);
   };
-  const hintNone = (): void => {
+  /** 발광·재료 짚기를 끈다 — 발동·제출처럼 첫 탭 상태와 무관하게 꺼야 하는 자리가 쓴다 */
+  const clearHints = (): void => {
     props.onUsableHint?.(null);
     props.onDoomedHint?.(null);
+  };
+  const hintNone = (): void => {
+    if (primed !== null) return;
+    clearHints();
   };
 
   const augNameFor = (type: string): string => augActionName(props.catalog, type);
@@ -27786,29 +27891,49 @@ function ActiveAugmentControl(props: {
   const activate = (type: string): void => {
     setOpen(false);
     setMenuType(null);
+    setPrimed(null);
     // 이 버튼으로 들어온 순간 리치 모드는 끝이다 — 무장형이 아닌 발동(즉시 제출·모달)도
     // 마찬가지다. 남겨 두면 발동 뒤 다음 손패 클릭이 리치 선언으로 나간다.
     sel.exitRiichiMode();
     if (armType(type)) {
       sel.arm(type);
-      hintNone();
+      clearHints();
       return;
     }
     if (MODAL_PICK_TYPES.has(type)) {
       setPickModal(type);
-      hintNone();
+      clearHints();
       return;
     }
     const opts = byType.get(type) ?? [];
     if (opts.length === 1) {
       sel.submit(opts[0]!);
-      hintNone();
+      clearHints();
       return;
     }
     // 2단계로 파고든다 — 메뉴는 그대로 열려 있으므로 그 증강만 계속 빛낸다.
     setMenuType(type);
     setOpen(true);
     hintOne(type);
+  };
+
+  /**
+   * 이 타입의 발동이 **미리보기 먼저**인가 — 누르는 즉시 제출되는 경로(무장·모달·후보 여럿이
+   * 아닌 것)만이다. 무장·모달은 발동 전에 이미 한 단계가 있다(2026-09-25, docs/59 U61).
+   */
+  const previewFirst = (type: string): boolean =>
+    props.tapTwiceToDiscard === true &&
+    PREVIEW_FIRST_TYPES.has(type) &&
+    !armType(type) &&
+    !MODAL_PICK_TYPES.has(type) &&
+    (byType.get(type)?.length ?? 0) === 1;
+  /** 첫 탭이면 미리보기만 고정하고 true — 호출자는 발동하지 않고 돌아간다 */
+  const primeFirst = (type: string): boolean => {
+    if (!previewFirst(type) || primed === type) return false;
+    setPrimed(type);
+    props.onUsableHint?.([ACTION_AUGMENT[type] ?? type]);
+    props.onDoomedHint?.(doomedTileIdsOf(view, type));
+    return true;
   };
 
   // 버튼 옆 개수 = **지금 쓸 수 있는 액티브 증강의 수**(위 usableAugIds).
@@ -27863,6 +27988,8 @@ function ActiveAugmentControl(props: {
       return;
     }
     if (types.length === 1) {
+      // 삼원의 의지·짝수의 세계 하나뿐이면 첫 탭은 미리보기다(U61)
+      if (primeFirst(types[0]!)) return;
       activate(types[0]!);
       return;
     }
@@ -28216,7 +28343,7 @@ function ActiveAugmentControl(props: {
                     sel.submit(o);
                     setOpen(false);
                     setMenuType(null);
-                    hintNone();
+                    clearHints();
                   }}
                 >
                   <strong className="aug-menu-name">
@@ -28260,8 +28387,12 @@ function ActiveAugmentControl(props: {
               return (
                 <button
                   key={type}
-                  className="aug-menu-item"
-                  onClick={() => activate(type)}
+                  className={`aug-menu-item${primed === type ? " aug-menu-item-primed" : ""}`}
+                  data-confirm-pending={primed === type ? "1" : undefined}
+                  onClick={() => {
+                    if (primeFirst(type)) return;
+                    activate(type);
+                  }}
                   onMouseEnter={() => hintOne(type)}
                   // 줄에서 벗어나면 메뉴 전체(= 쓸 수 있는 전부)로 되돌린다.
                   // 메뉴 밖으로 나가는 경우는 위 컨테이너의 onMouseLeave가 끈다.
@@ -28276,7 +28407,11 @@ function ActiveAugmentControl(props: {
                       <span className="aug-first-badge">이번 순만</span>
                     ) : null}
                   </strong>
-                  {hint !== "" ? <span className="act-target">{hint}</span> : null}
+                  {primed === type ? (
+                    <span className="act-target">한 번 더 눌러 발동</span>
+                  ) : hint !== "" ? (
+                    <span className="act-target">{hint}</span>
+                  ) : null}
                   {!armType(type) && !MODAL_PICK_TYPES.has(type) && opts.length === 1 ? (
                     <ActionTiles view={view} option={opts[0] as ActionOption} />
                   ) : null}
@@ -28296,6 +28431,7 @@ function ActiveAugmentControl(props: {
             : ""
         }`}
         aria-disabled={!usable}
+        data-confirm-pending={single !== null && primed === single ? "1" : undefined}
         title={
           props.forcedPick === true
             ? FORCED_PICK_HINT
@@ -28322,7 +28458,9 @@ function ActiveAugmentControl(props: {
         <span className={`aug-btn-name${single !== null ? " aug-btn-name-aug" : ""}`}>
           {single !== null ? augNameFor(single) : "액티브 증강"}
         </span>
-        {single !== null && singleSub !== "" ? (
+        {single !== null && primed === single ? (
+          <span className="aug-btn-sub">· 한 번 더 눌러 발동</span>
+        ) : single !== null && singleSub !== "" ? (
           <span className="aug-btn-sub">· {singleSub}</span>
         ) : null}
         {usable && single === null ? ` (${displayCount})` : ""}
@@ -28449,6 +28587,11 @@ function ActionBar(props: {
    * 쿨다운»도 생기지 않는다 (2026-09-25, docs/59 U03·U07).
    */
   forcedPick?: boolean;
+  /**
+   * «두 번 눌러 버리기» 설정 — 켜져 있으면 손패를 태우는 콜(PREVIEW_FIRST_TYPES, 허장성세 퐁)도
+   * 첫 탭은 재료를 짚기만 한다(2026-09-25, docs/59 U61).
+   */
+  tapTwiceToDiscard?: boolean;
   onRiichiMode: (v: boolean) => void;
   onSubmit: (o: ActionOption) => void;
 }): JSX.Element | null {
@@ -28458,7 +28601,50 @@ function ActionBar(props: {
       ? { ...props.prompt, options: props.prompt.options.filter((o) => o.type === "win") }
       : props.prompt;
   const sel = useContext(SelectionContext);
+  /*
+   * 두 번 눌러 확정하는 버튼의 «첫 탭» 상태 — 리치 취소(U51)와 미리보기 먼저인 콜(U61).
+   *
+   * 프롬프트가 바뀌면(순이 넘어감·다른 선택지) 푼다 — 지난 순의 첫 탭이 남아 있으면 무심코 한 번
+   * 누른 것이 곧바로 확정된다(손패 두 번 누르기의 promptSeq 리셋과 같은 이유). 다른 곳을 눌러도
+   * 푼다. 훅이라 아래 early-null보다 위에 있어야 한다.
+   */
+  const [cancelArmed, setCancelArmed] = useState(false);
+  const [primedKey, setPrimedKey] = useState<string | null>(null);
+  const doomedHintRef = useRef(props.onDoomedHint);
+  doomedHintRef.current = props.onDoomedHint;
+  useEffect(() => {
+    setCancelArmed(false);
+    setPrimedKey(null);
+  }, [props.prompt]);
+  // 리치 취소의 첫 탭은 3초만 산다 — 한참 뒤의 탭 한 번이 되돌릴 수 없는 취소가 되지 않게
+  useEffect(() => {
+    if (!cancelArmed) return;
+    const t = window.setTimeout(() => setCancelArmed(false), 3000);
+    return () => window.clearTimeout(t);
+  }, [cancelArmed]);
+  useEffect(() => {
+    if (!cancelArmed && primedKey === null) return;
+    const onDown = (e: PointerEvent): void => {
+      const t = e.target as Element | null;
+      // 첫 탭을 받은 그 버튼을 다시 누르는 것은 확정이다 — 여기서 풀면 click이 첫 탭으로 되돌아간다
+      if (t !== null && typeof t.closest === "function" && t.closest('[data-confirm-pending="1"]') !== null) {
+        return;
+      }
+      setCancelArmed(false);
+      if (primedKey !== null) {
+        setPrimedKey(null);
+        doomedHintRef.current?.(null);
+      }
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [cancelArmed, primedKey]);
   const hasRiichi = prompt.options.some((o) => o.type === "riichi");
+  /*
+   * 승부수(리치 취소) — 리치 중 매 순 후보가 서므로 [리치] 자리에 선다(리치 중이라 [리치]와
+   * 동시에 뜨지 않는다). ✦ 메뉴에서는 뺐다(ACTIONBAR_AUG_IDS, 2026-09-25, docs/59 U51).
+   */
+  const cancelRiichiOpt = prompt.options.find((o) => o.type === "cancel_riichi");
   const isMyTurn = view.round.phase === "turn.act";
   /*
    * 증강 리치(오픈 리치·스텔스 리치·올인 리치·영혼의 일격)를 **[리치] 바로 옆**에 띄운다.
@@ -28475,6 +28661,24 @@ function ActionBar(props: {
   ];
   const armedRiichiAug =
     sel.armedType !== null && DRAG_DISCARD_ARM_TYPES.has(sel.armedType) ? sel.armedType : null;
+  /*
+   * 리치 모드처럼 그리는가 — 평범한 리치 모드이거나 증강 리치로 무장했을 때.
+   *
+   * 증강 리치 무장은 여태 액션 바를 평상시대로 두고([리치][⚡A(켜짐)][⚡B]…) 손패 위에 안내 줄을
+   * 따로 세웠다. 같은 «리치할 패 고르기»인데 평범한 리치(액션 바 한 줄)와 안내 자리·모양이
+   * 달랐고 취소 수단이 둘(켜진 ⚡, 안내 줄 [취소])이었다. 무장도 액션 바 한 줄로 맞춘다 —
+   * 손패 위 안내 줄은 DRAG형에 한해 그리지 않는다(OwnArea, 2026-09-25, docs/59 U55).
+   */
+  const riichiLike = props.riichiMode || armedRiichiAug !== null;
+  // 증강 리치 무장 중에 바꿔 탈 ⚡ — 무장한 것은 이미 안내 줄 이름이 말한다
+  const switchAugTypes = riichiAugTypes.filter((t) => t !== armedRiichiAug);
+  /*
+   * 증강 리치가 둘 이상이면 [리치]와 ⚡들을 한 테두리(`.riichi-group`)로 묶어 «리치 계열 한 덩어리»로
+   * 읽히게 한다. 접어서([리치 ▾]) 숨기지 않는다 — 2026-08-08 결정(리치 순간 한눈에)을 약하게 만든다.
+   * 셋 이상이면 폭을 아끼려고 ⚡ 보조 줄(U53)을 생략한다(2026-09-25, docs/59 U54).
+   */
+  const groupRiichi = riichiAugTypes.length >= 2;
+  const showAugSub = riichiAugTypes.length < 3;
   // 타일 클릭으로 처리되는 액션과 액티브 증강(전용 버튼)은 액션 바에서 제외
   const rawButtons = prompt.options.filter(
     (o) =>
@@ -28505,7 +28709,8 @@ function ActionBar(props: {
     buttons.length === 0 &&
     locked.length === 0 &&
     !hasRiichi &&
-    riichiAugTypes.length === 0
+    riichiAugTypes.length === 0 &&
+    cancelRiichiOpt === undefined
   ) {
     return null;
   }
@@ -28515,6 +28720,32 @@ function ActionBar(props: {
     props.onRiichiMode(false);
     sel.arm(sel.armedType === type ? null : type);
   };
+  /** 평범한 리치로 — 증강 리치로 무장 중이었다면 풀고 리치 모드로 */
+  const enterRiichi = (): void => {
+    sel.arm(null);
+    props.onRiichiMode(true);
+  };
+  /**
+   * 리치 취소는 **언제나** 두 번 눌러 확정한다 — 국당 1회이고 되돌릴 수 없으며 그 국의 재리치까지
+   * 잠근다. 손패 두 번 누르기 설정(tapTwiceToDiscard)에 묶지 않는다: 그 설정은 오타패 방지이고,
+   * 이 수는 마우스로 눌러도 잘못 누르면 되돌릴 길이 없다(2026-09-25, docs/59 U51).
+   */
+  const pressCancelRiichi = (): void => {
+    if (cancelRiichiOpt === undefined) return;
+    if (!cancelArmed) {
+      setCancelArmed(true);
+      return;
+    }
+    setCancelArmed(false);
+    props.onSubmit(cancelRiichiOpt);
+  };
+  // 무장 분기의 [취소] — 무장만 푼다(리치 모드는 이미 꺼져 있다)
+  const cancelRiichiLike = (): void => {
+    if (armedRiichiAug !== null) sel.arm(null);
+    else props.onRiichiMode(false);
+  };
+  // 무장 분기에서도 [론·쯔모]는 남긴다 — 무장 중 쯔모하려고 먼저 [취소]할 필요가 없게(U55)
+  const winButtons = buttons.filter((o) => o.type === "win");
 
   /*
    * 단축키 — 여태 게임을 키보드로 두는 길이 아예 없었다(포커스 표시조차 없었다).
@@ -28528,153 +28759,257 @@ function ActionBar(props: {
    * 대신 title(툴팁)이 그대로 알려 준다.
    */
   const keyed: { key: string; run: () => void }[] = [];
-  if (props.riichiMode) {
-    keyed.push({ key: "1", run: () => props.onRiichiMode(false) });
+  /** 단축키 줄 끝에 이어 붙는 선택지 버튼 — 글자 단축키(R/P)가 이 목록에서 자리를 찾는다 */
+  let hotButtons: ActionOption[];
+  if (riichiLike) {
+    keyed.push({ key: "1", run: cancelRiichiLike });
+    // 증강 리치 무장 중에는 평범한 리치로 돌아가는 길도 둔다
+    if (armedRiichiAug !== null && hasRiichi) {
+      keyed.push({ key: String(keyed.length + 1), run: enterRiichi });
+    }
     // 리치 모드에서도 증강 리치로 갈아탈 수 있게 — 취소하고 다시 찾을 필요가 없다.
-    for (const t of riichiAugTypes) {
+    for (const t of switchAugTypes) {
       keyed.push({ key: String(keyed.length + 1), run: () => armRiichiAug(t) });
     }
+    hotButtons = armedRiichiAug !== null ? winButtons : [];
   } else {
     // 버튼과 같게 무장을 먼저 푼다 — 안 풀면 ✦ 무장(이면투시 바꿔치기 등)이 리치 모드와 함께 남아
     // 리치하려던 손패 클릭이 무장 분기로 먼저 빠져 증강이 그 자리에서 나간다(W2 interaction-1).
     if (hasRiichi) keyed.push({ key: "1", run: () => { sel.arm(null); props.onRiichiMode(true); } });
+    // 리치 취소도 버튼과 같게 두 번 눌러야 나간다
+    if (cancelRiichiOpt !== undefined) {
+      keyed.push({ key: String(keyed.length + 1), run: pressCancelRiichi });
+    }
     for (const t of riichiAugTypes) {
       keyed.push({ key: String(keyed.length + 1), run: () => armRiichiAug(t) });
     }
-    for (const o of buttons) keyed.push({ key: String(keyed.length + 1), run: () => props.onSubmit(o) });
+    hotButtons = buttons;
   }
-  const hotIndex = (i: number): string =>
-    String((hasRiichi ? 1 : 0) + riichiAugTypes.length + i + 1);
+  for (const o of hotButtons) keyed.push({ key: String(keyed.length + 1), run: () => props.onSubmit(o) });
+  /** 선택지 버튼 앞에 선 리치 계열 버튼 수 — 선택지 버튼의 단축키 번호가 여기서 이어진다 */
+  const hotBase = keyed.length - hotButtons.length;
+  const hotIndex = (i: number): string => String(hotBase + i + 1);
+
+  /** ⚡ 증강 리치 버튼 하나 — 평상시와 리치 모드·무장 분기가 같은 모양을 쓴다(U53) */
+  const riichiAugButton = (t: string, hot: number, title: string): JSX.Element => {
+    const sub = showAugSub ? riichiAugSub(view, t) : "";
+    return (
+      <button
+        key={t}
+        className="act act-riichi-aug"
+        onClick={() => armRiichiAug(t)}
+        title={`${title} (단축키 ${hot})`}
+      >
+        ⚡ {augActionName(props.catalog, t)}
+        {sub !== "" ? <span className="act-target">{sub}</span> : null}
+      </button>
+    );
+  };
+  /** 리치 계열 버튼 무리 — 증강 리치가 둘 이상이면 한 테두리로 묶는다(U54). 순서·단축키는 그대로다 */
+  const riichiCluster = (nodes: JSX.Element[]): JSX.Element | JSX.Element[] =>
+    groupRiichi && nodes.length >= 2 ? (
+      <div className="riichi-group" role="group" aria-label="리치">
+        {nodes}
+      </div>
+    ) : (
+      nodes
+    );
+
+  const renderButton = (o: ActionOption, i: number): JSX.Element => {
+    const label =
+      o.type === "win" ? (isMyTurn ? "쯔모" : "론") : actionLabel(o.type, props.catalog);
+    /*
+     * 증강이 만든 콜(허장성세·묵계·우는 국사 퐁)도 증강 색이다 — 손패 한 장을 태우는 국당 1회
+     * 증강이 평범한 [퐁]과 같은 파랑이라 무심코 쓰기 쉬웠다. ACTION_AUGMENT 매핑이 곧 «증강이 만든
+     * 액션»이다. ⚠ 이 타입들을 AUGMENT_ACTION_TYPES에 넣지 않는다 — 위 rawButtons가 그 집합을
+     * 액션 바에서 빼 버려 콜 버튼이 사라진다(2026-09-25, docs/59 U59).
+     */
+    const fromAugment = ACTION_AUGMENT[o.type] !== undefined;
+    const tone =
+      o.type === "win"
+        ? "act-win"
+        : o.type === "pass"
+          ? "act-pass"
+          : ACTION_LABEL[o.type] === undefined || AUGMENT_ACTION_TYPES.has(o.type) || fromAugment
+            ? "act-aug"
+            : "act-call";
+    const detail = optionDetail(view, o);
+    const key = `${o.type}-${i}`;
+    // 미리보기 먼저 — 첫 탭은 재료를 손패에 고정해 짚기만 한다(U61)
+    const previewFirst = props.tapTwiceToDiscard === true && PREVIEW_FIRST_TYPES.has(o.type);
+    const primed = primedKey === key;
+    return (
+      <button
+        key={key}
+        className={`act ${tone}${primed ? " act-primed" : ""}`}
+        data-confirm-pending={primed ? "1" : undefined}
+        onClick={() => {
+          if (previewFirst && !primed) {
+            setPrimedKey(key);
+            props.onDoomedHint?.(doomedTileIdsOf(view, o.type));
+            return;
+          }
+          setPrimedKey(null);
+          props.onSubmit(o);
+        }}
+        /* 누르면 사라지는 패를 손패에서 짚는다 — 마우스·키보드 둘 다 (감사 §6-10) */
+        onMouseEnter={() => props.onDoomedHint?.(doomedTileIdsOf(view, o.type))}
+        // 첫 탭을 받은 버튼은 손을 떼도(터치의 호환 mouseleave·blur) 짚은 패를 그대로 둔다(U61)
+        onMouseLeave={() => {
+          if (!primed) props.onDoomedHint?.(null);
+        }}
+        onFocus={() => props.onDoomedHint?.(doomedTileIdsOf(view, o.type))}
+        onBlur={() => {
+          if (!primed) props.onDoomedHint?.(null);
+        }}
+        title={
+          o.type === "win"
+            ? `${label} (단축키 ${hotIndex(i)} 또는 R)`
+            : o.type === "pass"
+              ? `${label} (단축키 ${hotIndex(i)} 또는 P)`
+              : `${label} (단축키 ${hotIndex(i)})`
+        }
+      >
+        {fromAugment ? "✦ " : ""}
+        {label}
+        {primed ? (
+          <span className="act-target">한 번 더 눌러 발동</span>
+        ) : detail !== "" ? (
+          <span className="act-target">{detail}</span>
+        ) : null}
+        <ActionTiles view={view} option={o} />
+      </button>
+    );
+  };
+
+  if (riichiLike) {
+    const hint =
+      armedRiichiAug !== null
+        ? `${augActionName(props.catalog, armedRiichiAug)}: ${
+            armedRiichiAug === "flip_riichi" ? "버릴 패" : "리치할 패"
+          }를 바닥으로 끌어 놓거나 클릭하세요`
+        : "리치할 패를 바닥으로 끌어 놓거나 클릭하세요";
+    const plainRiichiBack = armedRiichiAug !== null && hasRiichi;
+    const switchNodes: JSX.Element[] = [];
+    if (plainRiichiBack) {
+      switchNodes.push(
+        <button key="riichi" className="act act-riichi" onClick={enterRiichi} title="평범한 리치로 바꾸기 (단축키 2)">
+          리치
+        </button>,
+      );
+    }
+    switchAugTypes.forEach((t, i) => {
+      switchNodes.push(
+        riichiAugButton(
+          t,
+          2 + (plainRiichiBack ? 1 : 0) + i,
+          `${augActionName(props.catalog, t)}(으)로 바꿔서 리치`,
+        ),
+      );
+    });
+    return (
+      <div className="action-bar">
+        <ActionHotkeys keyed={keyed} buttons={hotButtons} riichiMode={props.riichiMode} />
+        <span className="action-hint">{hint}</span>
+        <button className="act act-cancel" onClick={cancelRiichiLike} title="취소 (단축키 1)">
+          취소
+        </button>
+        {/* 그냥 리치를 걸려던 손을 여기서 한 번 더 붙잡는다 — 증강 리치가 있다는 걸
+            가장 늦게 알려 줄 수 있는 자리다. */}
+        {riichiCluster(switchNodes)}
+        {armedRiichiAug !== null ? winButtons.map((o, i) => renderButton(o, i)) : null}
+      </div>
+    );
+  }
+
+  // 평상시 — [리치][리치 취소][⚡…] 순. 단축키 번호도 이 순서다(keyed와 같다)
+  const riichiNodes: JSX.Element[] = [];
+  if (hasRiichi) {
+    riichiNodes.push(
+      <button
+        key="riichi"
+        className="act act-riichi"
+        onClick={() => {
+          sel.arm(null); // 증강 리치로 무장 중이었다면 풀고 평범한 리치로
+          props.onRiichiMode(true);
+        }}
+        title="리치 (단축키 1)"
+      >
+        리치
+      </button>,
+    );
+  }
+  if (cancelRiichiOpt !== undefined) {
+    const hot = (hasRiichi ? 1 : 0) + 1;
+    riichiNodes.push(
+      <button
+        key="cancel_riichi"
+        className={`act act-riichi-cancel${cancelArmed ? " act-riichi-cancel-armed" : ""}`}
+        data-confirm-pending={cancelArmed ? "1" : undefined}
+        onClick={pressCancelRiichi}
+        title={`${augActionName(props.catalog, "cancel_riichi")}: 리치를 취소하고 리치봉을 돌려받습니다. 이 국에는 다시 리치를 걸 수 없습니다. 두 번 눌러 확정 (단축키 ${hot})`}
+      >
+        {/* 이름은 증강 이름 하나(§2 원칙 6) — 무엇을 하는지는 부제가 말한다. 첫 탭 뒤에는
+            무엇이 남았는지를 본문이 말한다 */}
+        {cancelArmed ? "한 번 더 눌러 확정" : augActionName(props.catalog, "cancel_riichi")}
+        <span className="act-target">리치 취소 · 재리치 불가</span>
+      </button>,
+    );
+  }
+  const augLead = (hasRiichi ? 1 : 0) + (cancelRiichiOpt !== undefined ? 1 : 0);
+  riichiAugTypes.forEach((t, i) => {
+    riichiNodes.push(
+      riichiAugButton(
+        t,
+        augLead + i + 1,
+        `${augActionName(props.catalog, t)}: ${t === "flip_riichi" ? "버릴 패" : "리치할 패"}를 바닥으로 끌어 놓거나 클릭하세요`,
+      ),
+    );
+  });
+  // buttons 는 [론·쯔모 … 후로 … 패스] 순이다 — 가운데 무리만 스크롤 상자에 넣는다
+  const winEnd = buttons.findIndex((o) => o.type !== "win");
+  const wins = winEnd === -1 ? buttons : buttons.slice(0, winEnd);
+  const passStart = buttons.findIndex((o) => o.type === "pass");
+  const calls = buttons.slice(wins.length, passStart === -1 ? buttons.length : passStart);
+  const passes = passStart === -1 ? [] : buttons.slice(passStart);
 
   return (
     <div className="action-bar">
-      <ActionHotkeys keyed={keyed} buttons={buttons} riichiMode={props.riichiMode} />
-      {props.riichiMode ? (
-        <>
-          <span className="action-hint">리치할 패를 바닥으로 끌어 놓거나 클릭하세요</span>
-          <button className="act act-cancel" onClick={() => props.onRiichiMode(false)} title="취소 (단축키 1)">
-            취소
+      <ActionHotkeys keyed={keyed} buttons={hotButtons} riichiMode={props.riichiMode} />
+      {riichiCluster(riichiNodes)}
+      {/* 잠긴 선언 — 증강이 막은 론/쯔모. 누를 수 없지만 **자리를 지킨다**:
+          여기서 사라지면 당한 사람은 왜 화료가 안 되는지 알 길이 없다.
+          고를 것이 패스뿐이면 스스로 넘어가므로, 남은 시간을 버튼이 직접 보여 준다. */}
+      {locked.map((l) => {
+        // core 계약상 지금은 win뿐이지만, 늘어나도 내부 type이 조용히 서지 않게
+        // actionLabel 한 경로로 떨어뜨린다(2026-09-25, docs/59 U62)
+        const label =
+          l.type === "win" ? (isMyTurn ? "쯔모" : "론") : actionLabel(l.type, props.catalog);
+        return (
+          <button
+            key={`locked-${l.type}-${l.reason}`}
+            className={`act act-win act-locked${autoPassing ? " act-locked-timed" : ""}`}
+            type="button"
+            disabled
+            aria-disabled="true"
+            title={
+              autoPassing
+                ? `${lockedReasonText(l)}. 잠시 뒤 자동으로 넘어갑니다.`
+                : lockedReasonText(l)
+            }
+          >
+            🔒 {label}
+            <span className="act-target">{lockedReasonShort(l)}</span>
           </button>
-          {/* 그냥 리치를 걸려던 손을 여기서 한 번 더 붙잡는다 — 증강 리치가 있다는 걸
-              가장 늦게 알려 줄 수 있는 자리다. */}
-          {riichiAugTypes.map((t, i) => (
-            <button
-              key={t}
-              className="act act-riichi-aug"
-              onClick={() => armRiichiAug(t)}
-              title={`${augActionName(props.catalog, t)}(으)로 바꿔서 리치 (단축키 ${i + 2})`}
-            >
-              ⚡ {augActionName(props.catalog, t)}
-            </button>
-          ))}
-        </>
-      ) : (
-        <>
-          {hasRiichi ? (
-            <button
-              className="act act-riichi"
-              onClick={() => {
-                sel.arm(null); // 증강 리치로 무장 중이었다면 풀고 평범한 리치로
-                props.onRiichiMode(true);
-              }}
-              title="리치 (단축키 1)"
-            >
-              리치
-            </button>
-          ) : null}
-          {riichiAugTypes.map((t, i) => (
-            <button
-              key={t}
-              className={`act act-riichi-aug${armedRiichiAug === t ? " act-riichi-aug-on" : ""}`}
-              onClick={() => armRiichiAug(t)}
-              title={`${augActionName(props.catalog, t)}: 버릴 패를 바닥으로 끌어 놓거나 클릭하세요 (단축키 ${(hasRiichi ? 1 : 0) + i + 1})`}
-            >
-              ⚡ {augActionName(props.catalog, t)}
-            </button>
-          ))}
-          {/* 잠긴 선언 — 증강이 막은 론/쯔모. 누를 수 없지만 **자리를 지킨다**:
-              여기서 사라지면 당한 사람은 왜 화료가 안 되는지 알 길이 없다.
-              고를 것이 패스뿐이면 스스로 넘어가므로, 남은 시간을 버튼이 직접 보여 준다. */}
-          {locked.map((l) => {
-            // core 계약상 지금은 win뿐이지만, 늘어나도 내부 type이 조용히 서지 않게
-            // actionLabel 한 경로로 떨어뜨린다(2026-09-25, docs/59 U62)
-            const label =
-              l.type === "win" ? (isMyTurn ? "쯔모" : "론") : actionLabel(l.type, props.catalog);
-            return (
-              <button
-                key={`locked-${l.type}-${l.reason}`}
-                className={`act act-win act-locked${autoPassing ? " act-locked-timed" : ""}`}
-                type="button"
-                disabled
-                aria-disabled="true"
-                title={
-                  autoPassing
-                    ? `${lockedReasonText(l)}. 잠시 뒤 자동으로 넘어갑니다.`
-                    : lockedReasonText(l)
-                }
-              >
-                🔒 {label}
-                <span className="act-target">{lockedReasonShort(l)}</span>
-              </button>
-            );
-          })}
-          {(() => {
-            const renderButton = (o: ActionOption, i: number): JSX.Element => {
-              const label =
-                o.type === "win" ? (isMyTurn ? "쯔모" : "론") : actionLabel(o.type, props.catalog);
-              const tone =
-                o.type === "win"
-                  ? "act-win"
-                  : o.type === "pass"
-                    ? "act-pass"
-                    : ACTION_LABEL[o.type] === undefined || AUGMENT_ACTION_TYPES.has(o.type)
-                      ? "act-aug"
-                      : "act-call";
-              const detail = optionDetail(view, o);
-              return (
-                <button
-                  key={`${o.type}-${i}`}
-                  className={`act ${tone}`}
-                  onClick={() => props.onSubmit(o)}
-                  /* 누르면 사라지는 패를 손패에서 짚는다 — 마우스·키보드 둘 다 (감사 §6-10) */
-                  onMouseEnter={() => props.onDoomedHint?.(doomedTileIdsOf(view, o.type))}
-                  onMouseLeave={() => props.onDoomedHint?.(null)}
-                  onFocus={() => props.onDoomedHint?.(doomedTileIdsOf(view, o.type))}
-                  onBlur={() => props.onDoomedHint?.(null)}
-                  title={
-                    o.type === "win"
-                      ? `${label} (단축키 ${hotIndex(i)} 또는 R)`
-                      : o.type === "pass"
-                        ? `${label} (단축키 ${hotIndex(i)} 또는 P)`
-                        : `${label} (단축키 ${hotIndex(i)})`
-                  }
-                >
-                  {label}
-                  {detail !== "" ? <span className="act-target">{detail}</span> : null}
-                  <ActionTiles view={view} option={o} />
-                </button>
-              );
-            };
-            // buttons 는 [론·쯔모 … 후로 … 패스] 순이다 — 가운데 무리만 스크롤 상자에 넣는다
-            const winEnd = buttons.findIndex((o) => o.type !== "win");
-            const wins = winEnd === -1 ? buttons : buttons.slice(0, winEnd);
-            const passStart = buttons.findIndex((o) => o.type === "pass");
-            const calls = buttons.slice(wins.length, passStart === -1 ? buttons.length : passStart);
-            const passes = passStart === -1 ? [] : buttons.slice(passStart);
-            return (
-              <>
-                {wins.map((o, i) => renderButton(o, i))}
-                {calls.length > 0 ? (
-                  <div className="action-calls">
-                    {calls.map((o, i) => renderButton(o, wins.length + i))}
-                  </div>
-                ) : null}
-                {passes.map((o, i) => renderButton(o, wins.length + calls.length + i))}
-              </>
-            );
-          })()}
-        </>
-      )}
+        );
+      })}
+      {wins.map((o, i) => renderButton(o, i))}
+      {calls.length > 0 ? (
+        <div className="action-calls">
+          {calls.map((o, i) => renderButton(o, wins.length + i))}
+        </div>
+      ) : null}
+      {passes.map((o, i) => renderButton(o, wins.length + calls.length + i))}
     </div>
   );
 }
@@ -28752,6 +29087,24 @@ function ActionTiles({ view, option }: { view: PlayerView; option: ActionOption 
         <TileImg tile={drawn} size="mini" />
         <span className="act-tiles-arrow" aria-hidden="true">→</span>
         <TileImg tile={{ kind: drawn.kind, attrs: { conjured: true } }} size="mini" />
+      </span>
+    );
+  }
+  /*
+   * 허장성세 퐁 — [일치패] + [희생패 ✕]를 늘 그린다. 희생패는 hover·focus 때만 손패에서 짚였는데
+   * 리액션 타이머 안의 터치에서는 짚는 순간 이미 제출됐다(2026-09-25, docs/59 U61). 값은 서버가
+   * 실어 주는 재료 채널 그대로다(doomedTileIdsOf — 클라가 다시 세면 짚는 패와 타는 패가 갈린다).
+   */
+  if (option.type === "bluff_pon" && typeof p.tileId === "number") {
+    const material = doomedTileIdsOf(view, "bluff_pon")[0];
+    return (
+      <span className="act-tiles">
+        <TileImg tile={view.tiles[p.tileId]} size="mini" />
+        {material !== undefined && view.tiles[material] !== undefined ? (
+          <span className="act-tile-doomed" title="이 퐁에 쓰여 사라지는 내 패">
+            <TileImg tile={view.tiles[material]} size="mini" />
+          </span>
+        ) : null}
       </span>
     );
   }

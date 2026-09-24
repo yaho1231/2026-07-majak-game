@@ -137,7 +137,10 @@ describe("U04 왕패의 주인 — 모달이 아니라 실제 손패 + 도킹 �
     expect(at).toBeGreaterThan(0);
     expect(at).toBeLessThan(APP_CODE.indexOf("<WallPeekRow", at));
     // 일반 안내 줄은 패널이 대신한다 — 같은 [취소]가 두 번 서지 않게
-    expect(APP_CODE).toMatch(/\) : armedAug === "dw_swap" \? \(\s*null\s*\) : armedAug !== null \? \(/);
+    // (2026-09-25 docs/59 U55: 일반 안내 줄은 증강 리치(DRAG형) 무장도 뺀다 — 액션 바가 한 줄로 든다)
+    expect(APP_CODE).toMatch(
+      /\) : armedAug === "dw_swap" \? \(\s*null\s*\) : armedAug !== null && !DRAG_DISCARD_ARM_TYPES\.has\(armedAug\) \? \(/,
+    );
   });
 
   it("잠깐 뜨는 줄 무리(order:-1 · --own-band 실측 제외)에 든다", () => {

@@ -45,8 +45,12 @@ describe("U37 — 단일 ✦ 버튼은 증강 이름을 적는다", () => {
     expect(CONTROL).toContain(
       "const single = usable && types.length === 1 ? (types[0] ?? null) : null;",
     );
-    // click()의 즉시 발동(후보 1개면 즉시 제출)은 그대로 — 확인창을 새로 두지 않는다
-    expect(CONTROL).toMatch(/if \(types\.length === 1\) \{\s*activate\(types\[0\]!\);\s*return;/);
+    // click()의 즉시 발동(후보 1개면 즉시 제출)은 그대로 — 확인창을 새로 두지 않는다.
+    // 예외는 손패를 태우거나 바꾸는 선언의 «미리보기 먼저» 첫 탭뿐이다(두 번 눌러 버리기 설정 재사용,
+    // 2026-09-25 docs/59 U61 — riichiCallButtonsB15.test.ts가 지킨다)
+    expect(CONTROL).toMatch(
+      /if \(types\.length === 1\) \{[^}]*?if \(primeFirst\(types\[0\]!\)\) return;\s*activate\(types\[0\]!\);\s*return;/,
+    );
     expect(CONTROL).not.toMatch(/window\.confirm|confirmDialog/);
   });
 
