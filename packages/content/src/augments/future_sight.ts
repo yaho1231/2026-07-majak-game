@@ -173,7 +173,8 @@ function commonReject(state: GameState, player: PlayerId): string | null {
 }
 
 /**
- * 무장 선언 — 이걸 눌러야 교환 후보(모달)가 열린다. 패는 전혀 움직이지 않는다.
+ * 무장 선언 — 이걸 눌러야 교환 후보가 열린다(화면은 손패에서 뽑힌 3장을 빛내 버릴 패를
+ * 고르게 한다 — 2026-09-25 클라 docs/59 U03, 예전엔 모달). 패는 전혀 움직이지 않는다.
  *
  * ⚠ **누르는 순간 그 발동이 소모된다** (2026-08-20 QA hand-a 확정 3).
  * 예전에는 플래그만 세우고 패·순·쿨다운을 하나도 쓰지 않아서, 뽑힌 무작위 3장을
@@ -406,7 +407,7 @@ export const futureSight: AugmentDef = defineAugment({
     );
 
     // 발동은 2단계다 — 무장 전에는 액티브 버튼(future_arm)만, 무장 후에야 교환 후보
-    // (모달)가 뜬다. 예전처럼 턴 시작과 동시에 교환 프롬프트가 뜨지 않는다.
+    // (손패의 뽑힌 3장 — 클라 docs/59 U03)가 뜬다. 예전처럼 턴 시작과 동시에 교환 프롬프트가 뜨지 않는다.
     // (같은 state → 같은 3장이므로 validate와 어긋나지 않는다. 최종 판정은 validate.)
     ctx.holderTurnOptions((state) => {
       if (handIdsOf(state, holder).length < 4) return [];

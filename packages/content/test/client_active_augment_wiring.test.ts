@@ -113,6 +113,55 @@ describe("클라이언트 액티브 증강 배선", () => {
     expect(SRC).toMatch(/if \(hand3Option !== undefined\) sel\.submit\(hand3Option\)/);
   });
 
+  it("이면투시 바꿔치기·붉은 손길은 모달이 아니라 실제 손패 클릭(hand)으로 고른다", () => {
+    // 2026-09-25 docs/59 U01·U02 — 판에 보이는 내 손패를 모달에 다시 그리지 않는다(§2 원칙 2)
+    expect(armMode.get("ura_swap")).toBe("hand");
+    expect(armMode.get("red_touch")).toBe("hand");
+    const modal = setLiterals("MODAL_PICK_TYPES");
+    expect(modal.has("ura_swap")).toBe(false);
+    expect(modal.has("red_touch")).toBe(false);
+    // 옛 모달 JSX가 죽은 코드로 남지 않는다
+    expect(SRC).not.toContain('pickModal === "ura_swap"');
+    expect(SRC).not.toContain('pickModal === "red_touch"');
+    // 서버 payload는 그대로 — 두 액션은 여전히 액티브 메뉴 입구를 가진다
+    expect(augmentActionTypes.has("ura_swap")).toBe(true);
+    expect(augmentActionTypes.has("red_touch")).toBe(true);
+  });
+
+  it("종류 지목형(스파이·소환)은 같은 종류의 어느 장을 눌러도 대표 옵션을 낸다", () => {
+    // docs/59 U17 — 서버가 종류마다 첫 장만 후보로 내서 둘째 장이 어두워지고 무장이 풀렸다
+    const kindTarget = new Set(ids(setLiterals("KIND_TARGET_ARM_TYPES")));
+    expect([...kindTarget].sort()).toEqual(["conjure_tsumo", "spy_mark"]);
+    for (const t of kindTarget) expect(armMode.get(t)).toBe("hand");
+  });
+
+  it("되돌릴 수 없는 손패 무장은 «두 번 눌러 확정» 게이트를 탄다", () => {
+    // docs/59 U01 — 국당 1회인 이면투시 바꿔치기는 증강 리치와 같은 게이트
+    expect(ids(setLiterals("ARM_CONFIRM_TYPES"))).toContain("ura_swap");
+    // docs/59 U16 (B06) — 후보 한 장이면 누르는 순간 확정되는 손패 무장 전부. 누명은 1단계가
+    // 고르기일 뿐이라 빠지고, 증강 리치는 DRAG_DISCARD 쪽으로 이미 걸린다.
+    const confirm = ids(setLiterals("ARM_CONFIRM_TYPES"));
+    // B07(docs/59 U03) — 미래를 보는 자의 버릴 패도 누르는 순간 바닥으로 나가 같은 게이트를 탄다
+    expect(confirm).toEqual(
+      [
+        "alchemy",
+        "conjure_tsumo",
+        "future_exchange",
+        "joker_call",
+        "peek_forge",
+        "split_tile",
+        "spy_mark",
+        "tile_dye",
+        "ura_swap",
+      ],
+    );
+    for (const t of confirm) expect(armMode.get(t), t).toBe("hand");
+    expect(confirm).not.toContain("frame_discard");
+    expect(SRC).toContain(
+      "(DRAG_DISCARD_ARM_TYPES.has(armedAug) || ARM_CONFIRM_TYPES.has(armedAug)) &&",
+    );
+  });
+
   /*
    * 2026-09-25 (docs/59 U62·U11): 버튼형(AUGMENT_ACTION_TYPES)만 라벨을 검사하면, 새 무장형
    * 액션을 ARM_MODE에만 넣고 이름을 빠뜨렸을 때 «입구» 검사는 armMode.has로 통과하고
@@ -140,6 +189,20 @@ describe("클라이언트 액티브 증강 배선", () => {
     const modal = new Set(ids(setLiterals("MODAL_PICK_TYPES")));
     expect(ids(armMode.keys()).filter((t) => modal.has(t))).toEqual([]);
     expect(SRC).not.toContain('pickModal === "silent_take"');
+  });
+
+  it("ARM_MODE 값은 전부 실제 쓰이는 ArmMode다 — 아무도 안 쓰는 무장 방식이 남지 않는다", () => {
+    // 2026-09-25 (docs/59 U11): ArmMode "swap3"(상대 → 내 3장)는 ARM_MODE.swap3가 "opp"로 바뀐
+    // 뒤 아무 액션도 쓰지 않았는데, useSelection·OwnArea·armHint에 분기와 안내 줄이 그대로 남아
+    // 어느 경로가 실제로 도는지 헷갈리게 했다. 값 ⊆ 유니언, 유니언 ⊆ 값 둘 다 본다.
+    const m = /^type ArmMode = ([^;]+);/m.exec(SRC);
+    if (m === null) throw new Error("ArmMode 선언을 못 찾았다 (형태가 바뀌었는가?)");
+    const union = new Set([...m[1]!.matchAll(/"([^"]+)"/g)].map((x) => x[1]!));
+    expect(union.size).toBeGreaterThan(3);
+    const used = new Set(armMode.values());
+    expect([...used].filter((v) => !union.has(v))).toEqual([]);
+    expect([...union].filter((v) => !used.has(v))).toEqual([]);
+    expect(union.has("swap3")).toBe(false);
   });
 
   it("핏빛 계약이 고르게 하는 역은 전부 한글 역 이름이 있다", () => {

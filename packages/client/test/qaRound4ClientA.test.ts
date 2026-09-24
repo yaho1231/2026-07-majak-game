@@ -51,8 +51,18 @@ describe("증강 선택 모달이 남은 시간을 스스로 보여 준다", () 
      * 새 모달이 생겼을 때 이 줄을 빼먹지 않도록 **개수로** 못을 박는다.
      */
     const panels = APP_CODE.match(/className="rinshan-pick-panel/g) ?? [];
-    const timers = APP_CODE.match(/<PickTimer deadline=/g) ?? [];
-    expect(panels.length).toBeGreaterThanOrEqual(10);
+    // armSub 팝오버(`.arm-sub-pop`, 패널이 아니다)도 손패 위에서 PromptTimer를 덮으므로 머리 줄에
+    // PickTimer를 하나 갖는다(B05 리뷰, 2026-09-25). 그 분기를 빼고 세어 «PickTimer 개수 = 패널
+    // 개수» 등식(docs/59 §7)을 그대로 지킨다 — 팝오버 쪽 타이머는 armSubPopoverB05가 따로 못 박는다.
+    const popAt = APP_CODE.indexOf("{armSub !== null ? (() => {");
+    expect(popAt, "armSub 팝오버 분기가 없다").toBeGreaterThan(-1);
+    const outsidePop = APP_CODE.slice(0, popAt) + APP_CODE.slice(APP_CODE.indexOf("document.body,", popAt));
+    const timers = outsidePop.match(/<PickTimer deadline=/g) ?? [];
+    // 모달을 지우는 배치마다 그때의 개수로 내린다 — B04(2026-09-25)가 이면투시·붉은 손길 두 개를
+    // 실물 손패 클릭으로 옮겨 10 → 8, B05(2026-09-25)가 armSub를 앵커 팝오버로 바꿔 8 → 7,
+    // B07(2026-09-25)이 미래를 보는 자 모달을 손패 강제 무장으로 옮겨 7 → 6
+    // (docs/59 §7 배치 공통 규약)
+    expect(panels.length).toBeGreaterThanOrEqual(6);
     expect(timers.length).toBe(panels.length);
   });
 

@@ -61,8 +61,9 @@ describe("§2-5 — send()가 실패하면 프롬프트를 그대로 둔다", ()
   it("submitOption — 전송 실패면 프롬프트를 내리지 않는다", () => {
     const body = fnBody("function submitOption(");
     expect(body).toMatch(/const sent = send\(/);
-    expect(body).toContain("if (!sent) return;");
-    const guard = body.indexOf("if (!sent) return;");
+    // 2026-09-25: 전송 성공 여부를 돌려준다(false) — 제출 뒤 자기 UI를 닫는 호출부가 실패를 알게
+    expect(body).toContain("if (!sent) return false;");
+    const guard = body.indexOf("if (!sent) return false;");
     expect(body.indexOf("dropPrompt(seat)")).toBeGreaterThan(guard);
   });
 
@@ -118,13 +119,14 @@ describe("§2-3·2-4 — 중앙 보드는 아래 띠를 침범하지 않는다",
   });
 
   it("잠깐 뜨는 줄만 위로 자란다 — CSS order 목록과 실측 제외 목록이 같다", () => {
-    const TRANSIENT = [".action-bar", ".prompt-timer", ".arm-hint"];
+    // 등가교환 참고 줄도 잠깐 뜨는 줄이다(W2 regression-1)
+    const TRANSIENT = [".action-bar", ".prompt-timer", ".arm-hint", ".swap3-reveal-strip"];
     for (const sel of TRANSIENT) {
       expect(CSS_CODE).toContain(`.own-area > ${sel}`);
     }
-    expect(CSS_CODE).toMatch(/\.own-area > \.arm-hint\s*\{\s*order:\s*-1/);
+    expect(CSS_CODE).toMatch(/\.own-area > \.arm-hint,\s*\.own-area > \.swap3-reveal-strip\s*\{\s*order:\s*-1/);
     // App 쪽 실측에서 빼는 목록 — 둘이 어긋나면 띠가 잘못 계산된다
-    expect(APP_CODE).toContain('el.matches(".action-bar, .prompt-timer, .arm-hint")');
+    expect(APP_CODE).toContain('el.matches(".action-bar, .prompt-timer, .arm-hint, .swap3-reveal-strip")');
   });
 });
 

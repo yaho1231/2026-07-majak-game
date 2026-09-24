@@ -176,6 +176,15 @@ describe("«두 번 눌러 버리기» 게이트에 구멍이 없다", () => {
     expect(at, "riichiMode 리셋 이펙트가 없다").toBeGreaterThan(0);
   });
 
+  it("무장이 바뀌면 들어 올린 패를 내린다 (docs/59 U16 — 무장 게이트가 되돌릴 수 없는 손패 무장까지 넓어졌다)", () => {
+    // 무장 A로 들어 올린 뒤 무장 B로 갈아타고 같은 패를 누르면 게이트를 건너뛰고 B가 확정됐다.
+    const end = APP_CODE.indexOf("}, [armedAug]);");
+    expect(end, "armedAug 리셋 이펙트가 없다").toBeGreaterThan(0);
+    expect(APP_CODE.slice(APP_CODE.lastIndexOf("useEffect(() => {", end), end)).toContain(
+      "setArmedTileId(null);",
+    );
+  });
+
   it("무장형 리치에도 게이트가 걸린다 (확정 8)", () => {
     // 무장 분기가 게이트보다 위에서 return 해서, 오픈 리치·올인 리치가 오탭 한 번에
     // 확정됐다 — 더 되돌릴 수 없는 수에 게이트가 더 약할 이유가 없다.
@@ -258,7 +267,8 @@ describe("예지 재배열만 남은 순에 «(0)» 버튼이 서지 않는다",
     expect(APP_CODE).toContain(
       'const menuOptions = augOptions.filter((o) => o.type !== "foresight_order");',
     );
-    expect(APP_CODE).toContain("const usable = menuOptions.length > 0;");
+    // B07(2026-09-25, docs/59 U03·U07): 강제 선택 중에는 쓸 수 없는 것처럼 꺼진다 — 기준 목록은 그대로 menuOptions
+    expect(APP_CODE).toContain("const usable = menuOptions.length > 0 && props.forcedPick !== true;");
     expect(APP_CODE).toContain("if (!hasActive && menuOptions.length === 0) return null;");
   });
 
