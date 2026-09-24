@@ -11,6 +11,7 @@
 import type { ActionDef } from "../engine/actions/ActionRegistry.js";
 import type { GameEngine } from "../engine/GameEngine.js";
 import type { ProposedEvent } from "../engine/events/GameEvent.js";
+import type { GameState } from "../engine/state/GameState.js";
 import type { PlayerId } from "../engine/zones/Zone.js";
 import type { TileAttrs, TileId, TileKind } from "../mahjong/tiles/Tile.js";
 
@@ -20,6 +21,10 @@ export const AUGMENT_OFFERED = "AugmentOffered";
 export const AUGMENT_DATA_SET = "AugmentDataSet";
 export const TILE_KIND_CHANGED = "TileKindChanged";
 export const AUGMENT_DISARMED = "AugmentDisarmed";
+/** 남의 증강을 이번 국 동안 빌려 온다 (카피) — `augment/borrow.ts` */
+export const AUGMENT_BORROWED = "AugmentBorrowed";
+/** 빌린 증강의 액티브를 한 번 썼다 — 이후 그 증강의 버튼이 사라진다 */
+export const AUGMENT_BORROW_SPENT = "AugmentBorrowSpent";
 
 export interface ScoreChangedPayload {
   player: PlayerId;
@@ -161,6 +166,87 @@ export function augmentGrantKey(player: PlayerId, byAugmentId: string): string {
 }
 
 /**
+ * **빌린 증강** 기록 키 (보유자당 하나) — 카피(`copy`)가 남의 증강을 이번 국 동안 가져올 때.
+ *
+ * 빌린 증강은 `player.augments`에 **잠깐 얹힌다** — 그래야 그 증강의 validate
+ * (`augments.includes(id)`)·봇 정책·이름표가 손대지 않고 그대로 돈다. 이 기록은
+ * «그중 어느 것이 빌린 것인가»를 적어, 국 정산에서 목록에서 걷어내고
+ * (`stripBorrowedAugments`) 설치도 걷어낼(`syncBorrowedAugments`) 근거가 된다.
+ *
+ * 국 스코프 표식(`#round`)을 **달지 않는다** — 새 국 배패가 기록만 지우고 목록의 id는
+ * 남기는 일이 없게, 목록과 기록을 같은 리듀서가 함께 지운다.
+ */
+export function augmentBorrowKey(player: PlayerId): string {
+  return `augment:borrowed:${player}`;
+}
+
+/** 빌린 증강 기록 */
+export interface BorrowRecord {
+  augmentId: string;
+  /** 원래 주인 */
+  from: PlayerId;
+  /** 액티브를 이미 한 번 썼는가 */
+  spent: boolean;
+}
+
+export interface AugmentBorrowedPayload {
+  player: PlayerId;
+  from: PlayerId;
+  augmentId: string;
+}
+
+export interface AugmentBorrowSpentPayload {
+  player: PlayerId;
+  augmentId: string;
+}
+
+/** 이 플레이어가 지금 빌려 든 증강 (없으면 null) */
+export function borrowedOf(state: GameState, player: PlayerId): BorrowRecord | null {
+  const v = state.augmentData[augmentBorrowKey(player)];
+  if (v === null || typeof v !== "object") return null;
+  const r = v as Partial<BorrowRecord>;
+  if (typeof r.augmentId !== "string" || typeof r.from !== "string") return null;
+  return { augmentId: r.augmentId, from: r.from, spent: r.spent === true };
+}
+
+/** 이 증강이 빌린 것이고, 이미 한 번 썼는가 — 그러면 버튼을 더 내지 않는다 */
+export function isBorrowSpent(
+  state: GameState,
+  player: PlayerId,
+  augmentId: string,
+): boolean {
+  const r = borrowedOf(state, player);
+  return r !== null && r.augmentId === augmentId && r.spent;
+}
+
+/**
+ * 빌린 증강을 **목록과 기록에서 함께** 걷어낸다 (국 정산·새 국 배패 리듀서가 부른다).
+ * 빌린 것이 없으면 같은 객체를 그대로 돌려준다 — 멱등.
+ */
+export function stripBorrowedAugments(state: GameState): GameState {
+  const records = state.players.flatMap((p) => {
+    const r = borrowedOf(state, p.id);
+    return r === null ? [] : [{ player: p.id, augmentId: r.augmentId }];
+  });
+  const keys = state.players
+    .map((p) => augmentBorrowKey(p.id))
+    .filter((k) => k in state.augmentData);
+  if (keys.length === 0) return state;
+  const augmentData = { ...state.augmentData };
+  for (const k of keys) delete augmentData[k];
+  return {
+    ...state,
+    augmentData,
+    players: state.players.map((pl) => {
+      const r = records.find((x) => x.player === pl.id);
+      return r === undefined
+        ? pl
+        : { ...pl, augments: pl.augments.filter((id) => id !== r.augmentId) };
+    }),
+  };
+}
+
+/**
  * 증강 지급 (지급형 증강 전용). 여러 장을 한 번에 기록하고, 지급 이력을 남긴다.
  * 이미 보유한 id는 조용히 건너뛴다 — 기록에는 실제로 지급된 것만 남는다.
  */
@@ -269,6 +355,34 @@ export function registerAugmentSupport(engine: GameEngine): void {
 
   // 무장해제 통보도 순수 신호다 — 실제 되돌리기는 대상 증강의 Reaction이 emit한다.
   engine.reducers.register(AUGMENT_DISARMED, (state) => state);
+
+  // 빌린 증강 (카피) — 목록에 얹고 기록을 남긴다. 이미 가진 id면 목록은 그대로 둔다.
+  engine.reducers.register(AUGMENT_BORROWED, (state, event) => {
+    const p = event.payload as AugmentBorrowedPayload;
+    const record: BorrowRecord = { augmentId: p.augmentId, from: p.from, spent: false };
+    return {
+      ...state,
+      augmentData: { ...state.augmentData, [augmentBorrowKey(p.player)]: record },
+      players: state.players.map((pl) =>
+        pl.id === p.player && !pl.augments.includes(p.augmentId)
+          ? { ...pl, augments: [...pl.augments, p.augmentId] }
+          : pl,
+      ),
+    };
+  });
+
+  engine.reducers.register(AUGMENT_BORROW_SPENT, (state, event) => {
+    const p = event.payload as AugmentBorrowSpentPayload;
+    const r = borrowedOf(state, p.player);
+    if (r === null || r.augmentId !== p.augmentId) return state;
+    return {
+      ...state,
+      augmentData: {
+        ...state.augmentData,
+        [augmentBorrowKey(p.player)]: { ...r, spent: true },
+      },
+    };
+  });
 
   engine.reducers.register(AUGMENT_DATA_SET, (state, event) => {
     const p = event.payload as AugmentDataSetPayload;

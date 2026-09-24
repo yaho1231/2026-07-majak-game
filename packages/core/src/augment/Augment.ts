@@ -21,7 +21,7 @@ import type { YakuRegistry } from "../mahjong/scoring/YakuRegistry.js";
 import type { PlayerView } from "../information/PlayerView.js";
 import type { TileKind } from "../mahjong/tiles/Tile.js";
 import type { Prng } from "../engine/random/Prng.js";
-import { augmentGrantKey, augmentStageKey } from "./events.js";
+import { augmentGrantKey, augmentStageKey, isBorrowSpent } from "./events.js";
 import { AugmentRegistry } from "./AugmentRegistry.js";
 import type { DraftStage } from "./DraftController.js";
 
@@ -320,6 +320,11 @@ export interface AugmentContext {
    * StandardGame 경로(DraftController·리플레이 재구성)에서는 항상 제공된다.
    */
   yaku?: YakuRegistry;
+  /**
+   * 증강 카탈로그 — 남의 증강 정의를 읽어야 하는 증강(카피)이 쓴다.
+   * StandardGame 경로에서는 항상 제공된다. 최소 테스트 게임에서는 없을 수 있다.
+   */
+  catalog?: AugmentExtras["catalog"];
 
   /** 보유자에게만 규칙 값을 고정한다 (다른 플레이어는 원래 값) */
   setHolderRule(rule: string, value: unknown): void;
@@ -532,6 +537,7 @@ export function installAugment(
     layer,
     engine,
     ...(extras.yaku !== undefined ? { yaku: extras.yaku } : {}),
+    ...(extras.catalog !== undefined ? { catalog: extras.catalog } : {}),
     setHolderRule(rule, value) {
       engine.rules.addModifier(rule, {
         source: instanceId,
@@ -563,6 +569,8 @@ export function installAugment(
         // 무장해제: 잠긴 증강은 액티브 버튼도 사라진다. FlowController가 제시되지
         // 않은 옵션의 submit을 거부하므로, 여기서 후보를 비우면 액션도 함께 막힌다.
         if (isSourceDisarmed(state, instanceId)) return [];
+        // 빌린 증강(카피)은 한 번 쓰면 버튼이 사라진다 — 켜 둔 효과는 국 끝까지 산다
+        if (isBorrowSpent(state, holder, def.id)) return [];
         return noteAugmentActions(def.id, build(state));
       }, instanceId);
     },
@@ -571,6 +579,7 @@ export function installAugment(
         if (player !== holder) return [];
         // holderTurnOptions와 동일한 무장해제 가드 — 잠기면 콜 버튼도 함께 사라진다
         if (isSourceDisarmed(state, instanceId)) return [];
+        if (isBorrowSpent(state, holder, def.id)) return [];
         return noteAugmentActions(def.id, build(state, discard));
       }, instanceId);
     },

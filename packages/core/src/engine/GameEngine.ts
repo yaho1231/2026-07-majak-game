@@ -18,7 +18,7 @@ import type {
   EffectFailure,
   ProcessorOptions,
 } from "./effects/EventProcessor.js";
-import type { GameEvent } from "./events/GameEvent.js";
+import type { GameEvent, ProposedEvent } from "./events/GameEvent.js";
 import { ReducerRegistry } from "./reducers/ReducerRegistry.js";
 import { RuleRegistry } from "./rules/RuleRegistry.js";
 import { ROUND_SCOPED_MARK } from "./state/GameState.js";
@@ -114,6 +114,13 @@ export class GameEngine {
   }[] = [];
   /** 증강 인스턴스 id → 파괴 시 실행할 정리 훅 */
   private readonly uninstallHooks = new Map<string, (() => void)[]>();
+  /** 요청마다 검증 **전에** 부르는 훅 — 레지스트리를 커밋된 상태에 맞춘다 (빌린 증강 해제) */
+  private readonly preSubmitHooks: ((state: GameState) => void)[] = [];
+  /** 검증을 통과한 요청에 루트 이벤트를 덧붙이는 훅 (빌린 증강의 1회 소진 표시) */
+  private readonly followUps: ((
+    request: ActionRequest,
+    state: GameState,
+  ) => ProposedEvent[])[] = [];
 
   constructor(options: EngineOptions) {
     this.currentState = options.state;
@@ -209,6 +216,25 @@ export class GameEngine {
     for (const fn of list) fn();
   }
 
+  /**
+   * 요청을 처리하기 **직전**에 부를 훅. 커밋된 상태를 보고 레지스트리를 맞추는 자리다 —
+   * 상태는 이벤트로만 바뀌지만 설치(레지스트리)는 이벤트 밖의 부수효과라, 둘이 어긋난 채
+   * 다음 요청을 받지 않게 한다. 지금은 빌린 증강의 설치 해제가 쓴다.
+   */
+  registerPreSubmit(hook: (state: GameState) => void): void {
+    this.preSubmitHooks.push(hook);
+  }
+
+  /**
+   * 검증을 통과한 요청의 루트 이벤트 **뒤에** 덧붙일 이벤트를 만든다 (같은 트랜잭션).
+   * 액션 정의를 고치지 않고 «이 요청이 일어났다»를 상태에 남겨야 할 때 쓴다.
+   */
+  registerFollowUp(
+    fn: (request: ActionRequest, state: GameState) => ProposedEvent[],
+  ): void {
+    this.followUps.push(fn);
+  }
+
   /** FlowController가 리액션 프롬프트를 만들 때 읽는다 */
   get reactionOptionProviders(): readonly ReactionOptionProvider[] {
     return this.reactionProviders.map((e) => e.provider);
@@ -230,6 +256,7 @@ export class GameEngine {
     }
 
     try {
+      for (const hook of this.preSubmitHooks) hook(this.currentState);
       const ctx = { state: this.currentState, rules: this.rules };
 
       const reason = def.validate(request, ctx);
@@ -237,7 +264,10 @@ export class GameEngine {
         return { ok: false, reason };
       }
 
-      const roots = def.toEvents(request, ctx);
+      const roots = [
+        ...def.toEvents(request, ctx),
+        ...this.followUps.flatMap((fn) => fn(request, ctx.state)),
+      ];
 
       let state = this.currentState;
       let lastSeq = state.lastEventSeq;

@@ -23,6 +23,7 @@ import { kindKey } from "../tiles/Tile.js";
 import type { TileId } from "../tiles/Tile.js";
 import type { WinShape } from "../scoring/winShape.js";
 import { playerAtSeat } from "./helpers.js";
+import { stripBorrowedAugments } from "../../augment/events.js";
 
 /**
  * 후로가 가져갈 패가 **실제로 놓여 있는 바닥 존**.
@@ -349,8 +350,10 @@ export function registerFlowReducers(
   reducers: ReducerRegistry,
   rules?: RuleRegistry,
 ): void {
-  reducers.register(ROUND_STARTED, (state) =>
-    setupRound(state, {
+  reducers.register(ROUND_STARTED, (s0) => {
+    // 빌린 증강(카피)은 국 정산에서 이미 걷혔다 — 정산 없이 새 국이 열리는 경로를 위한 안전망
+    const state = stripBorrowedAugments(s0);
+    return setupRound(state, {
       ...(rules !== undefined && rules.has("deal.handSize")
         ? {
             handSizeFor: (playerId: PlayerId) =>
@@ -365,8 +368,8 @@ export function registerFlowReducers(
               rules.resolve<readonly string[]>("deal.presetHand", { playerId, state }),
           }
         : {}),
-    }),
-  );
+    });
+  });
 
   reducers.register(TILE_DRAWN, (state, event) => {
     const p = event.payload as TileDrawnPayload;
@@ -711,8 +714,11 @@ export function registerFlowReducers(
 
   reducers.register(WIN_DECLARED, identityReducer);
 
-  reducers.register(ROUND_SETTLED, (state, event) => {
+  reducers.register(ROUND_SETTLED, (s0, event) => {
     const p = event.payload as RoundSettledPayload;
+    // 빌린 증강(카피)은 «이번 국 동안»이다 — 정산과 함께 보유 목록에서 걷어낸다.
+    // 정산 인터셉터는 이 리듀서보다 먼저 돌았으므로 빌린 증강의 정산 효과는 이미 반영됐다.
+    const state = stripBorrowedAugments(s0);
     return {
       ...state,
       players: state.players.map((pl) => ({

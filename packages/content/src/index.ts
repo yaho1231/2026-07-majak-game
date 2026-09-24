@@ -164,6 +164,7 @@ import { reverseWind } from "./augments/reverse_wind.js";
 import { swamp } from "./augments/swamp.js";
 import { greed } from "./augments/greed.js";
 import { intimidate } from "./augments/intimidate.js";
+import { copy } from "./augments/copy.js";
 
 export {
   redFiveTouch,
@@ -285,6 +286,7 @@ export {
   swamp,
   greed,
   intimidate,
+  copy,
 };
 
 /**
@@ -427,6 +429,7 @@ const CONTENT_AUGMENTS: AugmentDef[] = [
   swamp, // 늪 — 내 패를 운 타가는 2순 쯔모기리
   greed, // 욕심 — 방금 쯔모한 패를 다음 순에 한 장 더
   intimidate, // 위압감 — 이 증강으로 리치하면 타가 1순 쯔모기리
+  copy, // 카피 — 상대의 액티브 증강 하나를 무작위로 빌려 이번 국에 한 번 쓴다
 ];
 
 /**

@@ -16,6 +16,7 @@ import type { PlayerId } from "../../engine/zones/Zone.js";
 import { AugmentRegistry } from "../../augment/AugmentRegistry.js";
 import type { AugmentDef } from "../../augment/Augment.js";
 import { registerAugmentSupport } from "../../augment/events.js";
+import { registerBorrowSupport } from "../../augment/borrow.js";
 import { standardAugments } from "../../augment/standardAugments.js";
 import { defineVisibilityRules } from "../../information/PlayerView.js";
 import type { VisibilityRule } from "../../information/PlayerView.js";
@@ -104,6 +105,7 @@ export function createStandardGameFromState(
   augments.addAll(standardAugments);
   if (extraAugments !== undefined) augments.addAll(extraAugments);
   const game: StandardGame = { engine, yaku, augments };
+  registerBorrowSupport(engine, { yaku, catalog: augments });
   applyHouseRules(game, house);
   return game;
 }
