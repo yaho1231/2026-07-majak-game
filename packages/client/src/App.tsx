@@ -645,7 +645,7 @@ const ACTION_LABEL: Record<string, string> = {
   declare_broken_border: "무너진 국경 선언",
   declare_async_chiitoi: "비대칭 선언",
   // 2026-09-24 (8차) 신규
-  sandglass_swap: "모래시계 (바꿀 3장 선택)",
+  pruning_swap: "가지치기 (바꿀 3장 선택)",
   yggdrasil_call: "위그드라실 발동",
 };
 
@@ -730,7 +730,7 @@ const ACTION_AUGMENT: Record<string, string> = {
   declare_mixed_triplet: "mixed_triplet",
   declare_broken_border: "broken_border",
   declare_async_chiitoi: "async_chiitoi",
-  sandglass_swap: "sandglass",
+  pruning_swap: "pruning",
   yggdrasil_call: "yggdrasil",
 };
 
@@ -871,7 +871,7 @@ const AUGMENT_ACTION_TYPES = new Set([
   "declare_broken_border",
   "declare_async_chiitoi",
   // 2026-09-24 (8차) 신규
-  "sandglass_swap",
+  "pruning_swap",
   "yggdrasil_call",
 ]);
 
@@ -961,7 +961,7 @@ const ACTIVE_AUGMENT_IDS = new Set([
   "broken_border",
   "async_chiitoi",
   // 2026-09-24 (8차) 신규
-  "sandglass",
+  "pruning",
   "yggdrasil",
 ]);
 
@@ -1187,8 +1187,8 @@ const MODAL_PICK_TYPES = new Set<string>([
   // 영상 정찰 — 남은 영상패를 펼쳐 드래그로 순서를 짜고, 한 장을 고르면 쯔모패와 맞바꾼다
   // (2026-08-27 버프. 후보가 순열×교환자리라 최대 120개 — 텍스트 버튼으로는 못 고른다.)
   "rinshan_arrange",
-  // 모래시계 — 패산 맨 위 3장과 바꿀 손패 3장 (후보가 3장 조합이라 최대 364개)
-  "sandglass_swap",
+  // 가지치기 — 패산 맨 위 3장과 바꿀 손패 3장 (후보가 3장 조합이라 최대 364개)
+  "pruning_swap",
 ]);
 
 // ─────────────────────────── 증강 카테고리 (분류·아이콘) ───────────────────────────
@@ -24941,12 +24941,12 @@ function ActiveAugmentControl(props: {
   // 자식의 `position: fixed`가 뷰포트가 아니라 그 요소를 기준으로 잡힌다 →
   // 모달이 화면 아래쪽에 붙어 잘린다. (OwnArea의 기존 모달들은 `.own-area` 바깥
   // 형제로 렌더돼 있어서 이 문제를 피해 갔다.)
-  // 모래시계 — 후보는 손패 3장 조합(정렬된 tileId 배열)이다. 고른 3장과 완전일치하는 후보를 낸다.
-  const sandglassOpts = pickModal === "sandglass_swap" ? (byType.get("sandglass_swap") ?? []) : [];
-  const sandglassPool = sortTileIds(
+  // 가지치기 — 후보는 손패 3장 조합(정렬된 tileId 배열)이다. 고른 3장과 완전일치하는 후보를 낸다.
+  const pruningOpts = pickModal === "pruning_swap" ? (byType.get("pruning_swap") ?? []) : [];
+  const pruningPool = sortTileIds(
     [
       ...new Set(
-        sandglassOpts.flatMap((o) => {
+        pruningOpts.flatMap((o) => {
           const ids = (o.payload as { tileIds?: unknown }).tileIds;
           return Array.isArray(ids) ? (ids.filter((x) => typeof x === "number") as number[]) : [];
         }),
@@ -24954,13 +24954,13 @@ function ActiveAugmentControl(props: {
     ],
     view.tiles,
   );
-  const sandglassKey = [...modalPick].sort((a, b) => a - b).join(",");
-  const sandglassOpt =
+  const pruningKey = [...modalPick].sort((a, b) => a - b).join(",");
+  const pruningOpt =
     modalPick.length === 3
-      ? sandglassOpts.find(
+      ? pruningOpts.find(
           (o) =>
             ((o.payload as { tileIds?: unknown }).tileIds as number[] | undefined)?.join(",") ===
-            sandglassKey,
+            pruningKey,
         )
       : undefined;
   const closeModal = (): void => {
@@ -25013,17 +25013,17 @@ function ActiveAugmentControl(props: {
         </div>,
         document.body,
       ) : null}
-      {/* 모래시계 — 패산 맨 위 3장과 바꿀 손패 3장을 고른다 */}
-      {pickModal === "sandglass_swap" ? createPortal(
+      {/* 가지치기 — 패산 맨 위 3장과 바꿀 손패 3장을 고른다 */}
+      {pickModal === "pruning_swap" ? createPortal(
         <div className="rinshan-pick-overlay">
           <div className="rinshan-pick-panel aug-pick-wide">
             <PickTimer deadline={props.promptDeadline ?? null} />
-            <div className="rinshan-pick-title">⏳ {augNameFor("sandglass")}</div>
+            <div className="rinshan-pick-title">✂️ {augNameFor("pruning")}</div>
             <div className="rinshan-pick-sub">
               고른 3장이 패산 맨 위로 가고, 패산 맨 위 3장이 손패로 들어옵니다. ({modalPick.length}/3)
             </div>
             <div className="rinshan-pick-tiles">
-              {sandglassPool.map((id) => {
+              {pruningPool.map((id) => {
                 const tile = view.tiles[id];
                 if (tile === undefined) return null;
                 const picked = modalPick.includes(id);
@@ -25050,10 +25050,10 @@ function ActiveAugmentControl(props: {
             <div className="aug-modal-actions">
               <button
                 className="rinshan-pick-tile aug-modal-confirm"
-                disabled={sandglassOpt === undefined}
+                disabled={pruningOpt === undefined}
                 onClick={() => {
-                  if (sandglassOpt === undefined) return;
-                  sel.submit(sandglassOpt);
+                  if (pruningOpt === undefined) return;
+                  sel.submit(pruningOpt);
                   closeModal();
                 }}
               >
