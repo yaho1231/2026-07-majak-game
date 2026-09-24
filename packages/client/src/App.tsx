@@ -22552,11 +22552,16 @@ function OwnArea(props: {
           }`}
         >
           <span className="discard-dropzone-label">
-            {armedAug !== null
-              ? `✦ 여기에 놓으면 ${armName} 발동`
-              : props.riichiMode
-                ? "⚡ 여기에 놓으면 리치"
-                : "🀫 여기에 놓으면 버리기"}
+            {/* 미래를 보는 자는 future_arm 을 누를 때 이미 발동했다 — 여기 놓는 건 그 패를 버리고
+                교환을 마무리하는 일이라, 안내 줄(ARM_CONFIRM_TAIL «버립니다»)·aria-label 과 같은 말로
+                부른다(2026-09-25, docs/59 U03 리뷰) */}
+            {armedAug === "future_exchange"
+              ? "🀫 여기에 놓으면 이 패를 버리고 교환"
+              : armedAug !== null
+                ? `✦ 여기에 놓으면 ${armName} 발동`
+                : props.riichiMode
+                  ? "⚡ 여기에 놓으면 리치"
+                  : "🀫 여기에 놓으면 버리기"}
           </span>
         </div>
       ) : null}
@@ -22932,11 +22937,16 @@ function OwnArea(props: {
                 // 넘길 3장을 손패에서 고르게 되면서 이 타이머가 모달에 가리지 않고 보인다(docs/59 U07)
                 swap3Pick.stage !== null
                   ? "시간이 다 되면 남은 조합에서 무작위로 교환합니다"
-                  : myPrompt.options.some((o) => o.type === "pass")
-                    ? "시간이 다 되면 자동으로 패스합니다"
-                    : myPrompt.options.some((o) => o.type === "discard")
-                      ? "시간이 다 되면 쯔모한 패를 그대로 버립니다"
-                      : null
+                  : // 미래를 보는 자는 아직 서버 폴백이 교환을 모른다(FORCED_ACTION_TYPES엔 swap3뿐 — B18
+                    // 몫). 시간이 다 되면 교환 없이 타패로 끝나니 그 손실을 숨기지 않고 미리 말한다
+                    // (2026-09-25, docs/59 U03 리뷰 · §2-2 «쓰면 무조건 교환»과의 틈)
+                    myPrompt.options.some((o) => o.type === "future_exchange")
+                    ? "시간이 다 되면 교환 없이 쯔모한 패를 버립니다"
+                    : myPrompt.options.some((o) => o.type === "pass")
+                      ? "시간이 다 되면 자동으로 패스합니다"
+                      : myPrompt.options.some((o) => o.type === "discard")
+                        ? "시간이 다 되면 쯔모한 패를 그대로 버립니다"
+                        : null
               }
             />
           </>
@@ -26696,7 +26706,9 @@ function ActiveAugmentControl(props: {
       <button
         /* 증강 리치로 무장한 것은 액션 바의 몫이라 여기선 켜진 것처럼 보이지 않게 한다 */
         className={`aug-btn${usable ? " aug-btn-on" : ""}${
-          sel.armedType !== null && !DRAG_DISCARD_ARM_TYPES.has(sel.armedType)
+          // 강제 무장(미래를 보는 자)은 ✦ 로 건 것도 풀 수 있는 것도 아니다 — 버튼은 잠겨
+          // (aria-disabled) 있으니 켜진 것처럼 보이면 신호가 엇갈린다(2026-09-25, docs/59 U03 리뷰)
+          sel.armedType !== null && !DRAG_DISCARD_ARM_TYPES.has(sel.armedType) && props.forcedPick !== true
             ? " aug-btn-armed"
             : ""
         }`}

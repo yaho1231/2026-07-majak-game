@@ -194,3 +194,46 @@ describe("모달이 하던 «다른 수 봉쇄»를 옮겼다", () => {
     expect(APP_CODE).toContain("if (auto.autoDiscard && drawn !== null && !isForcedPickPrompt(p)) {");
   });
 });
+
+describe("B07 리뷰 라운드 1 — 봉쇄의 나머지 조각과 신호 일치", () => {
+  const ctl = fnBody("ActiveAugmentControl");
+
+  it("강제 선택이 시작되면 ✦ 메뉴를 접는다 — 열린 메뉴 항목이 강제 선택을 건너뛰는 길이다", () => {
+    const at = ctl.indexOf("if (props.forcedPick !== true) return;");
+    expect(at).toBeGreaterThan(0);
+    const eff = ctl.slice(at, ctl.indexOf("}, [props.forcedPick]);", at));
+    expect(eff).toContain("setOpen(false);");
+    expect(eff).toContain("setMenuType(null);");
+  });
+
+  it("hintAll은 강제 선택 중 아무 pill도 빛내지 않는다", () => {
+    const at = ctl.indexOf("const hintAll = (): void => {");
+    expect(at).toBeGreaterThan(0);
+    const body = ctl.slice(at, ctl.indexOf("\n  };\n", at));
+    expect(body.indexOf("if (props.forcedPick === true) return;")).toBeGreaterThan(-1);
+    expect(body.indexOf("if (props.forcedPick === true) return;")).toBeLessThan(body.indexOf("onUsableHint"));
+  });
+
+  it("✦ 버튼은 강제 무장 중 켜진 것(aug-btn-armed)처럼 보이지 않는다", () => {
+    expect(ctl).toMatch(
+      /!DRAG_DISCARD_ARM_TYPES\.has\(sel\.armedType\) && props\.forcedPick !== true\s*\? " aug-btn-armed"/,
+    );
+  });
+
+  it("타이머 안내는 등가교환 무작위 교환 · 미래를 보는 자 교환 없는 버림을 미리 말한다", () => {
+    expect(OWN).toContain('swap3Pick.stage !== null\n                  ? "시간이 다 되면 남은 조합에서 무작위로 교환합니다"');
+    const fut = OWN.indexOf('myPrompt.options.some((o) => o.type === "future_exchange")');
+    expect(fut).toBeGreaterThan(0);
+    expect(OWN.slice(fut, fut + 200)).toContain('"시간이 다 되면 교환 없이 쯔모한 패를 버립니다"');
+    // 버림 폴백 문구보다 먼저 걸러야 한다(미래를 보는 자 프롬프트에도 discard가 섞여 있다)
+    expect(fut).toBeLessThan(OWN.indexOf('"시간이 다 되면 쯔모한 패를 그대로 버립니다"'));
+  });
+
+  it("미래를 보는 자 드롭존 문구는 «발동»이 아니라 버리고 교환이다 — 안내 줄·aria-label과 같은 말", () => {
+    const at = OWN.indexOf('<span className="discard-dropzone-label">');
+    expect(at).toBeGreaterThan(0);
+    const label = OWN.slice(at, OWN.indexOf("</span>", at));
+    expect(label).toContain('armedAug === "future_exchange"\n              ? "🀫 여기에 놓으면 이 패를 버리고 교환"');
+    expect(label.indexOf('armedAug === "future_exchange"')).toBeLessThan(label.indexOf("발동"));
+  });
+});
