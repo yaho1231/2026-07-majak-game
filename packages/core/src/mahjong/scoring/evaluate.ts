@@ -110,6 +110,16 @@ export function evaluateWin(
       }
     }
 
+    // 독점 역만이 섰으면 그 역만 남긴다 — 다른 역만과 중첩되지 않는다
+    const exclusive = matched.find((y) => {
+      const d = registry.get(y.id);
+      return d?.isYakuman === true && d.exclusiveYakuman === true;
+    });
+    if (exclusive !== undefined) {
+      matched.splice(0, matched.length, exclusive);
+      yakumanCount = Math.max(1, registry.get(exclusive.id)?.yakumanMultiplier ?? 1);
+    }
+
     let candidate: Candidate;
     if (yakumanCount > 0) {
       // 역만 성립 시 일반 역·도라는 세지 않는다

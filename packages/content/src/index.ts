@@ -158,6 +158,8 @@ import { pickyEater } from "./augments/picky_eater.js";
 
 // ── 7차 사용자 발안 (2026-08-07) — 만능패 ──
 import { joker } from "./augments/joker.js";
+import { sandglass } from "./augments/sandglass.js";
+import { yggdrasil } from "./augments/yggdrasil.js";
 
 export {
   redFiveTouch,
@@ -273,6 +275,8 @@ export {
   soulStrike,
   pickyEater,
   joker,
+  sandglass,
+  yggdrasil,
 };
 
 /**
@@ -408,6 +412,9 @@ const CONTENT_AUGMENTS: AugmentDef[] = [
   pickyEater, // 편식 — 한 무늬만 12장 버리면 단색 세계
   // 7차 사용자 발안 (2026-08-07)
   joker, // 조커 — 이번 국 손패의 백이 무엇이든 되는 만능패
+  // 8차 사용자 발안 (2026-09-24)
+  sandglass, // 모래시계 — 손패 3장을 패산 맨 위 3장과 교환
+  yggdrasil, // 위그드라실 — 이번 국 자패가 전부 발, 발로만 화료하면 더블 역만
 ];
 
 /**
