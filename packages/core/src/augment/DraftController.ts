@@ -32,7 +32,8 @@ import { Prng } from "../engine/random/Prng.js";
 import type { GameEngine } from "../engine/GameEngine.js";
 import type { PlayerId } from "../engine/zones/Zone.js";
 import { FIRST_DRAFT_EXCLUDED_COMPLEXITY, installAugment } from "./Augment.js";
-import { augmentGrantKey } from "./events.js";
+import { augmentGrantKey, borrowedOf } from "./events.js";
+import { syncBorrowedAugments } from "./borrow.js";
 import type { AugmentDef, AugmentExtras } from "./Augment.js";
 import { AugmentRegistry } from "./AugmentRegistry.js";
 import { synergyBias } from "./synergy.js";
@@ -678,11 +679,17 @@ export function rebuildAugments(
   // 지급분을 설치해 준다(Augment.ts). 600게임 중 75게임의 순서 불일치가 이것이었다
   // (QA cross 확정 2).
   const grantedIds = grantedAugmentIds(engine, catalog);
+  // 빌린 증강(카피)도 드래프트 슬롯이 아니다 — 원본처럼 맨 마지막에 설치한다(아래).
   const slots = new Map<PlayerId, string[]>(
-    engine.state.players.map((p) => [
-      p.id,
-      p.augments.filter((id) => !(grantedIds.get(p.id)?.has(id) ?? false)),
-    ]),
+    engine.state.players.map((p) => {
+      const borrowed = borrowedOf(engine.state, p.id)?.augmentId;
+      return [
+        p.id,
+        p.augments.filter(
+          (id) => !(grantedIds.get(p.id)?.has(id) ?? false) && id !== borrowed,
+        ),
+      ];
+    }),
   );
   const maxCount = Math.max(0, ...[...slots.values()].map((ids) => ids.length));
   for (let i = 0; i < maxCount; i++) {
@@ -696,4 +703,5 @@ export function rebuildAugments(
       installAugment(engine, def, player.id, extras);
     }
   }
+  syncBorrowedAugments(engine, engine.state, { ...extras, catalog });
 }

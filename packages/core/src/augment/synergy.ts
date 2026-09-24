@@ -402,6 +402,7 @@ export const AUGMENT_SYNERGY: Readonly<Record<string, SynergyEntry>> = {
 
   // ───────────────────────── 방해·템포 ─────────────────────────
   disarm: e(["disrupt"]),
+  copy: e(["disrupt"]),
   call_seal: e(["disrupt"]),
   discard_lock: e(["disrupt"]),
   rank_gate: e(["disrupt"]),

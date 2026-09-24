@@ -160,6 +160,7 @@ import { pickyEater } from "./augments/picky_eater.js";
 import { joker } from "./augments/joker.js";
 import { pruning } from "./augments/pruning.js";
 import { yggdrasil } from "./augments/yggdrasil.js";
+import { copy } from "./augments/copy.js";
 
 export {
   redFiveTouch,
@@ -277,6 +278,7 @@ export {
   joker,
   pruning,
   yggdrasil,
+  copy,
 };
 
 /**
@@ -415,6 +417,7 @@ const CONTENT_AUGMENTS: AugmentDef[] = [
   // 8차 사용자 발안 (2026-09-24)
   pruning, // 가지치기 — 손패 3장을 패산 맨 위 3장과 교환
   yggdrasil, // 위그드라실 — 이번 국 자패가 전부 발, 발로만 화료하면 더블 역만
+  copy, // 카피 — 상대의 액티브 증강 하나를 무작위로 빌려 이번 국에 한 번 쓴다
 ];
 
 /**

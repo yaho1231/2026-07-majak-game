@@ -244,13 +244,21 @@ export {
   draftDoneKey,
   augmentStageKey,
   augmentGrantKey,
+  AUGMENT_BORROWED,
+  AUGMENT_BORROW_SPENT,
+  augmentBorrowKey,
+  borrowedOf,
+  isBorrowSpent,
 } from "./augment/events.js";
+export { syncBorrowedAugments } from "./augment/borrow.js";
 export type {
   ScoreChangedPayload,
   AugmentDraftedPayload,
   AugmentDataSetPayload,
   AugmentDisarmedPayload,
   TileKindChangedPayload,
+  BorrowRecord,
+  AugmentBorrowedPayload,
 } from "./augment/events.js";
 export { DraftController, rebuildAugments } from "./augment/DraftController.js";
 export type { DraftStage } from "./augment/DraftController.js";

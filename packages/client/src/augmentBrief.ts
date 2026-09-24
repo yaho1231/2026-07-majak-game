@@ -160,6 +160,7 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   joker: { use: CD_2_3, text: "손패 1장을 백으로 바꾸고, 이번 국 내 손패의 백은 전부 만능패가 된다." },
   // 2026-09-24 8차 신규
   pruning: { use: CD_2_3, text: "손패 3장을 골라 패산 맨 위 3장과 바꾼다. 패산이 3장 이하면 사용할 수 없다." },
+  copy: { use: MODE_1_2, text: "상대 한 명의 액티브 증강 하나를 무작위로 가져와 이번 국에 한 번 쓴다." },
   yggdrasil: { use: MODE_1_2, text: "손패의 자패와 이번 국에 쯔모한 자패가 발이 된다. 발로만 화료하면 더블 역만이다." },
   time_pressure: {
     use: "이번 국만",

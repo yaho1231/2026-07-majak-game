@@ -646,6 +646,7 @@ const ACTION_LABEL: Record<string, string> = {
   declare_async_chiitoi: "비대칭 선언",
   // 2026-09-24 (8차) 신규
   pruning_swap: "가지치기 (바꿀 3장 선택)",
+  copy_take: "카피",
   yggdrasil_call: "위그드라실 발동",
 };
 
@@ -731,6 +732,7 @@ const ACTION_AUGMENT: Record<string, string> = {
   declare_broken_border: "broken_border",
   declare_async_chiitoi: "async_chiitoi",
   pruning_swap: "pruning",
+  copy_take: "copy",
   yggdrasil_call: "yggdrasil",
 };
 
@@ -873,6 +875,7 @@ const AUGMENT_ACTION_TYPES = new Set([
   // 2026-09-24 (8차) 신규
   "pruning_swap",
   "yggdrasil_call",
+  "copy_take",
 ]);
 
 /**
@@ -963,6 +966,7 @@ const ACTIVE_AUGMENT_IDS = new Set([
   // 2026-09-24 (8차) 신규
   "pruning",
   "yggdrasil",
+  "copy",
 ]);
 
 /** 이 증강이 '액티브 증강' 버튼으로 직접 발동되는지 (설명카드·툴팁 뱃지용). */
@@ -1016,6 +1020,8 @@ const ARM_MODE: Record<string, ArmMode> = {
   scapegoat_mark: "opp",
   push_brand: "opp",
   parasite_attach: "opp",
+  // 카피 — 증강을 가져올 상대를 클릭한다
+  copy_take: "opp",
   seat_swap: "opp",
   peek_waits: "opp",
   // 내 바닥(버림패) 클릭 — 회수할/지뢰로 지정할 버림패를 고른다
@@ -16409,6 +16415,7 @@ const RELATION_META: Record<string, { icon: string; label: string; color: string
   frame_up: { icon: "🖼", label: "누명", color: "#b98cd8" },
   counter: { icon: "↩️", label: "반격", color: "#e05f9a" },
   full_hand_swap: { icon: "🔀", label: "통째 교환", color: "#5fd0c0" },
+  copy: { icon: "📋", label: "카피", color: "#6fa0d8" },
 };
 
 /** 이 표식들이 대신 보여주는 채널 — 증강 정보 로그에는 남기지 않는다 */
@@ -24283,6 +24290,28 @@ const ActiveInfoBadges = memo(function ActiveInfoBadges({
         "disarm_mine",
         "🔒 무장해제",
         `이번 국에는 ${playerNameById(view, m.target)}의 ${augName} 사용이 불가능합니다`,
+      );
+    }
+  }
+
+  // 카피 — 누가 누구의 무엇을 가져갔는가 (전원 공개, 당사자에게는 뱃지로)
+  for (const [key, raw] of avEntries) {
+    if (!key.startsWith("copy:")) continue;
+    const m = raw as { target?: string; augmentId?: string } | null;
+    if (m === null || typeof m !== "object" || typeof m.target !== "string") continue;
+    const by = key.slice("copy:".length);
+    const augName = augmentDisplayName(m.augmentId ?? "");
+    if (by === me.id) {
+      textBadge(
+        "copy_mine",
+        "📋 카피",
+        `${playerNameById(view, m.target)}의 ${augName}을(를) 가져왔습니다. 이번 국에 한 번 쓸 수 있습니다`,
+      );
+    } else if (m.target === me.id) {
+      textBadge(
+        `copy_on_me_${by}`,
+        "📋 카피당함",
+        `${playerNameById(view, by)}가 내 ${augName}을(를) 가져갔습니다. 내 증강은 그대로입니다`,
       );
     }
   }

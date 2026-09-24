@@ -845,6 +845,13 @@ const AUGMENT_POWER_SPECS: Readonly<Record<string, PowerTierSpec>> = {
     f: 3,
     note: "동풍전 2국·반장전 3국에 1회 손패 3장을 패산 맨 위 3장과 바꾼다. 들어올 패는 모르지만 내보낸 3장이 다음 쯔모들로 나가는 것은 나만 안다",
   },
+  copy: {
+    p: 3,
+    s: 2,
+    u: 3,
+    f: 3,
+    note: "동풍전 1회·반장전 2회, 상대의 액티브 증강 하나를 무작위로 빌려 그 국에 한 번 쓴다. 무엇이 올지 모르고 원래 사용 조건에 막혀 못 쓸 때도 있다",
+  },
   yggdrasil: {
     p: 4,
     s: 3,
