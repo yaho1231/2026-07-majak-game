@@ -69,7 +69,8 @@ describe("U08 공개받은 상대 손패 — 손패 위 참고 줄", () => {
     // 손패 레일 바로 위 — 내 손패와 위아래로 견준다
     expect(at).toBeLessThan(OWN.indexOf('<div className="own-hand-rail"'));
     // 클릭을 받지 않는다
-    const css = /\.swap3-reveal-strip \{[^}]*\}/.exec(CSS)?.[0] ?? "";
+    // 줄 머리의 규칙(본 규칙) — `.own-area > .swap3-reveal-strip { order: -1 }`(W2 regression-1)가 먼저 걸리지 않게
+    const css = /\n\.swap3-reveal-strip \{[^}]*\}/.exec(CSS)?.[0] ?? "";
     expect(css).toContain("pointer-events: none;");
     // 풀이(title)는 이름표에 — 줄 자체는 hover도 못 받아 줄에 달면 안 뜬다(라운드 1 리뷰)
     const tagOpen = strip.slice(strip.indexOf('className="swap3-reveal-tag"'));

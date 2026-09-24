@@ -15852,6 +15852,7 @@ const GameTable = memo(function GameTable(props: {
           roundView={props.roundView ?? view}
           seats={seats}
           scoreFx={props.scoreFx}
+          {...(props.onToast !== undefined ? { onToast: props.onToast } : {})}
         />
       </div>
 
@@ -18299,11 +18300,13 @@ function CenterPanel({
   roundView,
   seats,
   scoreFx,
+  onToast,
 }: {
   view: PlayerView;
   roundView: PlayerView;
   seats: Record<Side, PlayerInfo | null>;
   scoreFx: Record<string, number>;
+  onToast?: (text: string) => void;
 }): JSX.Element {
   // 스냅샷에서 가져오는 것은 **정산 뷰가 미리 올려 버리는 국 정보뿐**이다.
   // 도라·뒷도라·패산·역행·리치봉은 live 뷰 그대로 둔다 — 특히 뒷도라는 정산 뷰에서
@@ -18437,6 +18440,17 @@ function CenterPanel({
             <div
               className="center-dora center-ura center-ura-peek"
               title="이면투시로 나만 미리 확인한 뒷도라 표시패입니다"
+              /*
+               * 바꿔치기 무장 중에는 이 줄을 무장 해제 감시(판 빈 곳 pointerdown)에서 뺀다 —
+               * 맥동하는 목적지 칸이 «누르면 조용히 풀리는 곳»이 되면 안 된다(W2 interaction-2).
+               * 누르면 무엇을 눌러야 하는지 말한다: 보낼 패는 손패에서 고른다.
+               */
+              {...(uraSwapArmed
+                ? {
+                    "data-arm-zone": "ura-target",
+                    onClick: () => onToast?.("손패에서 이 자리로 보낼 패를 누르세요"),
+                  }
+                : {})}
             >
               {peeked.map((kind, i) => (
                 <span
@@ -21490,11 +21504,13 @@ function OwnArea(props: {
    * 같은 종류의 다른 장도 **같은 대표 옵션**을 내므로(위 armedByTile) 그 장을 눌러도 둘째 탭이다.
    * tileId로만 비교하면 같은 그림 두 장을 번갈아 누를 때 들어 올림만 옮겨 가 세 번을 눌러야
    * 나갔다 — 풍선·aria는 «한 번 더 누르면 발동»이라 말하는데(2026-09-25, docs/59 U16·U17).
+   * 붉은 손길도 같다 — 같은 숫자의 손패 전부가 옵션 하나에 묶이고(armTileIdsOf) 화면도 그 장들을
+   * 같은 선택으로 붉게 칠한다(redPreviewIds). 칠해진 다른 장을 눌러도 확정이어야 한다(W2 interaction-3).
    */
   const isArmSecondTap = (id: number): boolean =>
     armedTileId === id ||
     (armedAug !== null &&
-      KIND_TARGET_ARM_TYPES.has(armedAug) &&
+      (KIND_TARGET_ARM_TYPES.has(armedAug) || armedAug === "red_touch") &&
       armedTileId !== null &&
       armedByTile.get(armedTileId)?.[0] !== undefined &&
       armedByTile.get(armedTileId)?.[0] === armedByTile.get(id)?.[0]);
@@ -21803,7 +21819,9 @@ function OwnArea(props: {
     for (const el of area.children) {
       if (!(el instanceof HTMLElement)) continue;
       // ⚠ 이 목록은 styles.css 의 `order: -1` 목록과 **같아야 한다**.
-      if (!el.matches(".action-bar, .prompt-timer, .arm-hint")) continue;
+      // 등가교환 참고 줄(.swap3-reveal-strip)도 상대 지정~교환 끝까지만 뜨는 줄이다 — 빼지 않으면
+      // 뜨고 질 때마다 보드가 그 높이만큼 줄었다 커진다(W2 regression-1).
+      if (!el.matches(".action-bar, .prompt-timer, .arm-hint, .swap3-reveal-strip")) continue;
       /*
        * 흐름 밖으로 나간 줄은 **빼면 안 된다** — `area.offsetHeight`에 애초에 들어
        * 있지 않으므로 한 번 더 빼면 띠가 그만큼 얇아지고, 그만큼 보드가 아래로 자라
@@ -22065,8 +22083,11 @@ function OwnArea(props: {
    * 타패·드래그를 막는 기준은 로컬 상태가 아니라 **프롬프트**다. [이 3장 넘기기]를 눌렀는데 소켓이
    * 닫혀 있어 전송이 안 되면 swapTakeDismissed만 켜지고 프롬프트(swap3_give + 타패)는 그대로
    * 남는다 — swapGiveInHand로만 막으면 다음 손패 클릭이 평범한 타패로 샌다(2026-09-25, docs/59 U07).
+   * take 단계도 같다 — [이 3장 가져와 교환]이 전송에 실패하면 take 오버레이만 내려가고 프롬프트
+   * (swap3_take + 타패)는 남는다. give에만 걸면 그 틈의 손패 탭·끌기가 «상대 손패만 보고 교환 없이
+   * 나가기»가 된다(«닫기 없음» 2026-08-02 위반, W2 interaction-4). 그래서 두 단계 공통이다.
    */
-  const swapGivePending = !isSpectator && swap3Pick.stage === "give";
+  const swap3Pending = !isSpectator && swap3Pick.stage !== null;
   /** 강제 선택 중 — 액션 바(쯔모 화료만 남긴다)와 ✦ 메뉴를 잠근다(FORCED_PICK_TYPES) */
   const forcedPick = !isSpectator && isForcedPickPrompt(myPrompt);
   /** 고른 3장에 딱 맞는 서버 후보 — 3장이 차고 조합이 후보에 있을 때만 [확정]이 켜진다(U10) */
@@ -22368,8 +22389,8 @@ function OwnArea(props: {
      * 여기 한 곳이면 드롭존 표시(`canDropDiscard`)까지 함께 꺼진다.
      */
     if (coachBlocksDiscard(coachLock, view.tiles[id]?.kind, id === drawnId)) return undefined;
-    // 등가교환 넘길 3장을 고르는 중 — 평범한 타패는 곧 «안 하고 나가기»다(docs/59 U07)
-    if (swapGivePending) return undefined;
+    // 등가교환 교환 중(give·take) — 평범한 타패는 곧 «안 하고 나가기»다(docs/59 U07, W2 interaction-4)
+    if (swap3Pending) return undefined;
     // 오픈 리치·스텔스 리치 등으로 무장한 동안에는 그 액션이 곧 '이 패를 버리는' 수단이다.
     // 미래를 보는 자도 고른 패가 바닥으로 나가므로 끌어 놓아 낸다 — DRAG_DISCARD_ARM_TYPES에
     // 넣지 않는 이유: 그 집합이 곧 증강 리치 목록(RIICHI_AUG_IDS)이라 ✦ 버튼에서 이 증강이
@@ -22440,8 +22461,8 @@ function OwnArea(props: {
   function beginDrag(e: React.PointerEvent, id: number, idx: number): void {
     // 무장 중에는 드래그를 막는다 — 단, 버리면서 발동하는 리치 계열과 미래를 보는 자만 예외로 연다.
     if (isSpectator) return;
-    // 등가교환 넘길 3장 — 끌어 버리기가 강제 선택을 건너뛰는 길이 된다(docs/59 U07)
-    if (swapGivePending) return;
+    // 등가교환 교환 중(give·take) — 끌어 버리기가 강제 선택을 건너뛰는 길이 된다(docs/59 U07)
+    if (swap3Pending) return;
     if (armedAug !== null && !DRAG_DISCARD_ARM_TYPES.has(armedAug) && armedAug !== "future_exchange") return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
     const container = handRef.current;
@@ -23036,7 +23057,9 @@ function OwnArea(props: {
           </div>
         ) : null}
         {/* 등가교환 — 공개받은 상대 손패 참고 줄(docs/59 U08). 누르는 곳이 아니라 비교용이라
-            흐리게 두고 클릭을 받지 않는다. 가져올 3장은 take 모달에서 고른다(U08-take 보류) */}
+            흐리게 두고 클릭을 받지 않는다. 가져올 3장은 take 모달에서 고른다(U08-take 보류).
+            잠깐 뜨는 줄이라 --own-band 실측에서 빼고 CSS order:-1 로 give 안내 바로 아래에 선다
+            (W2 regression-1 — 흐름 안에 두면 뜨고 질 때마다 보드가 출렁였다) */}
         {swapRevealIds.length > 0 && swapAimId !== null ? (
           <div className="swap3-reveal-strip">
             {/* 줄은 클릭을 흘려보내고(pointer-events: none) 이름표만 되살려 이 풀이가 뜨게 한다 */}
@@ -23268,8 +23291,9 @@ function OwnArea(props: {
                    * 평범한 타패·두 번 누르기 게이트로 새지 않게 무장 분기들보다 먼저 가로챈다
                    * (2026-09-25, docs/59 U07·U10).
                    */
-                  if (swapGivePending) {
-                    // 제출은 눌렀는데 아직 다음 프롬프트가 안 왔다 — 타패로 새지 않게 여기서 멈춘다
+                  if (swap3Pending) {
+                    // 제출은 눌렀는데 아직 다음 프롬프트가 안 왔거나, take 단계다(선택은 모달이 맡는다) —
+                    // 타패로 새지 않게 여기서 멈춘다(W2 interaction-4)
                     if (!swapGiveInHand) return;
                     if (!swap3Pick.pool.includes(id)) {
                       haptics.reject();
@@ -23304,7 +23328,8 @@ function OwnArea(props: {
                   }
                   // 붉은 손길 — 첫 탭은 숫자 고르기(제자리 붉은 미리보기)뿐, 확정은 [확인]이나
                   // 같은 패 한 번 더. 게임 1회·되돌릴 수 없고 터치엔 hover가 없다(docs/59 U02).
-                  if (armedAug === "red_touch" && armedTileId !== id && armedByTile.has(id)) {
+                  // 같은 숫자(= 같은 옵션)의 다른 장은 둘째 탭이다 — 아래 제출 경로로 떨어진다(isArmSecondTap)
+                  if (armedAug === "red_touch" && !isArmSecondTap(id) && armedByTile.has(id)) {
                     setArmedTileId(id);
                     sfx.pick();
                     return;
@@ -27055,7 +27080,9 @@ function ActionBar(props: {
       keyed.push({ key: String(keyed.length + 1), run: () => armRiichiAug(t) });
     }
   } else {
-    if (hasRiichi) keyed.push({ key: "1", run: () => props.onRiichiMode(true) });
+    // 버튼과 같게 무장을 먼저 푼다 — 안 풀면 ✦ 무장(이면투시 바꿔치기 등)이 리치 모드와 함께 남아
+    // 리치하려던 손패 클릭이 무장 분기로 먼저 빠져 증강이 그 자리에서 나간다(W2 interaction-1).
+    if (hasRiichi) keyed.push({ key: "1", run: () => { sel.arm(null); props.onRiichiMode(true); } });
     for (const t of riichiAugTypes) {
       keyed.push({ key: String(keyed.length + 1), run: () => armRiichiAug(t) });
     }

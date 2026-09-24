@@ -2286,7 +2286,8 @@ button {
  */
 .own-area > .action-bar,
 .own-area > .prompt-timer,
-.own-area > .arm-hint {
+.own-area > .arm-hint,
+.own-area > .swap3-reveal-strip {
   order: -1;
 }
 
@@ -3243,6 +3244,23 @@ button {
 .arm-sub-pop-close:hover,
 .arm-sub-pop-close:focus-visible {
   background: rgba(255, 255, 255, 0.18);
+}
+/*
+ * 터치에서는 닫기 목표를 넓힌다 — 옛 전면 모달의 [바꾸지 않고 닫기](≈130×34)가 24px 원으로
+ * 줄었고, 바로 옆에 타이머 알약·제목이 붙어 엄지로 빗나가기 쉬웠다. 팝오버 밖을 누르면 팝오버만이
+ * 아니라 무장까지 풀리므로 이 버튼이 유일한 «이것만 닫기»다. 보이는 크기는 두고 누르는 영역만
+ * 사방 10px 넓힌다(≈44px, W2 regression-3).
+ */
+@media (pointer: coarse) {
+  .arm-sub-pop-close {
+    position: relative;
+  }
+  .arm-sub-pop-close::before {
+    content: "";
+    position: absolute;
+    inset: -10px;
+    border-radius: 999px;
+  }
 }
 /* 머리 줄의 남은 시간 — 팝오버가 PromptTimer를 덮으므로 한 번 더 세운다(App.tsx 주석).
    드래프트 알약을 그대로 쓰되 손패 위 작은 창에 맞게 줄이고, 알림 문구는 뺀다
@@ -8122,6 +8140,29 @@ button {
 .arm-hint-confirm:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+/*
+ * 안내 줄 버튼은 줄지도 접히지도 않는다 — 주 버튼 라벨이 «확인»에서 «3장 고르기 (n/3)»·
+ * «이 3장 넘기기»로 길어져, 375 폭에서 flex-shrink가 라벨을 «3장 고르기 / (0/3)» 두 줄로
+ * 쪼갰다(W2 regression-2). 문장만 줄어들게 하고, 좁은 화면에서는 버튼을 문장 아래 한 줄로 내린다.
+ */
+.arm-hint > button {
+  flex: none;
+  white-space: nowrap;
+}
+.arm-hint-text {
+  min-width: 0;
+}
+@container ui (max-width: 700px) {
+  .arm-hint {
+    flex-wrap: wrap;
+    justify-content: center;
+    row-gap: 6px;
+  }
+  .arm-hint-text {
+    flex: 1 1 100%;
+    text-align: center;
+  }
 }
 @keyframes arm-hint-confirm-pulse {
   0%,
@@ -16407,8 +16448,9 @@ body.reconnecting .abort-banner {
   background: #9a7b42;
 }
 
-/* 등가교환 — 지정 순간 공개받은 상대 손패 참고 줄(2026-09-25, docs/59 U08). 내 손패 바로 위에
-   두어 넘길 3장을 고르는 동안 위아래로 견준다. 누르는 곳이 아니라서 흐리게, 클릭은 받지 않는다.
+/* 등가교환 — 지정 순간 공개받은 상대 손패 참고 줄(2026-09-25, docs/59 U08). give 안내 바로 아래
+   (이름표 줄 위)에 두어 넘길 3장을 고르는 동안 위아래로 견준다. 잠깐 뜨는 줄이라 --own-band
+   실측에서 빼고 order:-1 목록에 넣었다 — 흐름 안이면 뜨고 질 때마다 보드가 출렁인다(W2 regression-1). 누르는 곳이 아니라서 흐리게, 클릭은 받지 않는다.
    ⚠ 봉인 배지(.seal-badge)의 붉은 자물쇠 모양을 쓰지 않는다 — 교환 상대에게 «🔒 봉인»이 걸린
    것처럼 보였다는 2026-08-02 보고의 재발 방지. 13장이라 좁은 화면에서는 줄을 접는다. */
 .swap3-reveal-strip {
@@ -16448,8 +16490,8 @@ body.reconnecting .abort-banner {
   width: 26px;
   height: 37px;
 }
-/* 좁은 화면·폰 가로 — .own-area 는 바닥에서 위로 자라므로 이 줄이 두껍거나 여러 줄이 되면
-   그 위의 give 안내(＋[이 3장 넘기기])가 그만큼 밀려 올라가 가운데 패널·강에 겹친다.
+/* 좁은 화면·폰 가로 — 이 줄은 --own-band 에 들지 않고 .own-area 가 바닥에서 위로 자라므로,
+   두껍거나 여러 줄이 되면 그 위의 give 안내(＋[이 3장 넘기기])가 그만큼 밀려 올라가 강에 겹친다.
    13장을 20×28 로 줄여 375 폭에서 이름표 한 줄 + 패 한 줄(≈ 345px 안), 740×360 에서
    이름표와 패가 한 줄에 서게 한다(2026-09-25, docs/59 U08). */
 @container ui (max-width: 700px) {

@@ -117,9 +117,9 @@ describe("U07 등가교환 넘길 3장 — 판의 손패에서", () => {
   });
 
   it("손패 클릭은 선택 토글로 가로챈다 — 코치 잠금 뒤, 다른 무장·타패 분기보다 앞", () => {
-    // 막는 기준은 프롬프트(swapGivePending)다 — 제출했는데 전송이 안 돼 로컬 상태만 내려간 틈에도
+    // 막는 기준은 프롬프트(swap3Pending)다 — 제출했는데 전송이 안 돼 로컬 상태만 내려간 틈에도
     // 손패 클릭이 평범한 타패로 새지 않는다(B07 리뷰 라운드 2)
-    const click = OWN.indexOf("if (swapGivePending) {");
+    const click = OWN.indexOf("if (swap3Pending) {");
     expect(click).toBeGreaterThan(0);
     expect(OWN.slice(click, click + 200)).toContain("if (!swapGiveInHand) return;");
     expect(OWN.indexOf("if (coachLocked && coachLock !== null) {")).toBeLessThan(click);
@@ -130,10 +130,10 @@ describe("U07 등가교환 넘길 3장 — 판의 손패에서", () => {
 
   it("끌어 버리기·드롭존으로도 새지 않는다", () => {
     const bd = OWN.slice(OWN.indexOf("function beginDrag("), OWN.indexOf("const container = handRef.current;"));
-    expect(OWN).toContain('const swapGivePending = !isSpectator && swap3Pick.stage === "give";');
-    expect(bd).toContain("if (swapGivePending) return;");
+    expect(OWN).toContain("const swap3Pending = !isSpectator && swap3Pick.stage !== null;");
+    expect(bd).toContain("if (swap3Pending) return;");
     const at = OWN.indexOf("function discardOptionFor(");
-    expect(OWN.slice(at, OWN.indexOf("\n  }\n", at))).toContain("if (swapGivePending) return undefined;");
+    expect(OWN.slice(at, OWN.indexOf("\n  }\n", at))).toContain("if (swap3Pending) return undefined;");
   });
 
   it("안내 줄에 대상 이름·[선택 초기화]·[이 3장 넘기기]가 있고 [취소]가 없다", () => {

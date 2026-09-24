@@ -84,7 +84,8 @@ describe("armTileIdsOf — 무장 옵션을 손패 id로 푸는 한 곳 (U01·U0
 describe("붉은 손길 — 제자리 미리보기와 [확인] (U02)", () => {
   it("첫 탭은 숫자만 고르고(들어 올림) 무장 분기보다 먼저 돌아간다", () => {
     const first = APP_CODE.indexOf(
-      'if (armedAug === "red_touch" && armedTileId !== id && armedByTile.has(id)) {',
+      // 같은 숫자(= 같은 옵션)의 다른 장은 둘째 탭이다(W2 interaction-3) — tileId 비교가 아니다
+      'if (armedAug === "red_touch" && !isArmSecondTap(id) && armedByTile.has(id)) {',
     );
     const branch = APP_CODE.indexOf(
       "if (armedAug !== null) {\n                    const opts = armedByTile.get(id);",
