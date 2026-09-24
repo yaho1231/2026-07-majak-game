@@ -6984,7 +6984,12 @@ export function App(): JSX.Element {
     }
   }
 
-  function submitOption(option: ActionOption): void {
+  /**
+   * 선택지를 서버로 보낸다. 돌려주는 값은 **전송 성공 여부**다 — 제출 뒤 화면을 걷는 쪽(등가교환
+   * 넘길 3장처럼 자기 UI를 스스로 닫는 곳)이 실패를 알아야 고르던 것을 그대로 남겨 둔다
+   * (2026-09-25, W2 상태 수명 재검토: 전송이 실패해도 안내 줄이 먼저 사라져 판이 잠긴 듯 보였다).
+   */
+  function submitOption(option: ActionOption): boolean {
     // 소리를 가장 먼저 — 직렬화·전송·리렌더가 클릭과 소리 사이에 끼면 그만큼 늦게 들린다.
     if (DISCARD_LIKE.has(option.type)) {
       sfx.discard();
@@ -7005,7 +7010,7 @@ export function App(): JSX.Element {
       payload: option.payload,
       ...(seat !== undefined ? { seat } : {}),
     } as ActionMessage);
-    if (!sent) return;
+    if (!sent) return false;
     /*
      * 프롬프트를 걷는 것은 **방금 보낸 수가 지금 떠 있는 그 프롬프트의 것일 때만**이다.
      *
@@ -7022,6 +7027,7 @@ export function App(): JSX.Element {
       }
     }
     setRiichiMode(false);
+    return true;
   }
 
   function pickDraft(augmentId: string): void {
@@ -15303,7 +15309,8 @@ const GameTable = memo(function GameTable(props: {
   onSandboxControl?: (enabled: boolean) => void;
   onSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
   onRiichiMode: (v: boolean) => void;
-  onSubmit: (o: ActionOption) => void;
+  /** 돌려주는 값은 전송 성공 여부(`submitOption`) — void 를 돌려주는 호출부도 받는다 */
+  onSubmit: (o: ActionOption) => boolean | void;
   onLeave: () => void;
   /**
    * 무효 처리하고 나가기 — 사람이 나 혼자인 판(증강 테스트·봇전)에서만 쓴다.
@@ -15577,11 +15584,17 @@ const GameTable = memo(function GameTable(props: {
       if (t !== null && t.closest("[data-arm-zone]") !== null) return;
       /*
        * 강제 무장(미래를 보는 자)은 arm(null)이 가드에 막혀 풀리지 않는다 — 판을 눌렀는데 아무
-       * 말이 없으면 안내 줄이 왜 안 사라지는지 알 수 없다(§2 원칙 7). 판 안을 누른 경우만
+       * 말이 없으면 안내 줄이 왜 안 사라지는지 알 수 없다(§2 원칙 7). 판 **표면**을 누른 경우만
        * 이유를 말한다 — 채팅·설정 같은 판 밖 조작까지 토스트로 덮지 않게(2026-09-25, docs/59 U03).
+       * 설정 톱니·나가기·빠른 토글·이모트·기록처럼 판 안에 있어도 **제 할 일이 따로 있는 컨트롤**은
+       * 정상으로 동작하므로 «먼저 정하세요»를 덧붙이지 않는다(W2 상태 수명 재검토).
        */
       if (selection.armedType !== null && FORCED_ARM_TYPES.has(selection.armedType)) {
-        if (t !== null && tableRef.current?.contains(t) === true) props.onToast?.(FORCED_PICK_HINT);
+        const onControl =
+          t !== null && t.closest("button, [role=button], a, input, select, textarea, label") !== null;
+        if (t !== null && !onControl && tableRef.current?.contains(t) === true) {
+          props.onToast?.(FORCED_PICK_HINT);
+        }
         return;
       }
       selection.arm(null);
@@ -21160,7 +21173,8 @@ function OwnArea(props: {
   /** 좁은 화면에서 손패 바로 위에 눕는 빠른 토글 (모바일 전용, CSS가 표시를 결정) */
   quickToggles?: JSX.Element;
   onRiichiMode: (v: boolean) => void;
-  onSubmit: (o: ActionOption) => void;
+  /** 돌려주는 값은 전송 성공 여부 — false 면 제출이 나가지 않았다(등가교환 UI를 남긴다) */
+  onSubmit: (o: ActionOption) => boolean | void;
   onHoverKind: (k: TileKind | null) => void;
   onToast?: (text: string) => void;
   /** 내 손패 배치를 서버에 알린다 — 다른 사람도 같은 배치(뒷면)를 본다 */
@@ -22111,8 +22125,11 @@ function OwnArea(props: {
   }, [props.promptSeq]);
   const submitSwap3 = (): void => {
     if (swap3Option === undefined) return;
+    // 전송이 실패하면(소켓이 닫혀 있었으면) 고르던 3장과 안내 줄·모달을 그대로 둔다 — 프롬프트는
+    // 남아 있으니 다시 붙은 뒤 같은 버튼을 누르면 된다(submitOption 주석). 여기서 닫으면
+    // 손패 탭은 swap3Pending 에 막혀 아무 말 없이 멈춘 판처럼 보였다(W2 상태 수명 재검토).
+    if (props.onSubmit(swap3Option) === false) return;
     if (swap3Pick.stage === "give") setSwapGives(sortTileIds([...swap3Sel], view.tiles));
-    props.onSubmit(swap3Option);
     setSwapTakeDismissed(true);
     setSwap3Sel([]);
   };

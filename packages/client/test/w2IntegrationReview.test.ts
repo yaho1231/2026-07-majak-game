@@ -122,3 +122,27 @@ describe("regression-3 변형 팝오버 닫기의 터치 목표", () => {
     );
   });
 });
+
+describe("W2 상태 수명 재검토 — 강제 선택 중 판 안 컨트롤", () => {
+  it("설정·나가기·토글 같은 컨트롤을 누르면 «먼저 정하세요» 토스트를 덧붙이지 않는다", () => {
+    const watch = between(APP_CODE, "FORCED_ARM_TYPES.has(selection.armedType)", "selection.arm(null);");
+    expect(watch).toMatch(/closest\("button, \[role=button\], a, input, select, textarea, label"\)/);
+    expect(watch).toMatch(/!onControl && tableRef\.current\?\.contains\(t\) === true/);
+  });
+});
+
+describe("W2 상태 수명 재검토 — 등가교환 제출 전송 실패", () => {
+  it("submitOption 이 전송 성공 여부를 돌려준다", () => {
+    const fn = between(APP_CODE, "function submitOption(option: ActionOption): boolean", "function pickDraft(");
+    expect(fn).toMatch(/if \(!sent\) return false;/);
+    expect(fn).toMatch(/setRiichiMode\(false\);\s*return true;/);
+  });
+
+  it("전송이 실패하면 고르던 3장·안내 줄·모달을 닫지 않는다", () => {
+    const fn = between(APP_CODE, "const submitSwap3 = (): void => {", "};");
+    const guard = fn.indexOf("props.onSubmit(swap3Option) === false) return;");
+    expect(guard).toBeGreaterThan(0);
+    expect(fn.indexOf("setSwapTakeDismissed(true)")).toBeGreaterThan(guard);
+    expect(fn.indexOf("setSwapGives(")).toBeGreaterThan(guard);
+  });
+});

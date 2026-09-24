@@ -165,7 +165,8 @@ describe("U10 3장 고르기는 [확정]으로 낸다", () => {
     const at = OWN.indexOf("const submitSwap3 = (): void => {");
     const body = OWN.slice(at, OWN.indexOf("\n  };\n", at));
     expect(body).toContain("if (swap3Option === undefined) return;");
-    expect(body).toContain("props.onSubmit(swap3Option);");
+    // 전송이 실패하면(false) 안내 줄·모달을 닫지 않는다 (W2 상태 수명 재검토)
+    expect(body).toContain("if (props.onSubmit(swap3Option) === false) return;");
     // take 모달의 [확정]도 같은 핸들러를 쓴다
     expect(OWN).toContain('"이 3장 가져와 교환"');
     expect(OWN).not.toContain("세 장을 고르면 교환됩니다");

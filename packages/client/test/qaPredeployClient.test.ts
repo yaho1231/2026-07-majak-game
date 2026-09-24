@@ -61,8 +61,9 @@ describe("§2-5 — send()가 실패하면 프롬프트를 그대로 둔다", ()
   it("submitOption — 전송 실패면 프롬프트를 내리지 않는다", () => {
     const body = fnBody("function submitOption(");
     expect(body).toMatch(/const sent = send\(/);
-    expect(body).toContain("if (!sent) return;");
-    const guard = body.indexOf("if (!sent) return;");
+    // 2026-09-25: 전송 성공 여부를 돌려준다(false) — 제출 뒤 자기 UI를 닫는 호출부가 실패를 알게
+    expect(body).toContain("if (!sent) return false;");
+    const guard = body.indexOf("if (!sent) return false;");
     expect(body.indexOf("dropPrompt(seat)")).toBeGreaterThan(guard);
   });
 

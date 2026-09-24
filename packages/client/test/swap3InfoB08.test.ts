@@ -124,7 +124,11 @@ describe("U09 교환 상대·넘길 패", () => {
     const at = OWN.indexOf("const submitSwap3 = (): void => {");
     const fn = OWN.slice(at, OWN.indexOf("};", at));
     expect(fn).toContain('if (swap3Pick.stage === "give") setSwapGives(sortTileIds([...swap3Sel], view.tiles));');
-    expect(fn.indexOf("setSwapGives")).toBeLessThan(fn.indexOf("props.onSubmit(swap3Option);"));
+    // 기억은 **전송이 나간 뒤에만** 남긴다 — 실패하면 고르던 3장을 그대로 두고 다시 누르게 한다
+    // (W2 상태 수명 재검토). 이벤트 핸들러 안이라 같은 렌더로 묶이므로 순서가 기억을 잃게 하지는 않는다.
+    const sentGuard = fn.indexOf("props.onSubmit(swap3Option) === false) return;");
+    expect(sentGuard).toBeGreaterThan(0);
+    expect(fn.indexOf("setSwapGives")).toBeGreaterThan(sentGuard);
   });
 
   it("새 give 프롬프트가 오면 지난 교환의 기억을 버린다 — 시간 초과 대행으로 끝난 give에 옛 3장이 뜨지 않게", () => {
