@@ -15360,7 +15360,7 @@ function doraFxOf(view: PlayerView, enabled: boolean): DoraFx {
   return { common, personal };
 }
 
-/** 두 DoraFx가 같은 내용인가 — 값이 그대로면 객체도 이 창 유지 위한 비교. */
+/** 두 DoraFx가 같은 내용인가 — 값이 그대로면 객체도 그대로 두기 위한 비교. */
 function sameDoraFx(a: DoraFx, b: DoraFx): boolean {
   if (a === b) return true;
   const sameSet = (x: Set<string>, y: Set<string>): boolean => {
@@ -21988,8 +21988,17 @@ function InfoNote(props: {
  * 그대로 가져온다.
  *
  * 마감이 없으면(평시 국) 아무것도 그리지 않는다.
+ *
+ * `fallback` — 시간이 다 되면 **실제로** 일어나는 일. 예전엔 모든 창이 «시간이 지나면 자동으로
+ * 선택됩니다»를 적었지만 서버가 대신 골라 주는 것은 등가교환(FORCED_ACTION_TYPES)뿐이고, 나머지는
+ * pass가 없어 마지막 후보인 버림이 나가 증강이 발동하지 않는다(HumanAgent.safeFallbackOption).
+ * 기본 문구가 그 대다수를 말하고, 다른 창만 제 문구를 넘긴다(2026-09-25, docs/59 U49).
+ * ⚠ `deadline`은 늘 첫 속성으로 쓴다 — 패널 수와 타이머 수를 `<PickTimer deadline=`로 센다.
  */
-function PickTimer(props: { deadline: number | null }): JSX.Element | null {
+const PICK_TIMER_FALLBACK = "시간이 다 되면 패 한 장이 자동으로 버려지고 이 증강은 사용되지 않습니다";
+/** 예지 재배열 탭 — 공개는 이미 끝났고, ORDER는 공개한 그 순에만 열린다(content foresight) */
+const FORESIGHT_TIMER_FALLBACK = "시간이 다 되면 패 한 장이 자동으로 버려지고 재배열 기회도 함께 사라집니다";
+function PickTimer(props: { deadline: number | null; fallback?: string }): JSX.Element | null {
   const { deadline } = props;
   const paused = useContext(PausedContext);
   const [left, setLeft] = useState<number | null>(
@@ -22015,11 +22024,65 @@ function PickTimer(props: { deadline: number | null }): JSX.Element | null {
       aria-live="off"
     >
       ⏳ 남은 시간 <strong>{Math.ceil(left / 1000)}</strong>초
-      <span className="pick-timer-note">
-        {urgent ? ". 시간이 다 되면 자동으로 선택됩니다" : ". 시간이 지나면 자동으로 선택됩니다"}
-      </span>
+      <span className="pick-timer-note">. {props.fallback ?? PICK_TIMER_FALLBACK}</span>
     </div>
   );
+}
+
+/**
+ * 고르기 창(`.rinshan-pick-overlay`)이 떠 있을 때 **Esc 앞에서 비켜설** 표면 — ESC_OWNER_SELECTOR에서
+ * 고르기 창 자신만 뺀 것. 연출 건너뛰기(`.prod-skip`)가 특히 그렇다: 연출 중 Esc는 window keydown으로
+ * 컷인을 넘기는데, 여기서 함께 받으면 컷인을 넘기려다 창까지 닫힌다(2026-09-25, docs/59 U46).
+ */
+const MODAL_ESC_YIELD_SELECTOR =
+  '[role="dialog"]:not(.coach-layer):not(.auglog):not(.settings-panel), [aria-modal="true"], .prod-skip, .aug-pill-pinned';
+
+/**
+ * 닫기 단추가 있는 고르기 창의 Esc = 그 닫기 (2026-09-25, docs/59 U46).
+ *
+ * 같은 파일의 시트·오버레이는 전부 Esc로 닫히는데 고르기 창만 keydown이 없어 키보드 사용자에게
+ * 출구가 없었다. **닫기가 있는 창에만** 건다 — 등가교환 take는 «닫기 없음»(2026-08-02 사용자 지시)이라
+ * Esc도 없다. ActionHotkeys 안에 두지 않는다(그쪽은 Esc를 쓰지 않는다 — a11yPerfGuards).
+ * `onClose`는 ref로 들고 있어 창이 떠 있는 동안 다시 구독하지 않는다(재배열 탭은 매 렌더 새 함수다).
+ */
+function useModalEsc(onClose: () => void, enabled: boolean): void {
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    if (!enabled) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== "Escape" || e.defaultPrevented || isTypingTarget(e.target)) return;
+      if (document.querySelector(MODAL_ESC_YIELD_SELECTOR) !== null) return;
+      e.preventDefault();
+      closeRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [enabled]);
+}
+
+/**
+ * 재배열 칸(예지 탭·영상 정찰)의 ←/→ — 포커스한 칸을 한 자리 옮기고 초점도 따라간다.
+ * 드래그는 마우스 전용이고 탭-탭(Enter/Space 두 번)은 두 칸을 오가야 해서, 칸마다 ◀▶ 단추를
+ * 달았던 것을 키 하나로 대신한다 — 칸당 단추 수를 줄인다(2026-09-25, docs/59 U44·U45).
+ * 칸은 `data-reorder-pos`로 자리를 들고 같은 부모 아래 형제로 선다.
+ */
+function reorderArrowKey(
+  e: React.KeyboardEvent<HTMLElement>,
+  pos: number,
+  count: number,
+  move: (from: number, to: number) => void,
+): void {
+  const step = e.key === "ArrowLeft" ? -1 : e.key === "ArrowRight" ? 1 : 0;
+  if (step === 0) return;
+  const to = pos + step;
+  if (to < 0 || to >= count) return;
+  e.preventDefault();
+  const row = e.currentTarget.parentElement;
+  move(pos, to);
+  requestAnimationFrame(() => {
+    row?.querySelector<HTMLElement>(`[data-reorder-pos="${to}"]`)?.focus();
+  });
 }
 
 /**
@@ -23139,7 +23202,7 @@ function OwnArea(props: {
       root.style.setProperty("--own-band-full", `${bandFull}px`);
       /*
        * body 에도 같은 값을 올린다 — 이 띠를 피해야 하는 것 중에 **body 포털**이
-       * 있다(`.rinshan-reopen` 「영상패 가져오기」 등, §FIXED_SURFACE_NOTE).
+       * 있다(§FIXED_SURFACE_NOTE — 예전의 절벽 위 꽃 재열기 알약이 그 예였다).
        * 그것들은 `.game-root` 의 후손이 아니라 형제라 여기서 올린 변수를 상속받지
        * 못하고, 고정 px 로 서 있다가 액션 바가 뜨면 손패 위에 얹혔다.
        */
@@ -23573,11 +23636,15 @@ function OwnArea(props: {
   // 응답 없이 지나가면(시간 초과 등) 모달이 남아 판을 가리므로 뷰 기준으로도 닫는다.
   const canPickRinshan =
     rinshanOptions.size > 0 && isMyTurn && view.round.phase === "turn.act";
+  // 절벽 위 꽃 창의 «지금 패» 칸 — 영상패와 맞바뀔 쯔모패. 손에 없으면(관전 등) 칸을 세우지 않는다(U47)
+  const bloomDrawnTile = hasDrawn && drawnId !== null ? view.tiles[drawnId] : undefined;
   // 절벽 위 꽃(bloom)은 깡 직후의 강제 선택이라 자동으로 뜬다.
   const [rinshanDismissed, setRinshanDismissed] = useState(false);
   useEffect(() => {
     setRinshanDismissed(false);
   }, [props.promptSeq]);
+  // Esc = [지금 패 그대로 두기] — 창만 접고, 손패 위 안내 줄에서 다시 연다(docs/59 U46·U48)
+  useModalEsc(() => setRinshanDismissed(true), canPickRinshan && !rinshanDismissed);
   // 내 턴 버림 프롬프트인가 — 봉인 패 클릭 안내는 실제로 버릴 차례일 때만 띄운다
   const promptHasDiscard =
     myPrompt?.options.some(
@@ -24219,6 +24286,19 @@ function OwnArea(props: {
               취소
             </button>
           </div>
+        ) : canPickRinshan && rinshanDismissed ? (
+          /*
+            절벽 위 꽃 창을 접은 뒤 다시 여는 자리 — 예전엔 body 포털의 플로팅 알약(.rinshan-reopen)이라
+            액션 바·손패와 자리를 다퉈 --own-band-full 보정까지 필요했다. 무장 안내가 서는 이 줄로 옮긴다
+            (2026-09-25, docs/59 U48). 재진입 수단은 그대로다(docs/10 §1 «닫으면 다시 연다», 52차 사용자
+            확정) — 자리만 바뀐다. 다른 무장이 걸려 있으면 그 안내가 먼저다(위 분기들).
+          */
+          <div className="arm-hint arm-bloom">
+            <span className="arm-hint-text">🌸 {augActionName(props.catalog, "bloom_pick")}: 영상패를 고를 수 있습니다</span>
+            <button className="arm-hint-confirm" onClick={() => setRinshanDismissed(false)}>
+              영상패 고르기
+            </button>
+          </div>
         ) : null}
         {/*
           한 패에 변형 선택지가 여럿일 때(염색 무늬·연금술 ±1·분열·위조) — 누른 패 바로 위에
@@ -24278,8 +24358,8 @@ function OwnArea(props: {
                 {/* 손패 바로 위라 `.own-area`의 PromptTimer·무장 안내 줄을 **덮는다** — 1280×800
                     실측에서 팝오버가 타이머 막대 위에 섰다. 초읽기 국(5~10초)에 남은 시간을
                     못 본 채 고르게 두면 안 되므로 모달 때처럼 머리에 한 번 더 세운다
-                    (2026-09-25, docs/59 U12 리뷰). 알림 문구는 CSS에서 숨긴다 — 시간이 다 되면
-                    고르는 게 아니라 쯔모패를 버리므로 «자동으로 선택»은 틀린 말이다. */}
+                    (2026-09-25, docs/59 U12 리뷰). 알림 문구는 CSS에서 숨긴다 — 좁은 머리 줄이라
+                    시간만 둔다(문구 자체는 이제 실제 폴백을 말한다, docs/59 U49). */}
                 <PickTimer deadline={props.promptDeadline} />
                 <button
                   className="arm-sub-pop-close"
@@ -24986,7 +25066,8 @@ function OwnArea(props: {
       {swap3Pick.stage === "take" && !swapTakeDismissed ? createPortal(
         <div className="rinshan-pick-overlay">
           <div className="rinshan-pick-panel">
-            <PickTimer deadline={props.promptDeadline} />
+            {/* 서버가 대신 골라 주는 유일한 창이다(FORCED_ACTION_TYPES swap3_take) — docs/59 U49 */}
+            <PickTimer deadline={props.promptDeadline} fallback="시간이 다 되면 남은 조합 중 하나로 자동 교환합니다" />
             {/* 누구와 바꾸는지를 제목이 말한다 — 흐림 오버레이가 이름표의 «→ 이름» 칩과
                 🔄 관계 표식을 가린다(2026-09-25, docs/59 U09) */}
             <div className="rinshan-pick-title">
@@ -25062,11 +25143,30 @@ function OwnArea(props: {
             <div className="rinshan-pick-title">
               🌸 절벽 위에 피어난 꽃: 영상패 선택
             </div>
+            {/* bloom_pick은 고른 영상패를 손으로 가져오고 **지금 쯔모한 패**를 그 왕패 자리로 보낸다
+                (content cliff_bloom BLOOM_PICK_TAKEN). 무엇과 맞바뀌는지를 부제가 말한다(docs/59 U47) */}
             <div className="rinshan-pick-sub">
-              깡을 선언했습니다. 남은 영상패 중에서 원하는 패를 골라 가져오세요. 도라 표시패는 보이지 않습니다.
+              깡을 선언했습니다. 고른 영상패가 지금 뽑은 패와 맞바뀝니다. 지금 패를 두려면 그 칸을
+              누르세요 — 창만 닫히고, 버릴 패는 손패에서 고릅니다. 도라 표시패는 보이지 않습니다.
             </div>
             {/* 고를 수 있는 것은 **영상패뿐**이라 그것만 늘어놓는다 */}
             <div className="rinshan-pick-tiles">
+                {/*
+                  지금 뽑은 패 — 건너뛰기는 곧 «이 패를 그대로 둔다»는 선택인데 그 패가 흐림 뒤 손패에만
+                  있어 무엇을 두는지 볼 수 없었다. 칸 자체가 [그대로 두기]다 — 하단의 따로 선 단추
+                  («가져오지 않고 진행» — 실제로는 닫기만 하고 버림은 따로 해야 했다)를 대신한다
+                  (2026-09-25, docs/59 U47·U48). 관전 등으로 쯔모패가 없으면 아래 대체 단추가 선다.
+                */}
+                {bloomDrawnTile !== undefined ? (
+                  <button
+                    type="button"
+                    className="rinshan-pick-tile rinshan-slot-drawn"
+                    onClick={() => setRinshanDismissed(true)}
+                  >
+                    <TileImg tile={bloomDrawnTile} size="hand" />
+                    <span className="rinshan-pick-label">지금 패 그대로 두기</span>
+                  </button>
+                ) : null}
                 {/* 깡으로 이미 빠져나간 영상패 자리 — 보충하지 않으므로 빈 칸으로 남는다(07 §2) */}
                 {Array.from({ length: rinshanSpentOf(view) }, (_v, i) => (
                   <span key={`spent-${i}`} className="rinshan-pick-tile rinshan-slot-spent">
@@ -25095,24 +25195,17 @@ function OwnArea(props: {
                   );
                 })}
             </div>
-            <button
-              className="rinshan-pick-skip"
-              onClick={() => setRinshanDismissed(true)}
-            >
-              가져오지 않고 진행
-            </button>
+            {bloomDrawnTile === undefined ? (
+              <button className="rinshan-pick-skip" onClick={() => setRinshanDismissed(true)}>
+                지금 패 그대로 두기
+              </button>
+            ) : null}
           </div>
         </div>,
         document.body,
       ) : null}
-      {/* 절벽 위 꽃: 닫은 뒤 다시 열기 */}
-      {/* 화면 고정 표면은 전부 body 포털이다 — 이유는 FIXED_SURFACE_NOTE 참고 */}
-      {canPickRinshan && rinshanDismissed ? createPortal(
-        <button className="rinshan-reopen" onClick={() => setRinshanDismissed(false)}>
-          🌸 영상패 가져오기
-        </button>,
-        document.body,
-      ) : null}
+      {/* 절벽 위 꽃을 닫은 뒤 다시 열기는 손패 위 안내 줄(arm-bloom)에 선다 — 예전 body 포털
+          플로팅 알약(.rinshan-reopen)은 액션 바·손패와 자리를 다퉜다(docs/59 U48) */}
     </>
   );
 }
@@ -27350,10 +27443,16 @@ function ActiveAugmentControl(props: {
   const setForesightTab = (open: boolean): void => props.onForesightTab?.(open);
   /**
    * 영상 정찰 — 재배열 중인 순서. arr[새 자리] = 원래 인덱스. null이면 아직 안 열었다.
-   * (예지와 같은 규약이라 조작감도 같다 — 드래그 / 두 번 누르기 / 좌우 이동 버튼.)
+   * (예지와 같은 규약이라 조작감도 같다 — 드래그 / 두 번 누르기 / 포커스한 칸의 ←→ 키.)
    */
   const [rinshanArr, setRinshanArr] = useState<number[] | null>(null);
   const [rinshanDragFrom, setRinshanDragFrom] = useState<number | null>(null);
+  /**
+   * 영상 정찰 — 내 쯔모패와 맞바꾸려고 «내 쯔모패» 칸에 올려 둔 영상패의 **원래 인덱스**(없으면 null).
+   * 자리가 아니라 원래 인덱스로 든다: 교환 대상을 고른 뒤에도 순서를 더 옮길 수 있고, 그 패를
+   * 따라가야 한다. 제출할 때 재배열 후 자리(take 규약, content rinshan_preview)로 바꾼다(docs/59 U44).
+   */
+  const [rinshanTake, setRinshanTake] = useState<number | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   // 강제 선택이 시작되면 열린 메뉴를 접는다 — 그 메뉴의 항목이 강제 선택을 건너뛰는 길이다(docs/59 U03·U07)
   useEffect(() => {
@@ -27460,12 +27559,48 @@ function ActiveAugmentControl(props: {
   }, [foresightReorderable, foresightArr]);
   // (재배열이 열리면 탭을 곧바로 띄우는 effect는 여닫이 상태와 함께 OwnArea로 옮겼다 — docs/59 U50)
 
+  /** 고르기 창을 닫는다 — 영상 정찰에서 옮긴 순서·집은 패·교환 대상도 함께 버린다 */
+  const closeModal = (): void => {
+    setPickModal(null);
+    setRinshanArr(null);
+    setRinshanDragFrom(null);
+    setRinshanTake(null);
+  };
+  /** 예지 재배열 탭의 [바꾸지 않고 닫기] — 옮긴 순서는 버린다(부제가 미리 말한다, docs/59 U45) */
+  const closeForesightTab = (): void => {
+    setForesightDragFrom(null);
+    setForesightArr([0, 1, 2, 3]);
+    setForesightTab(false);
+  };
+  /*
+   * Esc — 재배열 창에서는 **집은 패부터** 내려놓고, 아무것도 안 들었을 때 닫는다. 한 번의 Esc로
+   * 들고 있던 패와 창이 함께 사라지면 무엇이 취소됐는지 모른다(2026-09-25, docs/59 U46).
+   * 이 컨트롤의 창(단색 세계·편식·영상 정찰·예지 탭)은 모두 닫기가 있다.
+   */
+  useModalEsc(
+    () => {
+      if (foresightTab && foresightReorderable) {
+        if (foresightDragFrom !== null) setForesightDragFrom(null);
+        else closeForesightTab();
+        return;
+      }
+      if (pickModal === "rinshan_arrange" && rinshanDragFrom !== null) {
+        setRinshanDragFrom(null);
+        return;
+      }
+      closeModal();
+    },
+    pickModal !== null || (foresightTab && foresightReorderable),
+  );
+
   // 모달이 떠 있는 동안 그 액션이 프롬프트에서 사라지면(교환 소진·턴 종료·리치 등)
   // 탭을 자동으로 닫는다. 예전엔 남아 있어서 이미 끝난 선택창을 손으로 닫아야 했다.
   useEffect(() => {
     if (pickModal === null) return;
     if ((myPrompt?.options ?? []).some((o) => o.type === pickModal)) return;
-    setPickModal(null);
+    closeModal();
+    // closeModal은 상태 설정자만 부른다 — 렌더마다 새 함수라 의존성에 넣지 않는다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickModal, myPrompt]);
 
   // 파고든 증강의 후보가 프롬프트에서 사라지면 1단계로 되돌린다 (빈 목록이 남지 않게).
@@ -27803,7 +27938,7 @@ function ActiveAugmentControl(props: {
     rinshanArr !== null && rinshanArr.length === rinshanCount
       ? rinshanArr
       : Array.from({ length: rinshanCount }, (_v, i) => i);
-  /** from 자리의 패를 빼서 to 자리에 끼워 넣는다 (드래그·탭·이동 버튼이 함께 쓴다) */
+  /** from 자리의 패를 빼서 to 자리에 끼워 넣는다 (드래그·탭·←→ 키가 함께 쓴다) */
   const moveRinshan = (from: number, to: number): void => {
     setRinshanDragFrom(null);
     if (from === to || to < 0 || to >= rinshanCount) return;
@@ -27812,14 +27947,44 @@ function ActiveAugmentControl(props: {
     next.splice(to, 0, moved as number);
     setRinshanArr(next);
   };
-  /** 이 순서 + 교환 자리로 확정한다 (take가 null이면 순서만) */
-  const submitRinshan = (take: number | null): void => {
-    const opt = rinshanArrByKey.get(
-      `${rinshanOrder.join(",")}|${take === null ? "-" : String(take)}`,
-    );
-    if (opt !== undefined) sel.submit(opt);
-    setRinshanArr(null);
+  /*
+   * 교환 — 칸마다 붙어 있던 [이 패와 교환] 넷을 걷고 «내 쯔모패» 칸 하나로 모았다. 교환 상대인
+   * 쯔모패가 창 어디에도 없어(판은 흐림 뒤) 무엇과 바뀌는지 볼 수 없었고, 울고 난 순처럼 교환이
+   * 안 되는 때에도 비활성 단추 넷이 남아 안내문과 함께 «교환»을 권했다(2026-09-25, docs/59 U44).
+   * 교환 후보가 하나라도 있을 때만 칸을 세운다 — 후보 자체가 서버의 판정이다(canTake).
+   */
+  const rinshanDrawnId = view.round.myDrawnTile;
+  const rinshanDrawnTile =
+    rinshanDrawnId !== null && (view.zones[`hand:${me.id}`]?.tileIds ?? []).includes(rinshanDrawnId)
+      ? view.tiles[rinshanDrawnId]
+      : undefined;
+  const rinshanTakeable =
+    rinshanDrawnTile !== undefined && [...rinshanArrByKey.keys()].some((k) => !k.endsWith("|-"));
+  /** 교환 대상의 **재배열 후 자리** — take 규약(content rinshan_preview: take는 재배열 후 자리) */
+  const rinshanTakePos = (() => {
+    if (!rinshanTakeable || rinshanTake === null) return null;
+    const pos = rinshanOrder.indexOf(rinshanTake);
+    return pos >= 0 ? pos : null;
+  })();
+  /** from 자리의 패를 교환 대상으로 올린다 — 이미 올린 그 패면 내린다(토글) */
+  const markRinshanTake = (from: number): void => {
     setRinshanDragFrom(null);
+    const orig = rinshanOrder[from];
+    if (orig === undefined) return;
+    setRinshanTake((cur) => (cur === orig ? null : orig));
+  };
+  // 손대지 않았으면(항등 + 교환 없음) 확정할 게 없다 — 국에 한 번뿐인 사용권이 효과 없이 타고
+  // «영상패 순서를 다시 짰다»가 전원에게 공개돼 사실과 다른 정보가 된다(파일 머리 정직성 원칙,
+  // 예지 탭의 foresightMoved와 같은 규칙 — docs/59 U44).
+  const rinshanMoved = rinshanOrder.some((orig, pos) => orig !== pos);
+  const rinshanChanged = rinshanMoved || rinshanTakePos !== null;
+  const rinshanConfirmOpt = rinshanArrByKey.get(
+    `${rinshanOrder.join(",")}|${rinshanTakePos === null ? "-" : String(rinshanTakePos)}`,
+  );
+  /** 이 순서(+ 교환 대상이 있으면 그 자리)로 확정한다. 교환 대상이 없으면 순서만(«선택 안 하기») */
+  const confirmRinshan = (): void => {
+    if (!rinshanChanged || rinshanConfirmOpt === undefined) return;
+    sel.submit(rinshanConfirmOpt);
     closeModal();
   };
 
@@ -27828,11 +27993,7 @@ function ActiveAugmentControl(props: {
   // 자식의 `position: fixed`가 뷰포트가 아니라 그 요소를 기준으로 잡힌다 →
   // 모달이 화면 아래쪽에 붙어 잘린다. (OwnArea의 기존 모달들은 `.own-area` 바깥
   // 형제로 렌더돼 있어서 이 문제를 피해 갔다.)
-  const closeModal = (): void => {
-    setPickModal(null);
-    setRinshanArr(null);
-    setRinshanDragFrom(null);
-  };
+  // (closeModal은 Esc 훅·자동 닫기 effect와 함께 쓰려고 조기 반환 위로 올렸다)
 
   return (
     <div className="own-aug" ref={rootRef}>
@@ -27850,6 +28011,7 @@ function ActiveAugmentControl(props: {
                 const suit = (o.payload as { suit?: unknown }).suit;
                 if (typeof suit !== "string") return null;
                 const preview = unifyPreview(view, myHandIds, suit as TileKind["suit"]);
+                const changed = preview.filter((p) => p.tile.attrs.conjured === true).length;
                 return (
                   <button
                     key={`${suit}-${i}`}
@@ -27859,7 +28021,11 @@ function ActiveAugmentControl(props: {
                       setPickModal(null);
                     }}
                   >
-                    <span className="aug-pick-row-label">{optionDetail(view, o)}</span>
+                    {/* 바뀌는 장수를 이름 옆에 — 석 줄의 미리보기를 눈으로 세지 않아도 무늬를 가른다(U06) */}
+                    <span className="aug-pick-row-label">
+                      {optionDetail(view, o)}
+                      {` — ${changed}장 바뀜`}
+                    </span>
                     <span className="aug-pick-row-tiles">
                       {preview.map((p) => (
                         <TileImg key={p.id} tile={p.tile} size="mini" />
@@ -27869,114 +28035,134 @@ function ActiveAugmentControl(props: {
                 );
               })}
             </div>
+            {/* 닫기 문구는 한 가지 — 아직 아무것도 내지 않았으니 «사용하지 않고»(docs/59 U46) */}
             <button className="rinshan-pick-skip" onClick={closeModal}>
-              발동하지 않고 닫기
+              사용하지 않고 닫기
             </button>
           </div>
         </div>,
         document.body,
       ) : null}
       {/*
-        영상 정찰 — 남은 영상패를 전부 펼쳐 순서를 짜고, 한 장을 고르면 쯔모패와 맞바꾼다.
+        영상 정찰 — 남은 영상패를 전부 펼쳐 순서를 짜고, 한 장을 «내 쯔모패» 칸에 올리면 확정할 때
+        쯔모패와 맞바꾼다. 영상패는 판 어디에도 없으므로 창이 맞다(docs/59 §2 원칙 2).
 
-        조작 세 갈래(예지 탭과 같은 규약):
-        ① 드래그(마우스) ② 두 자리를 차례로 누르기(터치 — 모바일 브라우저는 터치에서
-        dragstart를 아예 내지 않는다) ③ 각 칸의 ◀ ▶ 이동 버튼(키보드·스크린리더).
-        드래그만 두면 폰에서도 키보드에서도 순서를 바꿀 길이 없다.
+        조작(예지 탭과 같은 규약): ① 드래그(마우스) ② 두 자리를 차례로 누르기(터치 — 모바일
+        브라우저는 터치에서 dragstart를 아예 내지 않는다) ③ 포커스한 칸의 ←/→ 키(키보드). 칸이
+        aria-label 달린 <button>이라 Enter/Space 두 번으로도 된다 — 그래서 칸마다 달던 ◀▶ 단추를
+        걷었다(2026-09-25, docs/59 U44). 사용자 지시(2026-08-27, content rinshan_preview) 세 가지 —
+        드래그 재배열·한 장 골라 쯔모패와 교환·«선택 안 하기»는 순서만 — 는 그대로다. 교환 대상을
+        고르는 방식과 «누르는 즉시 제출 → [확정] 한 번»만 바뀌었다.
       */}
       {pickModal === "rinshan_arrange" && rinshanCount > 0 ? createPortal(
         <div className="rinshan-pick-overlay" data-arm-zone="1">
           <div className="rinshan-pick-panel aug-pick-wide">
+            {/* 시간이 다 되면 버림이 나가고 이 순의 사용은 없던 일이 된다(국에 1회는 남는다) */}
             <PickTimer deadline={props.promptDeadline ?? null} />
             <div className="rinshan-pick-title">
               🀫 {augNameFor("rinshan_arrange")}: 남은 영상패 {rinshanCount}장
             </div>
             <div className="rinshan-pick-sub">
               왼쪽부터 차례로 <b>다음 깡의 보충패</b>가 됩니다. 옮길 패를 끌어다 놓거나,
-              옮길 패와 놓을 자리를 차례로 누르세요. '이 패와 교환'을 누르면 그
-              패가 내 쯔모패와 바뀌고, 내 쯔모패는 맨 앞자리에 들어갑니다.
+              옮길 패와 놓을 자리를 차례로 누르세요(키보드는 ←/→).
+              {rinshanTakeable ? (
+                <>
+                  {" "}한 장을 <b>내 쯔모패</b> 칸으로 끌거나 집은 뒤 그 칸을 누르면, 확정할 때 그 패가
+                  내 쯔모패와 바뀌고 내 쯔모패는 그 패가 있던 자리에 들어갑니다.
+                </>
+              ) : null}
               <br />
               이 국에 한 번만 사용할 수 있으며, <b>순서만 바꿔도 영상패를 조작했다는 사실이 상대에게 공개</b>됩니다.
             </div>
             <div className="foresight-tab-row">
+              {rinshanTakeable && rinshanDrawnTile !== undefined ? (
+                <button
+                  type="button"
+                  className={`foresight-tab-cell rinshan-arr-drawn${
+                    rinshanTakePos !== null ? " rinshan-arr-drawn-on" : ""
+                  }`}
+                  title="영상패를 끌어다 놓거나, 집은 뒤 누르면 그 패와 맞바꿉니다. 다시 누르면 교환을 취소합니다"
+                  aria-label={
+                    rinshanTakePos !== null
+                      ? `내 쯔모패. ${rinshanTakePos + 1}번째 영상패와 교환합니다. 누르면 취소합니다`
+                      : "내 쯔모패. 영상패를 집은 뒤 누르면 그 패와 교환합니다"
+                  }
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => {
+                    if (rinshanDragFrom === null) return;
+                    markRinshanTake(rinshanDragFrom);
+                  }}
+                  onClick={() => {
+                    if (rinshanDragFrom !== null) markRinshanTake(rinshanDragFrom);
+                    else setRinshanTake(null);
+                  }}
+                >
+                  <span className="foresight-tab-ord">내 쯔모패</span>
+                  <TileImg tile={rinshanDrawnTile} size="hand" />
+                  <span className="foresight-tab-label">
+                    {rinshanTakePos !== null ? `↔ ${rinshanTakePos + 1}번째와 교환` : "교환 안 함"}
+                  </span>
+                </button>
+              ) : null}
               {rinshanOrder.map((origIdx, pos) => {
                 const tileId = rinshanIds[origIdx];
                 const tile = tileId !== undefined ? view.tiles[tileId] : undefined;
                 const picked = rinshanDragFrom === pos;
+                const taken = rinshanTakePos === pos;
                 return (
-                  <div
+                  <button
                     key={pos}
-                    className={`foresight-tab-cell${picked ? " foresight-dragging" : ""}`}
+                    type="button"
+                    data-reorder-pos={pos}
+                    className={`foresight-tab-cell${picked ? " foresight-dragging" : ""}${
+                      taken ? " rinshan-arr-taken" : ""
+                    }`}
+                    title="끌거나, 두 자리를 차례로 눌러 순서 변경 (←/→ 키로도 옮깁니다)"
+                    aria-label={`${pos + 1}번째 영상패${taken ? ", 쯔모패와 교환할 패" : ""}. 누르면 집거나 놓습니다`}
+                    draggable
+                    onDragStart={() => setRinshanDragFrom(pos)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => {
+                      if (rinshanDragFrom === null) return;
+                      moveRinshan(rinshanDragFrom, pos);
+                    }}
+                    onDragEnd={() => setRinshanDragFrom(null)}
+                    onKeyDown={(e) => reorderArrowKey(e, pos, rinshanCount, moveRinshan)}
+                    onClick={() => {
+                      if (rinshanDragFrom === null) setRinshanDragFrom(pos);
+                      else moveRinshan(rinshanDragFrom, pos);
+                    }}
                   >
-                    <button
-                      type="button"
-                      className="rinshan-arr-grab"
-                      title="끌거나, 두 자리를 차례로 눌러 순서 변경"
-                      aria-label={`${pos + 1}번째 영상패. 누르면 집거나 놓습니다`}
-                      draggable
-                      onDragStart={() => setRinshanDragFrom(pos)}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={() => {
-                        if (rinshanDragFrom === null) return;
-                        moveRinshan(rinshanDragFrom, pos);
-                      }}
-                      onDragEnd={() => setRinshanDragFrom(null)}
-                      onClick={() => {
-                        if (rinshanDragFrom === null) setRinshanDragFrom(pos);
-                        else moveRinshan(rinshanDragFrom, pos);
-                      }}
-                    >
-                      <span className="foresight-tab-ord">{pos + 1}번째</span>
-                      {tile !== undefined ? <TileImg tile={tile} size="hand" /> : null}
-                      <span className="foresight-tab-label">
-                        {pos === 0 ? "★ 다음 깡" : "그다음"}
-                      </span>
-                    </button>
-                    {/* 드래그 대안 — 키보드·스크린리더 사용자도 순서를 바꿀 수 있어야 한다 */}
-                    <span className="rinshan-arr-nudge">
-                      <button
-                        type="button"
-                        aria-label={`${pos + 1}번째 패를 앞으로`}
-                        disabled={pos === 0}
-                        onClick={() => moveRinshan(pos, pos - 1)}
-                      >
-                        ◀
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={`${pos + 1}번째 패를 뒤로`}
-                        disabled={pos === rinshanCount - 1}
-                        onClick={() => moveRinshan(pos, pos + 1)}
-                      >
-                        ▶
-                      </button>
+                    <span className="foresight-tab-ord">{pos + 1}번째</span>
+                    {tile !== undefined ? <TileImg tile={tile} size="hand" /> : null}
+                    <span className="foresight-tab-label">
+                      {taken ? "↔ 쯔모패와 교환" : pos === 0 ? "★ 다음 깡" : "그다음"}
                     </span>
-                    <button
-                      type="button"
-                      className="rinshan-arr-take"
-                      disabled={
-                        rinshanArrByKey.get(`${rinshanOrder.join(",")}|${pos}`) === undefined
-                      }
-                      title="이 패를 내 쯔모패와 바꿉니다. 교환은 국에 한 번입니다"
-                      onClick={() => submitRinshan(pos)}
-                    >
-                      이 패와 교환
-                    </button>
-                  </div>
+                  </button>
                 );
               })}
             </div>
             <div className="foresight-tab-hint">
               {rinshanDragFrom !== null
-                ? "놓을 자리를 누르세요 (같은 자리를 다시 누르면 취소)"
-                : "순서를 바꾼 뒤 '이 패와 교환'을 누르거나, 아래에서 순서만 확정하세요."}
+                ? rinshanTakeable
+                  ? "놓을 자리나 '내 쯔모패' 칸을 누르세요 (같은 자리를 다시 누르면 취소)"
+                  : "놓을 자리를 누르세요 (같은 자리를 다시 누르면 취소)"
+                : !rinshanChanged
+                  ? "아직 바꾼 것이 없습니다. 옮길 패를 먼저 고르세요."
+                  : rinshanTakePos !== null
+                    ? "확정하면 영상패가 이 순서로 바뀌고, 고른 패가 내 쯔모패와 맞바뀝니다."
+                    : "확정하면 영상패가 이 순서로 바뀝니다. 교환은 하지 않습니다."}
             </div>
             <div className="foresight-tab-actions">
-              <button className="foresight-tab-confirm" onClick={() => submitRinshan(null)}>
-                선택 안 하기 (순서만 확정)
+              <button
+                className="foresight-tab-confirm"
+                disabled={!rinshanChanged || rinshanConfirmOpt === undefined}
+                onClick={confirmRinshan}
+              >
+                {rinshanTakePos !== null ? "이 순서로 확정 + 고른 패와 교환" : "이 순서로 확정"}
               </button>
               <button className="rinshan-pick-skip" onClick={closeModal}>
-                발동하지 않고 닫기
+                사용하지 않고 닫기
               </button>
             </div>
           </div>
@@ -28148,12 +28334,14 @@ function ActiveAugmentControl(props: {
         ? createPortal(
             <div className="rinshan-pick-overlay" data-arm-zone="1">
               <div className="rinshan-pick-panel foresight-tab">
-                <PickTimer deadline={props.promptDeadline ?? null} />
+                {/* 발동(공개)은 이미 끝났다 — 시간이 다 되면 잃는 것은 이 순의 재배열이다(ORDER는 공개한
+                    그 순에만 열린다, content foresight). docs/59 U49 */}
+                <PickTimer deadline={props.promptDeadline ?? null} fallback={FORESIGHT_TIMER_FALLBACK} />
                 <div className="rinshan-pick-title">🔮 예지: 다음 한 바퀴 쯔모 순서 정하기</div>
                 <div className="rinshan-pick-sub">
                   왼쪽부터 차례로 뽑힙니다. 옮길 패를 끌어다 놓거나, 옮길 패와 놓을 자리를
-                  차례로 누르세요. <b>재배열은 이 국에 한 번만 할 수 있습니다.</b> 바꾸지 않고
-                  닫아도 발동은 취소되지 않습니다.
+                  차례로 누르세요(키보드는 ←/→). <b>재배열은 이 국에 한 번만 할 수 있습니다.</b> 바꾸지 않고
+                  닫아도 발동은 취소되지 않습니다. 닫으면 옮긴 순서는 버려집니다.
                 </div>
                 <div className="foresight-tab-row">
                   {foresightOrder.map((origIdx, pos) => {
@@ -28165,6 +28353,7 @@ function ActiveAugmentControl(props: {
                       <button
                         key={pos}
                         type="button"
+                        data-reorder-pos={pos}
                         className={`foresight-tab-cell${isMine ? " foresight-mine" : ""}${
                           picked ? " foresight-dragging" : ""
                         }`}
@@ -28183,6 +28372,7 @@ function ActiveAugmentControl(props: {
                           moveForesight(from, pos);
                         }}
                         onDragEnd={() => setForesightDragFrom(null)}
+                        onKeyDown={(e) => reorderArrowKey(e, pos, foresightOrder.length, moveForesight)}
                         onClick={() => {
                           // 첫 번째 누름 = 집기, 두 번째 = 놓기. 같은 자리면 집기 취소.
                           if (foresightDragFrom === null) setForesightDragFrom(pos);
@@ -28217,15 +28407,10 @@ function ActiveAugmentControl(props: {
                   >
                     이 순서로 확정
                   </button>
-                  <button
-                    className="rinshan-pick-skip"
-                    onClick={() => {
-                      setForesightDragFrom(null);
-                      setForesightArr([0, 1, 2, 3]);
-                      setForesightTab(false);
-                    }}
-                  >
-                    이 창 유지 (닫기)
+                  {/* 발동(공개)은 이미 끝났으니 이 창만 «바꾸지 않고». 1504e1b(#501)의 일괄 치환이 원래
+                      «그대로 두기 (닫기)»를 자기모순인 «이 창 유지 (닫기)»로 바꿨었다(docs/59 U45) */}
+                  <button className="rinshan-pick-skip" onClick={closeForesightTab}>
+                    바꾸지 않고 닫기
                   </button>
                 </div>
               </div>

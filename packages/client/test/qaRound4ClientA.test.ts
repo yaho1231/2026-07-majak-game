@@ -38,7 +38,9 @@ function ruleBody(selector: string): string {
 
 describe("증강 선택 모달이 남은 시간을 스스로 보여 준다", () => {
   it("PickTimer 가 있고, 마감이 없으면 아무것도 그리지 않는다", () => {
-    expect(APP_CODE).toContain("function PickTimer(props: { deadline: number | null })");
+    // B14(2026-09-25): 시간이 다 되면 실제로 일어나는 일(폴백)을 창마다 넘길 수 있다 — docs/59 U49.
+    // deadline은 여전히 첫 속성이다(아래 개수 검사가 `<PickTimer deadline=`로 센다).
+    expect(APP_CODE).toContain("function PickTimer(props: { deadline: number | null; fallback?: string })");
     // 평시 국(마감 없음)에 빈 알약이 서면 그게 더 나쁘다.
     expect(APP_CODE).toContain("if (deadline === null || left === null) return null;");
   });
