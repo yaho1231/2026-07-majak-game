@@ -160,6 +160,10 @@ import { pickyEater } from "./augments/picky_eater.js";
 import { joker } from "./augments/joker.js";
 import { pruning } from "./augments/pruning.js";
 import { yggdrasil } from "./augments/yggdrasil.js";
+import { reverseWind } from "./augments/reverse_wind.js";
+import { swamp } from "./augments/swamp.js";
+import { greed } from "./augments/greed.js";
+import { intimidate } from "./augments/intimidate.js";
 import { copy } from "./augments/copy.js";
 
 export {
@@ -278,6 +282,10 @@ export {
   joker,
   pruning,
   yggdrasil,
+  reverseWind,
+  swamp,
+  greed,
+  intimidate,
   copy,
 };
 
@@ -417,6 +425,10 @@ const CONTENT_AUGMENTS: AugmentDef[] = [
   // 8차 사용자 발안 (2026-09-24)
   pruning, // 가지치기 — 손패 3장을 패산 맨 위 3장과 교환
   yggdrasil, // 위그드라실 — 이번 국 자패가 전부 발, 발로만 화료하면 더블 역만
+  reverseWind, // 역풍 — 획득한 국은 차례가 거꾸로 돈다
+  swamp, // 늪 — 내 패를 운 타가는 2순 쯔모기리
+  greed, // 욕심 — 방금 쯔모한 패를 다음 순에 한 장 더
+  intimidate, // 위압감 — 이 증강으로 리치하면 타가 1순 쯔모기리
   copy, // 카피 — 상대의 액티브 증강 하나를 무작위로 빌려 이번 국에 한 번 쓴다
 ];
 

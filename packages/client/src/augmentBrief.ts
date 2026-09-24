@@ -162,6 +162,10 @@ export const AUGMENT_BRIEF: Record<string, AugmentBrief> = {
   pruning: { use: CD_2_3, text: "손패 3장을 골라 패산 맨 위 3장과 바꾼다. 패산이 3장 이하면 사용할 수 없다." },
   copy: { use: MODE_1_2, text: "상대 한 명의 액티브 증강 하나를 무작위로 가져와 이번 국에 한 번 쓴다." },
   yggdrasil: { use: MODE_1_2, text: "손패의 자패와 이번 국에 쯔모한 자패가 발이 된다. 발로만 화료하면 더블 역만이다." },
+  reverse_wind: { use: "이번 국만", text: "획득한 국에는 차례가 반대 방향(동→북→서→남)으로 돈다. 자풍은 바뀌지 않는다." },
+  swamp: { use: "2국에 1회", text: "발동한 국에 내 패를 운 타가는 다음 2순 동안 쯔모기리만 할 수 있다." },
+  greed: { use: "매 국 1회", text: "방금 쯔모한 패와 같은 패를 다음 순에 쯔모한다." },
+  intimidate: { use: "2국에 1회", text: "이 증강으로 리치를 걸면 타가 전원은 다음 1순 동안 쯔모기리만 할 수 있다." },
   time_pressure: {
     use: "이번 국만",
     text: "이 국에는 모두의 결정 시간이 5초로 제한된다. 반장전에서는 게임 내 1회 다시 사용할 수 있다.",

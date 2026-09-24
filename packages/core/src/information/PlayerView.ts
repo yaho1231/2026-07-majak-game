@@ -294,7 +294,7 @@ export interface RoundView {
   turnSeat: number;
   turnCount: number;
   phase: string;
-  /** 턴 진행 방향 (1=표준, -1=역방향 — 자풍 표기·다음 차례 표시용) */
+  /** 턴 진행 방향 (1=표준, -1=역방향 — 다음 차례 표시용. 자풍은 방향과 무관하다) */
   direction: number;
   /** 공개된 도라 표시패 id 목록 */
   doraIndicators: TileId[];

@@ -45,7 +45,11 @@
  * 진 쪽은 **아무것도 emit하지 않고 예약도 비우지 않는다**(순수한 양보). 예약은 전부 국
  * 스코프라 국이 끝나면 저절로 만료된다.
  *
- * 6. **위그드라실**(2026-09-24): 켜진 국의 자패 쯔모를 발로 바꾼다. 상시 효과라 양보해도
+ * 6. **욕심**(`greed`, 2026-09-24): 약속은 소환과 같다 — «다음 내 쯔모가 방금 쯔모한 패와 같은
+ *    종류로 온다». 양보해도 예약이 남으므로 소환 바로 뒤다. 한 사람이 둘을 함께 걸면 소환이
+ *    먼저 오고 욕심은 그다음 쯔모에 온다.
+ *
+ * 7. **위그드라실**(2026-09-24): 켜진 국의 자패 쯔모를 발로 바꾼다. 상시 효과라 양보해도
  *    자원이 타지 않고, 양보한 그 한 장만 자패로 남는다 — 가장 뒤다.
  *
  * ## 가입 대상이 아닌 것 (2026-09-16 확인 — `TILE_DRAWN`·`tileKindChanged(` 문자열을 둘 다
@@ -91,6 +95,7 @@ export type DrawMutator =
   | "cliff_bloom"
   | "off_by_one"
   | "conjure_draw"
+  | "greed"
   | "yggdrasil";
 
 /** 우선순위 — 앞에 있을수록 세다 (근거는 머리말) */
@@ -100,6 +105,7 @@ export const DRAW_MUTATOR_PRIORITY: readonly DrawMutator[] = [
   "cliff_bloom",
   "off_by_one",
   "conjure_draw",
+  "greed",
   "yggdrasil",
 ];
 
@@ -127,6 +133,10 @@ export const conjurePendingKey = (state: GameState, h: PlayerId): string =>
 /** 거신병: 각성 다음 정상 쯔모를 오름패로 만드는 예약 */
 export const giantGodTsumoKey = (state: GameState, h: PlayerId): string =>
   roundScopedKey("giant_god", "tsumo", state, h);
+
+/** 욕심: 다음 쯔모로 바꿀 kind (소비하면 비운다) */
+export const greedPendingKey = (state: GameState, h: PlayerId): string =>
+  roundScopedKey("greed", "pending", state, h);
 
 /** 위그드라실: 이번 국에 켰는가 (켜진 국의 자패 쯔모가 발이 된다) */
 export const yggdrasilOnKey = (state: GameState, h: PlayerId): string =>
@@ -168,6 +178,21 @@ export function conjurePendingKind(
   holder: PlayerId,
 ): TileKind | null {
   const v = state.augmentData[conjurePendingKey(state, holder)];
+  if (
+    v !== null &&
+    typeof v === "object" &&
+    typeof (v as { suit?: unknown }).suit === "string" &&
+    typeof (v as { rank?: unknown }).rank === "number"
+  ) {
+    const k = v as TileKind;
+    return { suit: k.suit, rank: k.rank };
+  }
+  return null;
+}
+
+/** 욕심의 대기 kind를 읽는다 (없거나 비었으면 null) */
+export function greedPendingKind(state: GameState, holder: PlayerId): TileKind | null {
+  const v = state.augmentData[greedPendingKey(state, holder)];
   if (
     v !== null &&
     typeof v === "object" &&
@@ -352,6 +377,7 @@ export function drawMutatorWinner(
     return "off_by_one";
   }
   if (conjurePendingKind(state, holder) !== null) return "conjure_draw";
+  if (greedPendingKind(state, holder) !== null) return "greed";
   if (flagOf(state, yggdrasilOnKey(state, holder)) && isHonor(kindOf(state, drawnTileId))) {
     return "yggdrasil";
   }
@@ -400,6 +426,7 @@ export function reservedNextDrawKind(
   holder: PlayerId,
 ): { kind: TileKind } | "unknown" | null {
   if (giantGodTsumoPending(state, holder)) return "unknown";
-  const conjured = conjurePendingKind(state, holder);
-  return conjured === null ? null : { kind: conjured };
+  // 소환이 먼저 온다 — 둘 다 걸려 있으면 다음 한 장은 소환의 것이다(우선순위)
+  const reserved = conjurePendingKind(state, holder) ?? greedPendingKind(state, holder);
+  return reserved === null ? null : { kind: reserved };
 }
