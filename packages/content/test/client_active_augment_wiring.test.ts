@@ -191,6 +191,20 @@ describe("클라이언트 액티브 증강 배선", () => {
     expect(SRC).not.toContain('pickModal === "silent_take"');
   });
 
+  it("ARM_MODE 값은 전부 실제 쓰이는 ArmMode다 — 아무도 안 쓰는 무장 방식이 남지 않는다", () => {
+    // 2026-09-25 (docs/59 U11): ArmMode "swap3"(상대 → 내 3장)는 ARM_MODE.swap3가 "opp"로 바뀐
+    // 뒤 아무 액션도 쓰지 않았는데, useSelection·OwnArea·armHint에 분기와 안내 줄이 그대로 남아
+    // 어느 경로가 실제로 도는지 헷갈리게 했다. 값 ⊆ 유니언, 유니언 ⊆ 값 둘 다 본다.
+    const m = /^type ArmMode = ([^;]+);/m.exec(SRC);
+    if (m === null) throw new Error("ArmMode 선언을 못 찾았다 (형태가 바뀌었는가?)");
+    const union = new Set([...m[1]!.matchAll(/"([^"]+)"/g)].map((x) => x[1]!));
+    expect(union.size).toBeGreaterThan(3);
+    const used = new Set(armMode.values());
+    expect([...used].filter((v) => !union.has(v))).toEqual([]);
+    expect([...union].filter((v) => !used.has(v))).toEqual([]);
+    expect(union.has("swap3")).toBe(false);
+  });
+
   it("핏빛 계약이 고르게 하는 역은 전부 한글 역 이름이 있다", () => {
     // 없으면 선택지 라벨이 비고(optionDetail은 원문 키 대신 생략한다) 버튼만 남는다
     const bc = readFileSync(join(HERE, "../src/augments/blood_contract.ts"), "utf8");

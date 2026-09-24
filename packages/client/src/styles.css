@@ -2659,6 +2659,20 @@ button {
   pointer-events: none;
 }
 
+/* 미래를 보는 자로 가져온 패 — 손패의 그 패 왼쪽 아래 모서리에 🔮 (2026-09-25, docs/59 U81).
+   봉인(오른쪽 위)·지뢰(왼쪽 위)·쏘이는 패(오른쪽 아래)·«한 번 더»(가운데 아래)와 자리가 겹치지 않는다.
+   맥동 없는 조용한 표식이다 — 버리면 손패에서 빠지며 함께 사라진다. */
+.hand-future-badge {
+  position: absolute;
+  bottom: -6px;
+  left: -5px;
+  z-index: 3;
+  font-size: 12px;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.85));
+  pointer-events: none;
+}
+
 
 /* ── 재료로 사라질 패 (허장성세 퐁 · 분열 · 삼원의 의지 · 회수의 쯔모패) ──
    발동 버튼 위에 손이 올라가 있는 **동안에만** 뜬다 — 누르기 전에 "무엇을 잃는가"를
@@ -8621,6 +8635,46 @@ button {
 .scan-badge-turn {
   color: #8e9bb0;
   font-size: 11px;
+}
+
+/* 미래를 보는 자로 이 상대가 가져온 3장 — 봉인·천리안과 같은 자리(그 상대의 손패 옆).
+   예전엔 내 손패 옆 뱃지 줄에 떠 누구 것인지 글로 읽어야 했다(2026-09-25, docs/59 U81).
+   전원 공개 정보라 «나만 보임» 계열(붉은 봉인·회청 천리안)과 달리 증강 보라로 둔다.
+   좌우 세로 줄에도 서므로 패를 작게, 라벨은 짧게. 이미 손을 떠난 패는 흐리게. */
+.future-got-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 5px;
+  padding: 4px 9px 5px;
+  border-radius: 11px;
+  background: rgba(13, 23, 18, 0.95);
+  border: 1px solid rgba(165, 145, 255, 0.6);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  animation: bar-in 0.25s ease-out;
+  z-index: 25;
+}
+
+.future-got-label {
+  font-size: 12px;
+  font-weight: 800;
+  color: #d6ccff;
+  white-space: nowrap;
+}
+
+.future-got-tiles {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.future-got-cell .tile-mini {
+  width: 20px;
+  height: 28px;
+}
+
+.future-got-gone {
+  opacity: 0.4;
 }
 
 .waits-badge-mine {
@@ -16335,6 +16389,64 @@ body.reconnecting .abort-banner {
 }
 .bottom-deal-armed .bottom-deal-cell.bottom-deal-next::after {
   background: #9a7b42;
+}
+
+/* 등가교환 — 지정 순간 공개받은 상대 손패 참고 줄(2026-09-25, docs/59 U08). 내 손패 바로 위에
+   두어 넘길 3장을 고르는 동안 위아래로 견준다. 누르는 곳이 아니라서 흐리게, 클릭은 받지 않는다.
+   ⚠ 봉인 배지(.seal-badge)의 붉은 자물쇠 모양을 쓰지 않는다 — 교환 상대에게 «🔒 봉인»이 걸린
+   것처럼 보였다는 2026-08-02 보고의 재발 방지. 13장이라 좁은 화면에서는 줄을 접는다. */
+.swap3-reveal-strip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 0 auto 6px;
+  padding: 5px 12px;
+  width: max-content;
+  max-width: 92%;
+  border-radius: 10px;
+  background: rgba(24, 20, 44, 0.92);
+  border: 1px dashed rgba(159, 140, 240, 0.6);
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.45);
+  animation: bar-in 0.25s ease-out;
+  pointer-events: none;
+}
+.swap3-reveal-tag {
+  font-size: 13px;
+  font-weight: 700;
+  color: #d6ccff;
+  white-space: nowrap;
+}
+.swap3-reveal-tiles {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px;
+  opacity: 0.8;
+}
+.swap3-reveal-cell .tile-mini {
+  width: 26px;
+  height: 37px;
+}
+
+/* 등가교환 take 모달 — 앞서 고른 «넘길 패» 3장 (docs/59 U09) */
+.swap3-gives-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: -8px auto 14px;
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(226, 199, 147, 0.85);
+}
+.swap3-gives-label {
+  margin-right: 4px;
+}
+.swap3-gives-row .tile-mini {
+  width: 26px;
+  height: 37px;
 }
 
 /* ─── 증강 테스트 패널 — 탭 / 손패 지정 / 봇 설정 (관리자) ─── */

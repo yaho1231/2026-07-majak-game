@@ -100,7 +100,8 @@ describe("U03 미래를 보는 자 — 강제 무장", () => {
     expect(APP_CODE).not.toContain("🔮 미래를 보는 자: 버릴 패 선택");
     const at = OWN.indexOf(') : armedAug === "future_exchange" ? (');
     expect(at).toBeGreaterThan(0);
-    const hint = OWN.slice(at, OWN.indexOf(') : armedAug === "swap3" ? (', at));
+    // 바로 뒤 분기는 가지치기다 — 옛 swap3 안내 줄은 B08에서 걷었다(docs/59 U11)
+    const hint = OWN.slice(at, OWN.indexOf(") : hand3Picking ? (", at));
     expect(hint).toContain("🎲 무작위");
     expect(hint).toContain("sel.submit(pick)");
     expect(hint).not.toContain("sel.arm(null)");

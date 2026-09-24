@@ -211,11 +211,15 @@ describe("U26 빗나감 규칙 — 손패가 대상이면 무시하고 알린다
   });
 
   it("등가교환 상대 단계에서 손패를 누르면 상대 무장과 같이 해제 + 알림 (라운드 2)", () => {
-    const at = APP_CODE.indexOf('if (armedAug === "swap3") {\n                    if (swapTarget !== null) pickSwapTile(id);');
-    expect(at).toBeGreaterThan(0);
-    const b = APP_CODE.slice(at, APP_CODE.indexOf("return;", at));
-    expect(b).toContain("sel.arm(null);");
-    expect(b).toContain("props.onToast?.(`${armName} 선택을 취소했습니다`);");
+    // 2026-09-25 B08(docs/59 U11): 옛 swap3 전용 분기(pickSwapTile)를 걷었다. ARM_MODE.swap3가
+    // "opp"라 손패 클릭은 위 상대 무장의 빗나감 분기(해제 + 알림)로 그대로 떨어진다.
+    expect(APP_CODE).not.toContain('if (armedAug === "swap3") {');
+    expect(APP_CODE).not.toContain("pickSwapTile");
+    expect(APP_CODE).toMatch(/\n  swap3: "opp",/);
+    const b = armBranch();
+    const rest = b.slice(b.indexOf("} else {", b.indexOf('} else if (sel.armMode === "hand") {')));
+    expect(rest).toContain("sel.arm(null);");
+    expect(rest).toContain("props.onToast?.(`${armName} 선택을 취소했습니다`);");
   });
 
   it("가지치기 풀 밖의 패도 같은 말로 알린다", () => {
