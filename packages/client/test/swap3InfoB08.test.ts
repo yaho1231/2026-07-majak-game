@@ -71,6 +71,19 @@ describe("U08 공개받은 상대 손패 — 손패 위 참고 줄", () => {
     // 클릭을 받지 않는다
     const css = /\.swap3-reveal-strip \{[^}]*\}/.exec(CSS)?.[0] ?? "";
     expect(css).toContain("pointer-events: none;");
+    // 풀이(title)는 이름표에 — 줄 자체는 hover도 못 받아 줄에 달면 안 뜬다(라운드 1 리뷰)
+    const tagOpen = strip.slice(strip.indexOf('className="swap3-reveal-tag"'));
+    expect(tagOpen.slice(0, tagOpen.indexOf(">"))).toContain("교환이 끝나면 사라집니다");
+    expect(strip.slice(0, strip.indexOf('className="swap3-reveal-tag"'))).not.toContain("title=");
+    expect(CSS).toMatch(/\.swap3-reveal-tag \{[^}]*pointer-events: auto;/);
+  });
+
+  it("좁은 화면·폰 가로에서는 참고 줄 패를 줄여 give 안내를 밀어 올리지 않는다", () => {
+    for (const q of ["@container ui (max-width: 700px) {", "@container ui (max-height: 560px) and (orientation: landscape) {"]) {
+      const at = CSS.indexOf(`${q}\n  .swap3-reveal-strip {`);
+      expect(at, q).toBeGreaterThan(0);
+      expect(CSS.slice(at, CSS.indexOf("\n}\n", at))).toMatch(/\.swap3-reveal-cell \.tile-mini \{\s*width: 20px;\s*height: 28px;/);
+    }
   });
 
   it("봉인 배지는 여전히 revealTiles를 읽지 않는다", () => {
@@ -111,6 +124,14 @@ describe("U09 교환 상대·넘길 패", () => {
     const fn = OWN.slice(at, OWN.indexOf("};", at));
     expect(fn).toContain('if (swap3Pick.stage === "give") setSwapGives(sortTileIds([...swap3Sel], view.tiles));');
     expect(fn.indexOf("setSwapGives")).toBeLessThan(fn.indexOf("props.onSubmit(swap3Option);"));
+  });
+
+  it("새 give 프롬프트가 오면 지난 교환의 기억을 버린다 — 시간 초과 대행으로 끝난 give에 옛 3장이 뜨지 않게", () => {
+    expect(OWN).toMatch(
+      /useEffect\(\(\) => \{\n    if \(swap3Pick\.stage === "give"\) setSwapGives\(\[\]\);\n[^\n]*\n  \}, \[props\.promptSeq\]\);/,
+    );
+    // stage===null(give와 take 사이 잠깐 빈 순간)에서는 비우지 않는다
+    expect(OWN).not.toMatch(/stage === null\) setSwapGives\(\[\]\)/);
   });
 });
 
@@ -157,5 +178,15 @@ describe("U81 가져온 패 — 실제 패 표식과 그 상대 줄 옆", () => 
     const fn = fnBody("futureGotOf");
     expect(fn).toContain("view.augmentView[`future_sight:got:${playerId}`]");
     expect(fn).not.toContain("hiddenCount");
+  });
+
+  it("이미 손을 떠난 패는 흐리게 — 그 사람 손패 밖의 자리에서 gone을 셈하고 뱃지가 future-got-gone을 단다", () => {
+    const fn = fnBody("futureGotOf");
+    expect(fn).toContain("if (zone === `hand:${playerId}`) continue;");
+    expect(fn).toContain("for (const id of z.tileIds) elsewhere.add(id);");
+    expect(fn).toContain(".map((tile) => ({ tile, gone: elsewhere.has(tile.id) }));");
+    const badge = fnBody("FutureGotBadge");
+    expect(badge).toContain('className={`future-got-cell${gone ? " future-got-gone" : ""}`}');
+    expect(CSS).toMatch(/\.future-got-gone[^{]*\{[^}]*opacity:/);
   });
 });

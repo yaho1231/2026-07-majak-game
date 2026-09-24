@@ -16417,6 +16417,9 @@ body.reconnecting .abort-banner {
   font-weight: 700;
   color: #d6ccff;
   white-space: nowrap;
+  /* 줄 전체는 클릭을 흘려보내되 이름표만 되살린다 — «교환이 끝나면 사라집니다» 풀이(title)가
+     뜨게. 누를 것(onClick)은 없다(2026-09-25, docs/59 U08) */
+  pointer-events: auto;
 }
 .swap3-reveal-tiles {
   display: inline-flex;
@@ -16428,6 +16431,35 @@ body.reconnecting .abort-banner {
 .swap3-reveal-cell .tile-mini {
   width: 26px;
   height: 37px;
+}
+/* 좁은 화면·폰 가로 — .own-area 는 바닥에서 위로 자라므로 이 줄이 두껍거나 여러 줄이 되면
+   그 위의 give 안내(＋[이 3장 넘기기])가 그만큼 밀려 올라가 가운데 패널·강에 겹친다.
+   13장을 20×28 로 줄여 375 폭에서 이름표 한 줄 + 패 한 줄(≈ 345px 안), 740×360 에서
+   이름표와 패가 한 줄에 서게 한다(2026-09-25, docs/59 U08). */
+@container ui (max-width: 700px) {
+  .swap3-reveal-strip {
+    gap: 2px 6px;
+    padding: 4px 8px;
+    margin-bottom: 4px;
+  }
+  .swap3-reveal-tag {
+    font-size: 12px;
+  }
+  .swap3-reveal-cell .tile-mini {
+    width: 20px;
+    height: 28px;
+  }
+}
+@container ui (max-height: 560px) and (orientation: landscape) {
+  .swap3-reveal-strip {
+    gap: 2px 6px;
+    padding: 3px 8px;
+    margin-bottom: 4px;
+  }
+  .swap3-reveal-cell .tile-mini {
+    width: 20px;
+    height: 28px;
+  }
 }
 
 /* 등가교환 take 모달 — 앞서 고른 «넘길 패» 3장 (docs/59 U09) */

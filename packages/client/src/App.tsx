@@ -22077,6 +22077,16 @@ function OwnArea(props: {
    * 보유자 채널로 옮기는 것은 B18 몫이다(2026-09-25, docs/59 U09). 렌더가 읽으므로 ref가 아니라 상태다.
    */
   const [swapGives, setSwapGives] = useState<number[]>([]);
+  /*
+   * 새 give 단계가 오면 지난 교환의 기억을 버린다. 등가교환은 한 판에 여러 번 쓸 수 있는데,
+   * 이번 give가 시간 초과 대행(서버 폴백)으로 끝나면 [이 3장 넘기기]를 안 눌러 기억이 안 바뀐다 —
+   * 그러면 take 모달에 **지난 교환의** 3장이 «넘길 패»로 떠 지어낸 정보가 된다(2026-09-25, docs/59 U09).
+   * stage===null에서 비우지 않는 것은 give와 take 사이에 프롬프트가 잠깐 비는 순간이 있어서다.
+   */
+  useEffect(() => {
+    if (swap3Pick.stage === "give") setSwapGives([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.promptSeq]);
   const submitSwap3 = (): void => {
     if (swap3Option === undefined) return;
     if (swap3Pick.stage === "give") setSwapGives(sortTileIds([...swap3Sel], view.tiles));
@@ -23016,11 +23026,12 @@ function OwnArea(props: {
         {/* 등가교환 — 공개받은 상대 손패 참고 줄(docs/59 U08). 누르는 곳이 아니라 비교용이라
             흐리게 두고 클릭을 받지 않는다. 가져올 3장은 take 모달에서 고른다(U08-take 보류) */}
         {swapRevealIds.length > 0 && swapAimId !== null ? (
-          <div
-            className="swap3-reveal-strip"
-            title="등가교환: 지정한 상대의 손패입니다. 나에게만 보이고, 교환이 끝나면 사라집니다"
-          >
-            <span className="swap3-reveal-tag">
+          <div className="swap3-reveal-strip">
+            {/* 줄은 클릭을 흘려보내고(pointer-events: none) 이름표만 되살려 이 풀이가 뜨게 한다 */}
+            <span
+              className="swap3-reveal-tag"
+              title="등가교환: 지정한 상대의 손패입니다. 나에게만 보이고, 교환이 끝나면 사라집니다"
+            >
               🔄 <b>{playerNameById(view, swapAimId)}</b>의 손패 (나만 보임)
             </span>
             <span className="swap3-reveal-tiles">
