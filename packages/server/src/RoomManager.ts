@@ -1566,16 +1566,36 @@ export class RoomManager {
    * 처리하면 되므로 "공지가 오는 길"이 둘로 갈리지 않는다.
    */
   private broadcastServerInfo(): void {
-    const msg: ServerMessage = {
+    const msg = this.serverInfoMessage();
+    for (const c of this.conns) this.send(c.ws, msg);
+  }
+
+  /** 연결 직후(인증 전)와 공지·점검이 바뀔 때 나가는 서버 안내 한 통. */
+  private serverInfoMessage(): ServerMessage {
+    return {
       type: "serverInfo",
       signupGate: this.signupCode !== "",
       // 점검 중에는 체험도 닫는다 — 로그인 화면이 버튼을 그리지 않게 한다(서버도 거절한다).
       guestPlay: this.maintenance === null,
+      // 도움말이 "N종"을 말할 때 쓴다 — 클라가 직접 세면 증강 구현 전체가
+      // 번들에 딸려 들어온다(감사 §7-1). 카탈로그와 같은 출처라 어긋나지 않는다.
       augmentKinds: this.augmentCatalog.length,
+      // 운영자 공지 (§4-3). 인증 **전에** 나가는 자리라, 로그인하기 전에 알아야
+      // 하는 순간(점검 예고·서버 이전)에도 제때 닿는다.
       ...(this.notice !== null ? { notice: this.notice } : {}),
+      // 점검 모드 — 같은 이유로 인증 전에 나간다. 점검 화면은 로그인 화면보다 먼저 선다.
       ...(this.maintenance !== null ? { maintenance: this.maintenance } : {}),
+      // 배포 뒤 새로고침 없이 재접속한 옛 탭이 스스로 새로고침하게 한다 (clientBuild.ts)
+      ...(this.clientBuild !== null ? { clientBuild: this.clientBuild } : {}),
     };
-    for (const c of this.conns) this.send(c.ws, msg);
+  }
+
+  /**
+   * 지금 서빙하는 클라이언트 빌드(`clientBuildOf`)를 알려 둔다 — 부팅 때 index.ts 가
+   * 한 번 부른다. 배포는 빌드 뒤 서버 재시작이라 프로세스 수명 동안 바뀌지 않는다.
+   */
+  setClientBuild(build: string | null): void {
+    this.clientBuild = build;
   }
 
   /** 이 방을 가리키던 연결의 방·좌석 링크를 끊는다 (방 객체는 건드리지 않는다). */
@@ -1724,6 +1744,9 @@ export class RoomManager {
    */
   private notice: ServerNotice | null = null;
 
+  /** 서빙 중인 클라이언트 빌드 (`setClientBuild`). 정적 빌드가 없으면 null. */
+  private clientBuild: string | null = null;
+
   /**
    * 점검 모드 상태 — null이면 정상 운영. 공지와 같은 이유로 메모리에 들고 있고,
    * 켜고 끄는 순간 `broadcastServerInfo`로 접속 중인 모두에게 밀린다.
@@ -1805,20 +1828,7 @@ export class RoomManager {
 
     // 로그인 화면이 이 서버의 실제 정책(가입 게이트 여부)을 알고 그리도록 먼저 알린다.
     // 인증 정보가 아니라 "이 서버가 지금 가입을 받는가"라는 공개 사실이다.
-    this.send(ws, {
-      type: "serverInfo",
-      signupGate: this.signupCode !== "",
-      // 점검 중에는 체험도 닫는다 — 로그인 화면이 버튼을 그리지 않게 한다(서버도 거절한다).
-      guestPlay: this.maintenance === null,
-      // 도움말이 "N종"을 말할 때 쓴다 — 클라가 직접 세면 증강 구현 전체가
-      // 번들에 딸려 들어온다(감사 §7-1). 카탈로그와 같은 출처라 어긋나지 않는다.
-      augmentKinds: this.augmentCatalog.length,
-      // 운영자 공지 (§4-3). 인증 **전에** 나가는 자리라, 로그인하기 전에 알아야
-      // 하는 순간(점검 예고·서버 이전)에도 제때 닿는다.
-      ...(this.notice !== null ? { notice: this.notice } : {}),
-      // 점검 모드 — 같은 이유로 인증 전에 나간다. 점검 화면은 로그인 화면보다 먼저 선다.
-      ...(this.maintenance !== null ? { maintenance: this.maintenance } : {}),
-    });
+    this.send(ws, this.serverInfoMessage());
 
     ws.on("message", (data) => {
       // 연결당 메시지 토큰 버킷 — 초과분은 조용히 버린다(응답 증폭 방지). 루프백은 제외.

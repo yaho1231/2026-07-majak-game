@@ -18718,6 +18718,35 @@ body:has(.rinshan-pick-overlay):not(.peeking) .game-root .quick-toggles {
   pointer-events: none;
 }
 
+/* 배포 뒤 낡은 탭 — 판 안에서는 판을 끊지 않고 이 띠만 띄운다 (App.tsx staleBuild) */
+.stale-build-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 298;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 12px;
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #e2c793;
+  background: rgba(38, 52, 44, 0.96);
+  border-bottom: 1px solid rgba(184, 151, 92, 0.5);
+}
+.stale-build-bar button {
+  padding: 3px 12px;
+  font: inherit;
+  color: #1b1408;
+  background: #e2c793;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
 /* 관리자 카드의 상태 표시와 버튼 줄 */
 .home-maint-edit .home-card-head {
   display: flex;
