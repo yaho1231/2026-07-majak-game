@@ -30,6 +30,7 @@ import { AugmentStatsStore } from "./AugmentStatsStore.js";
 import { SiteDb } from "./SiteDb.js";
 import { pruneOrphanReplays } from "./pruneReplays.js";
 import { cacheControlFor } from "./httpCache.js";
+import { clientBuildOf } from "./clientBuild.js";
 import { AnalyticsStore } from "./analytics.js";
 
 /**
@@ -212,6 +213,13 @@ const roomManager = new RoomManager(
   augmentStats,
   analytics,
 );
+// 배포 뒤 새로고침 없이 재접속한 옛 탭을 알아보게 한다 (clientBuild.ts 머리말)
+{
+  const indexPath = join(CLIENT_DIST, "index.html");
+  roomManager.setClientBuild(
+    existsSync(indexPath) ? clientBuildOf(readFileSync(indexPath, "utf8")) : null,
+  );
+}
 
 // ─────────────────────────── 정적 파일 서버 ───────────────────────────
 
