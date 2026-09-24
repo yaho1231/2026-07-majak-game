@@ -174,7 +174,7 @@ const WIND_CHAR = ["동", "남", "서", "북"];
 function liveRoomKind(room: Room): { kind?: "tutorial" | "practice" | "sandbox" } {
   if (room.sandbox) return { kind: "sandbox" };
   if (room.tutorial && !room.tutorialGraduated) return { kind: "tutorial" };
-  if (room.guest) return { kind: "practice" };
+  if (room.guest || room.practice) return { kind: "practice" };
   return {};
 }
 
@@ -389,6 +389,10 @@ interface Room {
    * 일반 대국과 같다. 튜토리얼(`tutorial`)은 연습이어도 기록하지 않는다.
    *
    * 기록 여부는 여기저기서 `guest`를 보지 말고 `recordsGame()`으로 묻는다.
+   *
+   * 대기실에서 봇 셋을 채운 1인 방도 판을 시작할 때 이 값이 켜진다(`openGame`).
+   * 연습 대국은 **끝까지 둔 판만** 기록한다 — 도중에 나가거나 끊긴 채 보유 시한이
+   * 지나면 무효로 접는다(`abortableByHumans`, 2026-09-24).
    */
   practice: boolean;
   /**
@@ -1474,19 +1478,8 @@ export class RoomManager {
           // 사람을 기다리며 세워 둔 판(§2-5 체험 방 · §2-10 되살린 방)은 시한이
           // 있다. 안 돌아오면 접는다 — 안 그러면 방 예산을 영구히 물고 있는다.
           if (room.holdUntil !== null && now > room.holdUntil) {
-            // 기록되는 1인 방(연습 대국)은 접지 않는다 — 접으면 «끊고 기다리기»가
-            // 지는 판을 지우는 옆문이 된다. 좌석을 포기시키고 봇이 마저 둬 기록한다
-            // (스스로 나갔을 때와 같은 결말, `abortIfNoHumansLeft`).
-            if (room.guest && recordsGame(room)) {
-              this.log(room, "세워 둔 연습 대국의 보유 시한 초과 — 봇이 마저 두고 기록한다");
-              room.holdUntil = null;
-              for (const a of room.agents) {
-                if (a instanceof HumanAgent && !a.isAbandoned) a.abandon("timeout");
-              }
-              this.refreshSeatStatus(room);
-              this.abortIfNoHumansLeft(room);
-              continue;
-            }
+            // 연습 대국(사람 1 + 봇 3)도 접는다 — 나가기와 같은 결말이다
+            // (2026-09-24 사용자 지시: 봇과의 1인 대국은 끝까지 둔 판만 기록한다).
             this.log(room, "세워 둔 판의 보유 시한 초과 — 접는다");
             // 되살린 판은 파일을 남긴다. 아무도 안 온 것이 "없던 일로 하자"는
             // 뜻은 아니고, 그 파일이 그 40분의 유일한 흔적이다.
@@ -5637,6 +5630,10 @@ export class RoomManager {
    */
   private abortableByHumans(room: Room, humanCount: number): boolean {
     if (!recordsGame(room)) return true;
+    // 연습 대국(사람 1 + 봇 3)은 끝까지 둔 판만 기록한다 — 나가면 그 즉시 무효로
+    // 접는다(2026-09-24 사용자 지시). 예전에는 봇이 마저 둬 기록했는데, 나간 사람
+    // 눈에는 봇들이 빠르게 타패해 판을 끝내는 것으로 보였다.
+    if (room.practice) return true;
     return humanCount >= 2;
   }
 
@@ -6844,6 +6841,14 @@ export class RoomManager {
    */
   private async openGame(room: Room, resume?: ResumeReconstruction): Promise<void> {
     // 자리는 대기실에서 이미 정해져 보이고 있다 — 여기서 다시 섞으면 그 표시가 거짓이 된다.
+
+    // **사람 1 + 봇 3이면 어느 문으로 왔든 연습 대국이다** (2026-09-24 사용자 지시).
+    // 홈의 «연습 대국»만이 아니라 대기실에서 봇을 셋 채운 방도 같다 — 관리자 목록의
+    // 「연습」 꼬리표와 «나가면 즉시 무효» 규칙이 두 길에서 다르면 안 된다.
+    // 대기실 방은 판마다 다시 정한다(다음 판에 사람이 더 앉을 수 있다).
+    if (!room.guest && !room.sandbox) {
+      room.practice = room.agents.filter((a) => a instanceof HumanAgent).length === 1;
+    }
 
     // 기록하지 않는 판(`recordsGame`: 증강 테스트·손님 체험·튜토리얼)은 리플레이
     // 파일을 남기지 않는다 — 어차피 게임 인덱스·통계에도 기록하지 않으므로 열어 볼

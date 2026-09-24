@@ -627,6 +627,7 @@ const ACTION_LABEL: Record<string, string> = {
   xray_reveal: "투시 발동",
   push_brand: "등 떠밀기 낙인",
   reload_use: "재장전 복구",
+  sign_flip_use: "반전",
   honor_recall: "귀환 자패 회수",
   split_tile: "분열 패 쪼개기",
   frame_discard: "누명 패 심기",
@@ -711,6 +712,7 @@ const ACTION_AUGMENT: Record<string, string> = {
   xray_reveal: "xray_hand",
   push_brand: "push_riichi",
   reload_use: "reload",
+  sign_flip_use: "sign_flip",
   honor_recall: "honor_return",
   split_tile: "tile_split",
   frame_discard: "frame_up",
@@ -846,6 +848,7 @@ const AUGMENT_ACTION_TYPES = new Set([
   "xray_reveal",
   "push_brand",
   "reload_use",
+  "sign_flip_use",
   "honor_recall",
   "split_tile",
   "frame_discard",
@@ -12791,7 +12794,7 @@ function HomeScreen(props: {
             </button>
             <button className="home-practice home-practice-plain" onClick={() => props.onPractice(false)}>
               연습 대국
-              <small>봇 3명 · 대기실에서 시작 · 기록에 남지 않음</small>
+              <small>봇 3명 · 대기실에서 시작 · 끝까지 두면 기록에 남음</small>
             </button>
           </div>
         </section>
@@ -12924,7 +12927,7 @@ function HomeScreen(props: {
                     (QA 4차 loop 확정 4). 시키는 대로 한 판 두고 돌아오면 화면이 글자
                     하나 안 바뀐 채 같은 문장으로 다시 맞이했다. 두 문을 다 놓고,
                     어느 쪽이 기록에 남는지를 적는다. */}
-                {" "}튜토리얼과 연습 대국은 기록에 남지 않습니다. 익숙해지면 방을 만들어 보세요.
+                {" "}튜토리얼은 기록에 남지 않고, 연습 대국은 끝까지 두면 기록에 남습니다.
               </span>
               {/* 전적이 0인 사람 = 아직 한 판도 안 끝낸 사람이다. 배우는 문과
                   기록이 남는 문을 나란히 준다. */}
@@ -15237,7 +15240,7 @@ const GameTable = memo(function GameTable(props: {
           if (soloWithBots) {
             void askConfirm({
               title: "게임을 무효 처리하고 나갈까요?",
-              body: "사람 참가자가 나뿐이므로 게임은 바로 무효 처리됩니다. 기록도 남지 않습니다.",
+              body: "봇과의 대국은 끝까지 둔 판만 기록에 남습니다. 지금 나가면 이 게임은 바로 종료되고 기록에 남지 않습니다.",
               confirmLabel: "무효 처리하고 나가기",
               danger: true,
             }).then((ok) => {
