@@ -1028,8 +1028,11 @@ const QUEST_GOAL: Record<string, string> = {
  * - "opp-river" : 상대 바닥의 버림패를 클릭 (payload에 snatchId·graveId·tileId / fromPlayer)
  *                 — 날치기는 각 상대의 최근 3장, 도굴은 화료가 되는 과거 버림패, 정적의 손은 서버 후보 그대로
  * - "hand3"     : 내 손패 3장을 클릭해 고른 뒤 [확인] (payload에 정렬된 tileIds 3장 — 가지치기)
+ * - "opp-aug"   : 상대 이름표의 증강 pill을 클릭 (payload에 target·augmentId — 무장해제).
+ *                 상대 pill이 숨는 좁은 화면은 상대 줄을 눌러 증강 시트의 «잠그기»로 고른다
+ * - "own-aug"   : 내 이름표의 증강 pill을 클릭 (payload에 augmentId — 재장전)
  */
-type ArmMode = "hand" | "opp" | "own-river" | "opp-river" | "hand3";
+type ArmMode = "hand" | "opp" | "own-river" | "opp-river" | "hand3" | "opp-aug" | "own-aug";
 
 /**
  * 액티브 액션 타입 → 클릭 발동 방식. 여기 등록된 액션은 버튼이 아니라
@@ -1100,6 +1103,13 @@ const ARM_MODE: Record<string, ArmMode> = {
   //   것을 걷고 판의 손패에서 그 3장만 빛나게 해 버릴 패를 누른다(끌어 놓아도 된다). ✦ 버튼으로
   //   거는 무장이 아니라 **강제 무장**이다 — FORCED_ARM_TYPES (2026-09-25, docs/59 U03)
   future_exchange: "hand",
+  // 무장해제 — 잠글 상대 증강을 ✦ 메뉴 2단계의 «봇1의 ○○» 텍스트 버튼(최대 12개)에서 고르던 것을,
+  //   상대 이름표에 이미 쿨다운·발동 중 칩을 달고 서 있는 pill을 직접 눌러 고른다. 상대 pill이 숨는
+  //   좁은 화면은 상대 줄 → 증강 시트의 «잠그기»로 (2026-09-25, docs/59 U24)
+  disarm_lock: "opp-aug",
+  // 재장전 — 되살릴 내 증강을 내 이름표 pill에서 누른다. 후보가 하나여도 무장한다: 되돌릴 수 없는
+  //   드문 액션이라 대상을 한 번 가리키는 것이 확인 구실을 한다 (2026-09-25, docs/59 U32)
+  reload_use: "own-aug",
 };
 
 /**
@@ -1310,6 +1320,8 @@ const OPP_ARM_TAG: Record<string, string> = {
   parasite_attach: "기생하기",
   rank_gate_mark: "4판 이하 화료 막기",
   swap3: "교환 상대로 고르기",
+  // 무장해제(opp-aug) — 줄은 대상이 아니라 입구다. 누를 것은 그 줄의 증강 pill(좁은 화면은 시트)
+  disarm_lock: "잠글 증강을 고르세요",
 };
 
 /**
@@ -1341,6 +1353,10 @@ function armPromptText(mode: ArmMode | null, type?: string | null, tapTwice = fa
       return "내 바닥의 버림패를 클릭하세요";
     case "opp-river":
       return "가져올 상대의 버림패를 클릭하세요";
+    case "opp-aug":
+      return "잠글 상대의 증강을 클릭하세요";
+    case "own-aug":
+      return "되살릴 내 증강을 이름표에서 클릭하세요";
     case "hand":
     default:
       return "발동할 손패를 클릭하세요";
@@ -1760,6 +1776,30 @@ interface SelectionCtx {
    * 누명처럼 «어느 바닥에 놓을지»를 고르는 액션용 — 특정 버림패가 아니라 바닥이 대상이다.
    */
   riverTargetOptionFor: (ownerId: string) => ActionOption | undefined;
+  /**
+   * opp-aug(무장해제): 이 상대의 **이 증강**을 잠그는 옵션 — target과 augmentId가 둘 다 맞아야 한다.
+   * opp 모드의 oppOptionFor는 target만 보고 첫 옵션을 집으므로 여기 쓰면 엉뚱한 증강이 잠긴다.
+   */
+  oppAugOptionFor: (pid: string, augId: string) => ActionOption | undefined;
+  /** opp-aug: 이 상대에게 잠글 수 있는 증강이 하나라도 있는가 — 줄을 강조하고 고르기 시트의 입구로 삼는다. */
+  oppAugArmable: (pid: string) => boolean;
+  /** own-aug(재장전): 내 이 증강을 되살리는 옵션(아니면 undefined). */
+  ownAugOptionFor: (augId: string) => ActionOption | undefined;
+}
+
+/**
+ * 이름표 pill을 누르는 무장(opp-aug·own-aug)의 옵션 찾기 — 순수 함수라 useCallback 안에서도 쓴다.
+ * target을 주면 그 상대의 옵션만, 안 주면 augmentId만 본다(재장전은 payload에 target이 없다).
+ */
+function augPickOption(
+  options: readonly ActionOption[],
+  augId: string,
+  target?: string,
+): ActionOption | undefined {
+  return options.find((o) => {
+    const p = o.payload as { target?: unknown; augmentId?: unknown };
+    return p.augmentId === augId && (target === undefined || p.target === target);
+  });
 }
 
 const NO_SELECTION: SelectionCtx = {
@@ -1778,6 +1818,9 @@ const NO_SELECTION: SelectionCtx = {
   frameTile: null,
   setFrameTile: () => {},
   riverTargetOptionFor: () => undefined,
+  oppAugOptionFor: () => undefined,
+  oppAugArmable: () => false,
+  ownAugOptionFor: () => undefined,
 };
 
 const SelectionContext = createContext<SelectionCtx>(NO_SELECTION);
@@ -16145,6 +16188,16 @@ function useSelection(
     return view.round.byPlayer[pid]?.riichiDeclared === true;
   };
 
+  // opp-aug·own-aug 모드: 이름표 pill 하나가 대상이다(무장해제·재장전 — docs/59 U24·U32)
+  const oppAugOptionFor = (pid: string, augId: string): ActionOption | undefined =>
+    armMode === "opp-aug" && pid !== view.playerId ? augPickOption(armedOptions, augId, pid) : undefined;
+  const oppAugArmable = (pid: string): boolean =>
+    armMode === "opp-aug" &&
+    pid !== view.playerId &&
+    armedOptions.some((o) => (o.payload as { target?: unknown }).target === pid);
+  const ownAugOptionFor = (augId: string): ActionOption | undefined =>
+    armMode === "own-aug" ? augPickOption(armedOptions, augId) : undefined;
+
   const clickOpp = (pid: string): void => {
     if (armMode !== "opp") return;
     const o = oppOptionFor(pid);
@@ -16203,6 +16256,9 @@ function useSelection(
     frameTile,
     setFrameTile,
     riverTargetOptionFor,
+    oppAugOptionFor,
+    oppAugArmable,
+    ownAugOptionFor,
   };
 }
 
@@ -19041,6 +19097,29 @@ function OpponentStrip({
   // 액티브 증강 무장 중 — 이 상대가 클릭 대상이면 강조하고 클릭 시 발동한다.
   const sel = useContext(SelectionContext);
   const oppArmable = sel.oppArmable(player.id);
+  /*
+   * 무장해제(opp-aug) — 이 상대의 증강 하나를 고른다. 줄은 대상이 아니라 **입구**다: 대상은 이름표의
+   * pill이고, pill이 숨는 좁은 화면(폰 세로·가로, 태블릿 세로의 좌우)에서는 줄을 누르면 증강 시트가
+   * 고르기 모드로 열린다. 줄 클릭이 곧바로 무언가를 잠그지는 않는다(2026-09-25, docs/59 U24).
+   */
+  const oppAugArmable = sel.oppAugArmable(player.id);
+  const [augPickOpen, setAugPickOpen] = useState(false);
+  // 무장이 풀리면(취소·제출·순 넘김) 고르기 시트도 함께 걷는다 — 남으면 누를 것 없는 «잠그기»가 선다
+  useEffect(() => {
+    if (!oppAugArmable) setAugPickOpen(false);
+  }, [oppAugArmable]);
+  // 이미 잠긴 증강은 후보에서 뺀다 — 서버는 내 주지만 두 번 잠가 봐야 한 번을 허비할 뿐이다
+  const lockedAugs = useMemo(() => disarmedAugmentsOf(view, player.id), [view, player.id]);
+  const armedOptions = sel.armedOptions;
+  /*
+   * NamePlate는 memo다 — 매 렌더 새 함수를 내리면 네 이름표가 판이 그려질 때마다 같이 그려진다.
+   * 그래서 pill 고르기 콜백은 **무장 중일 때만** 내리고(평소엔 undefined), 옵션 목록으로 묶어 둔다.
+   */
+  const pickAug = useCallback(
+    (augId: string): ActionOption | undefined =>
+      lockedAugs.has(augId) ? undefined : augPickOption(armedOptions, augId, player.id),
+    [armedOptions, lockedAugs, player.id],
+  );
   // 손패를 건드리는 증강을 무장했는데 이 상대가 리치라 대상이 될 수 없다 —
   // 강조도 클릭도 없는 자리에 이유만 적어 준다 (없으면 "왜 안 눌리지?"가 된다).
   const oppRiichiBlocked = sel.oppRiichiBlocked(player.id);
@@ -19087,7 +19166,44 @@ function OpponentStrip({
             : `${playerName(view, player)} 고르기`,
         ),
       }
-    : {};
+    : oppAugArmable
+      ? {
+          "data-arm-zone": "1",
+          ...clickableProps(
+            () => setAugPickOpen(true),
+            `${playerName(view, player)}의 증강 고르기 (${armAugName})`,
+          ),
+        }
+      : {};
+  /*
+   * 이름표에 내릴 무장 소품 — 상대 줄 전체가 대상인 무장(opp)이나 무장해제(opp-aug) 중에는 이름·알약이
+   * 제 동작(시트 열기·설명 고정)을 멈추고 클릭을 줄로 올린다. 그래야 «줄 어디를 눌러도 하나»가 된다
+   * — 예전엔 폰에서 이름을 누르면 시트가 뜨면서 대상 확정까지 함께 터졌다(2026-09-25, docs/59 U27).
+   */
+  const plateArm = {
+    ...(oppArmable || oppAugArmable ? { armTarget: true } : {}),
+    ...(oppAugArmable ? { pickAug, onPickAug: sel.submit } : {}),
+  };
+  // 좁은 화면의 무장해제 입구 — 줄을 누르면 연다. 행마다 «잠그기»(U24)
+  const augPickSheet =
+    augPickOpen && oppAugArmable ? (
+      <PlayerAugSheet
+        view={view}
+        player={player}
+        catalog={catalog}
+        onClose={() => setAugPickOpen(false)}
+        pick={{
+          optionFor: pickAug,
+          onPick: (o) => {
+            setAugPickOpen(false);
+            sel.submit(o);
+          },
+          icon: "🔒",
+          verb: "잠그기",
+          note: `${armAugName}: 이번 국 동안 잠글 증강을 고르세요`,
+        }}
+      />
+    ) : null;
   // 선언 간파로 알아낸 이 상대의 화료패 — 발동한 본인에게만 상시 노출
   const peeked = peekedWaits(view, player.id);
   // 봉인술사·손패 강탈로 알아낸 이 상대의 손패 — 오름패 간파와 같은 자리에 띄운다
@@ -19211,11 +19327,11 @@ function OpponentStrip({
   if (side === "top") {
     return (
       <div
-        className={`opp-strip opp-strip-top${oppArmable ? " opp-armable" : ""}`}
+        className={`opp-strip opp-strip-top${oppArmable ? " opp-armable" : ""}${oppAugArmable ? " opp-aug-armable" : ""}`}
         style={sizeVars}
         {...armProps}
       >
-        {oppArmable ? (
+        {oppArmable || oppAugArmable ? (
           <div className={`opp-arm-tag${swapFaster ? " opp-arm-fast" : ""}`}>{armTagText(false)}</div>
         ) : oppRiichiBlocked ? (
           <div className="opp-arm-tag opp-arm-blocked">리치 중이라 대상으로 고를 수 없습니다</div>
@@ -19242,18 +19358,19 @@ function OpponentStrip({
             />
           ))}
         </div>
-        <NamePlate view={view} player={player} catalog={catalog} tipAlign="center" />
+        <NamePlate view={view} player={player} catalog={catalog} tipAlign="center" {...plateArm} />
+        {augPickSheet}
       </div>
     );
   }
 
   return (
     <div
-      className={`opp-strip opp-strip-${side}${oppArmable ? " opp-armable" : ""}`}
+      className={`opp-strip opp-strip-${side}${oppArmable ? " opp-armable" : ""}${oppAugArmable ? " opp-aug-armable" : ""}`}
       style={sizeVars}
       {...armProps}
     >
-      {oppArmable ? (
+      {oppArmable || oppAugArmable ? (
           <div className={`opp-arm-tag${swapFaster ? " opp-arm-fast" : ""}`}>{armTagText(true)}</div>
         ) : oppRiichiBlocked ? (
           <div className="opp-arm-tag opp-arm-blocked">리치 중이라 대상으로 고를 수 없습니다</div>
@@ -19262,7 +19379,14 @@ function OpponentStrip({
       {sealPeek !== null ? <SealBadge peek={sealPeek} owner={playerName(view, player)} /> : null}
       {scan !== null ? <ScanBadge scan={scan} owner={playerName(view, player)} /> : null}
       {futureGot.length > 0 ? <FutureGotBadge got={futureGot} owner={playerName(view, player)} /> : null}
-      <NamePlate view={view} player={player} catalog={catalog} tipAlign={side === "left" ? "left" : "right"} />
+      <NamePlate
+        view={view}
+        player={player}
+        catalog={catalog}
+        tipAlign={side === "left" ? "left" : "right"}
+        {...plateArm}
+      />
+      {augPickSheet}
       <div className="opp-backs-col">
         {slots.map((s, i) => (
           <OppHandSlot
@@ -19935,11 +20059,26 @@ function PlayerAugSheet({
   player,
   catalog,
   onClose,
+  pick,
 }: {
   view: PlayerView;
   player: PlayerInfo;
   catalog: Record<string, AugmentCatalogEntry>;
   onClose: () => void;
+  /**
+   * 고르기 모드 — 무장해제(상대 증강 잠그기)·재장전(내 증강 되살리기) 무장 중에만 온다.
+   * 행마다 `verb` 버튼을 세우고, 후보가 아닌 행(이미 잠김 등)은 버튼을 끈다. 이름표 pill이
+   * 숨는 좁은 화면의 대상 자리이고, pill이 없는 수상한 주사위도 여기서는 고를 수 있다
+   * (2026-09-25, docs/59 U24·U32).
+   */
+  pick?: {
+    optionFor: (augId: string) => ActionOption | undefined;
+    onPick: (o: ActionOption) => void;
+    /** 행 버튼 — 화면에는 `${icon} ${verb}`, 읽어 주는 이름은 `${증강} ${verb}` */
+    icon: string;
+    verb: string;
+    note: string;
+  };
 }): JSX.Element {
   const disarmed = disarmedAugmentsOf(view, player.id);
   const reloaded = reloadedAugmentsOf(view, player.id);
@@ -19973,10 +20112,23 @@ function PlayerAugSheet({
   return createPortal(
     // overlay-peekable — '누른 채로 게임판 보기'가 붙는 표면(드래프트 창과 같은 규칙).
     // ⚠ body 직속 포털이어야 한다(FIXED_SURFACE_NOTE).
+    /*
+     * ⚠ data-arm-zone과 전파 차단은 필수다(2026-09-25, docs/59 U24·U27).
+     * - 이 시트는 body로 포털되지만 React 합성 이벤트는 **컴포넌트 트리**를 따라 올라간다 — 이름표를
+     *   든 상대 줄(opp-strip)의 무장 onClick까지 닿으면, 시트 안을 누른 것이 되돌릴 수 없는 대상
+     *   확정이나 시트 다시 열기로 터진다. 클릭과 Enter·Space만 막는다(Esc는 창의 keydown이 받아야 한다).
+     * - DOM으로는 판 바깥이라 GameTable의 «빈 곳 pointerdown = 무장 해제»에 걸려, 고르기 모드에서
+     *   행을 누르는 순간 무장이 먼저 풀렸다.
+     */
     <div
       className="overlay overlay-peekable aug-sheet-overlay"
+      data-arm-zone="1"
       onClick={(e) => {
+        e.stopPropagation();
         if (e.target === e.currentTarget) onClose();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") e.stopPropagation();
       }}
     >
       <div className="aug-sheet" role="dialog" aria-label={`${playerName(view, player)} 증강`}>
@@ -20002,6 +20154,7 @@ function PlayerAugSheet({
             ✕
           </button>
         </div>
+        {pick !== undefined ? <p className="aug-sheet-pick-note">{pick.note}</p> : null}
         {augs.length === 0 ? (
           <p className="aug-sheet-empty">아직 증강이 없습니다.</p>
         ) : (
@@ -20013,12 +20166,29 @@ function PlayerAugSheet({
               const cooldown = cooldownRoundsLeft(view, player.id, a);
               const cooldownTurns = cooldownTurnsLeft(view, player.id, a);
               const spent = view.augmentView[`spent:${a}:${player.id}`] === true;
+              const pickOpt = pick?.optionFor(a);
               return (
-                <li className={`aug-sheet-row${locked ? " aug-sheet-row-locked" : ""}`} key={a}>
+                <li
+                  className={`aug-sheet-row${locked ? " aug-sheet-row-locked" : ""}${pickOpt !== undefined ? " aug-sheet-row-pickable" : ""}`}
+                  key={a}
+                >
                   <div className="aug-sheet-row-head">
                     <AugCatIcon id={a} />
                     <span className="aug-sheet-name">{augName(a, catalog)}</span>
                     <span className="aug-sheet-cat">{CATEGORY_META[augmentCategory(a)].label}</span>
+                    {pick !== undefined ? (
+                      <button
+                        type="button"
+                        className="aug-sheet-pick"
+                        disabled={pickOpt === undefined}
+                        aria-label={`${augName(a, catalog)} ${pick.verb}`}
+                        onClick={() => {
+                          if (pickOpt !== undefined) pick.onPick(pickOpt);
+                        }}
+                      >
+                        {pickOpt !== undefined ? `${pick.icon} ${pick.verb}` : locked ? "이미 잠김" : "고를 수 없음"}
+                      </button>
+                    ) : null}
                   </div>
                   <div className="aug-sheet-chips">
                     {locked ? <span className="aug-sheet-chip">🔒 무장해제로 이번 국 잠김</span> : null}
@@ -20069,10 +20239,24 @@ const NamePlate = memo(function NamePlate({
   tipUp,
   tipAlign,
   glow,
+  pickAug,
+  onPickAug,
+  armTarget,
 }: {
   view: PlayerView;
   player: PlayerInfo;
   catalog: Record<string, AugmentCatalogEntry>;
+  /**
+   * 무장해제(상대)·재장전(나) 무장 중에만 온다 — 이 증강을 누르면 낼 옵션(후보가 아니면 undefined).
+   * 평소에는 둘 다 undefined라 memo가 깨지지 않는다(2026-09-25, docs/59 U24·U32).
+   */
+  pickAug?: (augId: string) => ActionOption | undefined;
+  onPickAug?: (o: ActionOption) => void;
+  /**
+   * 이 이름표를 든 상대 줄 전체가 무장 대상이다(opp·opp-aug) — 이름·알약이 제 동작(시트 열기·
+   * 설명 고정)을 멈추고 클릭을 줄로 올린다. hover·focus 툴팁은 그대로 — 대상을 정할 정보다(U27).
+   */
+  armTarget?: boolean;
   /**
    * 지금 빛낼 증강 id들 — 액티브 증강 버튼에 손을 올린 동안 "그 버튼이 쓰는 증강"을
    * 가리킨다(내 이름표 전용). null이면 아무것도 빛나지 않는다.
@@ -20133,6 +20317,9 @@ const NamePlate = memo(function NamePlate({
   const [pinned, setPinned] = useState<ReadonlySet<string>>(() => new Set());
   /** 이름을 눌러 연 증강 보기 시트 (폰 전용 경로 — PlayerAugSheet 주석) */
   const [sheetOpen, setSheetOpen] = useState(false);
+  /** 무장해제·재장전 무장 중 — pill이 곧 대상이다 */
+  const picking = pickAug !== undefined && onPickAug !== undefined;
+  const pickVerb = isMe ? "되살리기" : "잠그기";
   const togglePin = (a: string): void =>
     setPinned((cur) => {
       const next = new Set(cur);
@@ -20237,7 +20424,12 @@ const NamePlate = memo(function NamePlate({
         className="np-name np-name-btn"
         title={playerName(view, player)}
         aria-label={`${playerName(view, player)}의 증강 보기`}
-        onClick={() => setSheetOpen(true)}
+        onClick={() => {
+          // 상대 줄 전체가 대상인 무장 중 — 시트를 열지 않고 클릭을 줄로 올린다. 줄이 대상 확정(opp)
+          // 또는 고르기 시트(opp-aug)를 맡는다. 예전엔 시트와 확정이 함께 터졌다(2026-09-25, docs/59 U27)
+          if (armTarget === true) return;
+          setSheetOpen(true);
+        }}
       >
         {playerName(view, player)}
       </button>
@@ -20247,6 +20439,20 @@ const NamePlate = memo(function NamePlate({
           player={player}
           catalog={catalog}
           onClose={() => setSheetOpen(false)}
+          {...(picking
+            ? {
+                pick: {
+                  optionFor: pickAug,
+                  onPick: (o: ActionOption) => {
+                    setSheetOpen(false);
+                    onPickAug(o);
+                  },
+                  icon: isMe ? "↺" : "🔒",
+                  verb: pickVerb,
+                  note: isMe ? "되살릴 증강을 고르세요" : "잠글 증강을 고르세요",
+                },
+              }
+            : {})}
         />
       ) : null}
       {/*
@@ -20291,6 +20497,8 @@ const NamePlate = memo(function NamePlate({
             const active = cooldown > 0 && !locked && firedThisRound(view, player.id, a);
             // 선발동형("이번 국만")이 이미 지나갔는가 — 설명 배지도 함께 갈아 끼운다.
             const spent = view.augmentView[`spent:${a}:${player.id}`] === true;
+            // 무장해제·재장전 무장 중 — 이 pill이 대상이면 그 옵션. 대상이 아닌 pill은 흐린다(U24·U32)
+            const armOpt = picking ? pickAug(a) : undefined;
             return (
               // tabIndex — 터치 기기에는 hover가 없다. 탭하면 포커스가 잡혀
               // :focus로 툴팁이 뜨고, 다른 곳을 탭하면 사라진다.
@@ -20301,12 +20509,38 @@ const NamePlate = memo(function NamePlate({
               // 살아서, 판이 한 번 다시 그려질 때마다 같이 다시 그려졌다.
               <span
                 key={a}
-                className={`aug-pill aug-prism${locked ? " aug-pill-locked" : ""}${(cooldown > 0 && !active) || cooldownTurns > 0 ? " aug-pill-cd" : ""}${active ? " aug-pill-active" : ""}${status !== null ? " aug-pill-live" : ""}${status?.tone === "spent" ? " aug-pill-spent" : ""}${fromDice.has(a) ? " aug-pill-dice" : ""}${pinned.has(a) ? " aug-pill-pinned" : ""}${glow?.has(a) === true ? " aug-pill-usable" : ""}`}
+                className={`aug-pill aug-prism${locked ? " aug-pill-locked" : ""}${(cooldown > 0 && !active) || cooldownTurns > 0 ? " aug-pill-cd" : ""}${active ? " aug-pill-active" : ""}${status !== null ? " aug-pill-live" : ""}${status?.tone === "spent" ? " aug-pill-spent" : ""}${fromDice.has(a) ? " aug-pill-dice" : ""}${pinned.has(a) ? " aug-pill-pinned" : ""}${glow?.has(a) === true ? " aug-pill-usable" : ""}${armOpt !== undefined ? " aug-pill-armable" : picking ? " aug-pill-unpickable" : ""}`}
+                {...(armOpt !== undefined
+                  ? (() => {
+                      // 키보드로도 고른다(Enter·Space). 클릭은 아래 onClick이 맡는다(툴팁 안쪽 걸러내기)
+                      const cp = clickableProps(() => onPickAug?.(armOpt), `${augName(a, catalog)} ${pickVerb}`);
+                      return {
+                        ...cp,
+                        "data-arm-zone": "1",
+                        // 툴팁 안쪽(자세히 칩·고정 손잡이)의 Enter가 올라온 것은 그 단추의 일이다
+                        onKeyDown: (e: React.KeyboardEvent) => {
+                          if (e.target === e.currentTarget) cp.onKeyDown(e);
+                        },
+                      };
+                    })()
+                  : {})}
                 tabIndex={0}
                 // 눌러서 설명을 고정한다 / 다시 눌러 푼다. 툴팁 **안쪽**("자세히" 칩·용어
                 // 링크)을 누른 것은 여기까지 올라오면 안 된다 — 고정을 풀어 버린다.
                 onClick={(e) => {
                   if (e.target !== e.currentTarget && (e.target as HTMLElement).closest(".aug-tip") !== null) return;
+                  // 무장해제·재장전 무장 중 후보 pill — 누르면 이 증강이 대상이다. 줄의 고르기 시트가
+                  // 함께 열리지 않게 여기서 멈춘다(2026-09-25, docs/59 U24·U32)
+                  if (armOpt !== undefined) {
+                    e.stopPropagation();
+                    // 누른 뒤 포커스가 남으면 :focus 툴팁이 확정 뒤에도 판 위에 선다
+                    e.currentTarget.blur();
+                    onPickAug?.(armOpt);
+                    return;
+                  }
+                  // 상대 줄 전체가 대상인 무장 중 — 설명 고정을 건너뛰고 클릭을 줄로 올린다. 고정된
+                  // 툴팁이 확정 뒤에도 판 위에 남던 것을 막는다(U27)
+                  if (armTarget === true) return;
                   togglePin(a);
                 }}
                 onMouseEnter={() => setTipFor(a)}
@@ -20372,8 +20606,16 @@ const NamePlate = memo(function NamePlate({
                 <button
                   type="button"
                   className="aug-pill-sheet-hit"
-                  aria-label={`${augName(a, catalog)} 증강 보기`}
+                  aria-label={`${augName(a, catalog)} ${armOpt !== undefined ? pickVerb : "증강 보기"}`}
                   onClick={(e) => {
+                    // 무장 중 후보 — 폰에서도 알약이 곧 대상이다. 시트를 열면 한 번 더 눌러야 한다(U24·U32)
+                    if (armOpt !== undefined) {
+                      e.stopPropagation();
+                      onPickAug?.(armOpt);
+                      return;
+                    }
+                    // 상대 줄 전체가 대상인 무장 중 — 막지 않고 올려 보낸다(pill도 올려 보낸다 → 줄, U27)
+                    if (armTarget === true) return;
                     // 알약의 «고정» 토글까지 함께 터지면 시트 뒤에 툴팁이 남는다
                     e.stopPropagation();
                     setSheetOpen(true);
@@ -20381,7 +20623,19 @@ const NamePlate = memo(function NamePlate({
                 />
                 {/* 고정해 둔 것은 손을 떼도 그린다 — 그래야 판과 설명을 나란히 볼 수 있다 */}
                 {tipFor === a || pinned.has(a) ? (
-                <span className={`aug-tip${tipUp === true ? " aug-tip-up" : " aug-tip-down"} aug-tip-a-${tipAlign ?? "center"}`}>
+                <span
+                  className={`aug-tip${tipUp === true ? " aug-tip-up" : " aug-tip-down"} aug-tip-a-${tipAlign ?? "center"}`}
+                  // 줄 전체가 무장 대상일 때 툴팁 안(«자세히»·용어)을 누른 것은 읽는 손짓이다 — 줄까지
+                  // 올라가면 되돌릴 수 없는 대상 확정이 된다(2026-09-25, docs/59 U27)
+                  {...(armTarget === true
+                    ? {
+                        onClick: (e: React.MouseEvent) => e.stopPropagation(),
+                        onKeyDown: (e: React.KeyboardEvent) => {
+                          if (e.key === "Enter" || e.key === " ") e.stopPropagation();
+                        },
+                      }
+                    : {})}
+                >
                   <span className="aug-tip-name">
                     <AugCatIcon id={a} />
                     {augName(a, catalog)}
@@ -21352,6 +21606,17 @@ function OwnArea(props: {
   // 아래 recallDoomed가 «지금 손이 올라간 증강»을 가르는 데도 쓰므로 여기서 먼저 선언한다.
   const [usableHint, setUsableHint] = useState<ReadonlySet<string> | null>(null);
   const armedAug = sel.armedType;
+  /*
+   * 재장전(own-aug) — 되살릴 내 증강을 ✦ 메뉴 2단계 글자 목록이 아니라 **바로 옆 내 이름표 pill**에서
+   * 누른다. 결과(♻·잔량 칩)도 그 pill에 붙으니 조작과 결과가 한 자리다(2026-09-25, docs/59 U32).
+   * NamePlate는 memo라 무장 중일 때만 콜백을 내린다(평소엔 undefined).
+   */
+  const ownAugArmed = sel.armMode === "own-aug";
+  const ownArmedOptions = sel.armedOptions;
+  const pickOwnAug = useCallback(
+    (augId: string): ActionOption | undefined => augPickOption(ownArmedOptions, augId),
+    [ownArmedOptions],
+  );
   /*
    * 한 패에 변형 선택지가 여럿일 때(염색 무늬·연금술 ±1·분열·위조) 누른 패 위에 붙는 팝오버.
    * `anchor`는 **레이아웃 좌표**다(x = 누른 패의 가운데, top = 손패 상자의 위끝) — 팝오버는
@@ -22711,6 +22976,7 @@ function OwnArea(props: {
               catalog={props.catalog}
               tipUp
               glow={usableHint}
+              {...(ownAugArmed ? { pickAug: pickOwnAug, onPickAug: sel.submit } : {})}
             />
             {!isSpectator ? (
               <ActiveAugmentControl
@@ -26218,6 +26484,10 @@ function ActiveAugmentControl(props: {
         return "상대 버림패 클릭으로 선택";
       case "hand3":
         return "손패 3장 클릭 후 확인";
+      case "opp-aug":
+        return "상대 증강 클릭으로 선택";
+      case "own-aug":
+        return "내 증강 클릭으로 선택";
       default:
         return "손패 클릭으로 선택";
     }

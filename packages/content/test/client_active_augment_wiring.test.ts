@@ -191,6 +191,13 @@ describe("클라이언트 액티브 증강 배선", () => {
     expect(SRC).not.toContain('pickModal === "silent_take"');
   });
 
+  it("무장해제·재장전은 이름표 pill을 누르는 무장이다 — 2단계 글자 목록으로 새지 않는다", () => {
+    // 2026-09-25 (docs/59 U24·U32): ARM_MODE에 없으면 activate()가 옵션 여럿일 때 ✦ 메뉴 2단계의
+    // «봇1의 ○○» 텍스트 버튼(무장해제 최대 12개)으로 떨어진다. opp로 두면 target만 보고 첫 옵션을 집는다.
+    expect(armMode.get("disarm_lock")).toBe("opp-aug");
+    expect(armMode.get("reload_use")).toBe("own-aug");
+  });
+
   it("ARM_MODE 값은 전부 실제 쓰이는 ArmMode다 — 아무도 안 쓰는 무장 방식이 남지 않는다", () => {
     // 2026-09-25 (docs/59 U11): ArmMode "swap3"(상대 → 내 3장)는 ARM_MODE.swap3가 "opp"로 바뀐
     // 뒤 아무 액션도 쓰지 않았는데, useSelection·OwnArea·armHint에 분기와 안내 줄이 그대로 남아

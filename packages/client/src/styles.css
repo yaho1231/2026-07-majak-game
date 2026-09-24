@@ -8240,6 +8240,15 @@ button {
   outline-color: rgba(226, 220, 255, 1);
   box-shadow: 0 0 26px 6px rgba(199, 188, 255, 0.95);
 }
+/* 무장해제(opp-aug) — 줄은 대상이 아니라 입구다(대상은 그 안의 pill). 맥동은 pill이 맡고 줄은
+   점선 테두리만 — 둘 다 뛰면 어디를 눌러야 하는지 다시 흐려진다. pill이 숨는 좁은 화면에서는
+   이 줄을 누르면 고르기 시트가 열린다(2026-09-25, docs/59 U24). */
+.opp-aug-armable {
+  cursor: pointer;
+  border-radius: 12px;
+  outline: 2px dashed rgba(199, 188, 255, 0.85);
+  outline-offset: 4px;
+}
 .opp-arm-tag {
   position: absolute;
   top: -6px;
@@ -9063,6 +9072,36 @@ button {
 /* 연출을 줄여 달라고 한 사람에게는 깜빡임 없이 밝기·테두리만 남긴다 */
 @media (prefers-reduced-motion: reduce) {
   .aug-pill-usable {
+    animation: none;
+  }
+}
+
+/* ── 무장해제·재장전 무장 중 — 누를 수 있는 pill ──
+   ✦ 메뉴 2단계의 «봇1의 ○○» 글자 목록 대신 이름표 pill 자체가 대상이다(2026-09-25, docs/59 U24·U32).
+   «지금 누르면 이것»이라는 같은 신호라 `.aug-pill-usable`의 밝은 보라·맥동을 그대로 쓰고, 대상이
+   아닌 pill은 흐려서 누를 곳이 한눈에 갈리게 한다. 툴팁(판단 정보)은 흐림에서 뺀다. */
+.aug-pill-armable {
+  background: rgba(196, 182, 255, 0.62);
+  border-color: #f2eeff;
+  color: #17142b;
+  font-weight: 700;
+  box-shadow: 0 0 0 2px rgba(214, 205, 255, 0.9), 0 0 16px 3px rgba(170, 152, 255, 0.85);
+  cursor: pointer;
+  animation: aug-pill-usable-pulse 1.15s ease-in-out infinite;
+}
+.aug-pill-armable .aug-pill-chip {
+  background: rgba(35, 28, 66, 0.92);
+  color: #efeaff;
+}
+/* 쿨다운·소진으로 식은 pill도 후보면 살린다 — 재장전의 대상이 바로 그런 pill이다(U32) */
+.aug-pill-armable > :not(.aug-tip) {
+  opacity: 1;
+}
+.aug-pill-unpickable > :not(.aug-tip) {
+  opacity: 0.4;
+}
+@media (prefers-reduced-motion: reduce) {
+  .aug-pill-armable {
     animation: none;
   }
 }
@@ -20484,6 +20523,36 @@ body:has(.prod-skip) .toast-stack {
   margin-top: 6px;
   font-size: 13px;
   line-height: 1.5;
+}
+/* 고르기 모드(무장해제 «잠그기»·재장전 «되살리기») — 행 머리 오른쪽 끝의 주 버튼.
+   폰 전용 표면이라 손가락 과녁 44px 를 준다(✕·«모두 자세히»와 같은 높이) (2026-09-25, docs/59 U24·U32) */
+.aug-sheet-pick-note {
+  margin: 10px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(226, 220, 255, 0.95);
+}
+.aug-sheet-pick {
+  margin-left: auto;
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid #f2eeff;
+  background: rgba(196, 182, 255, 0.62);
+  color: #17142b;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.aug-sheet-pick:disabled {
+  border-color: rgba(199, 188, 255, 0.25);
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  font-weight: 600;
+  opacity: 0.6;
+  cursor: default;
 }
 
 /* 미수집 줄 (드래프트 카드) — 증강 이름 바로 위에 **제 줄 하나로** 선다.
