@@ -210,13 +210,13 @@ export function lastDiscardKind(view: PlayerView): TileKind | undefined {
   return view.tiles[ld.tileId]?.kind;
 }
 
-/** 홀더의 자풍 (1동 2남 3서 4북). 좌석·오야·진행 방향에서 계산한다. */
+/** 홀더의 자풍 (1동 2남 3서 4북). 좌석·오야에서 계산한다 — 진행 방향과 무관하다(역풍). */
 export function seatWindOf(view: PlayerView, holder: PlayerId): number {
   const me = view.players.find((p) => p.id === holder);
   if (me === undefined) return 0;
   const n = view.players.length;
   const diff = me.seat - view.round.dealerSeat;
-  return ((((diff * view.round.direction) % n) + n) % n) + 1;
+  return (((diff % n) + n) % n) + 1;
 }
 
 /**

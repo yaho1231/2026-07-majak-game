@@ -647,6 +647,9 @@ const ACTION_LABEL: Record<string, string> = {
   // 2026-09-24 (8차) 신규
   pruning_swap: "가지치기 (바꿀 3장 선택)",
   yggdrasil_call: "위그드라실 발동",
+  swamp_activate: "늪 발동",
+  greed_use: "욕심 (방금 쯔모한 패)",
+  intimidate_riichi: "위압 리치",
 };
 
 /** 액티브 액션 → 그 액션을 만들어내는 증강 id (메뉴에서 어느 증강인지 표시용). */
@@ -732,6 +735,9 @@ const ACTION_AUGMENT: Record<string, string> = {
   declare_async_chiitoi: "async_chiitoi",
   pruning_swap: "pruning",
   yggdrasil_call: "yggdrasil",
+  swamp_activate: "swamp",
+  greed_use: "greed",
+  intimidate_riichi: "intimidate",
 };
 
 /**
@@ -873,6 +879,9 @@ const AUGMENT_ACTION_TYPES = new Set([
   // 2026-09-24 (8차) 신규
   "pruning_swap",
   "yggdrasil_call",
+  "swamp_activate",
+  "greed_use",
+  "intimidate_riichi",
 ]);
 
 /**
@@ -963,6 +972,9 @@ const ACTIVE_AUGMENT_IDS = new Set([
   // 2026-09-24 (8차) 신규
   "pruning",
   "yggdrasil",
+  "swamp",
+  "greed",
+  "intimidate",
 ]);
 
 /** 이 증강이 '액티브 증강' 버튼으로 직접 발동되는지 (설명카드·툴팁 뱃지용). */
@@ -1050,6 +1062,8 @@ const ARM_MODE: Record<string, ArmMode> = {
   soul_strike: "hand",
   // 조커 — 백으로 바꿀 손패를 클릭한다 (이미 백인 패를 고르면 바뀌는 것 없이 켜지기만 한다)
   joker_call: "hand",
+  // 위압감 — 리치처럼, 리치 걸 손패(버릴 패)를 직접 클릭해 선언한다
+  intimidate_riichi: "hand",
 };
 
 /** 이 액션이 클릭(무장) 방식으로 발동되는지 — 아니면 버튼으로 발동. */
@@ -1089,6 +1103,7 @@ const DRAG_DISCARD_ARM_TYPES = new Set([
   "all_in_riichi",
   "soul_strike",
   "no_retreat_riichi",
+  "intimidate_riichi",
   // 손바닥 뒤집기 — 리치를 **거는** 것은 아니지만 "무장 → 버릴 패를 끌어 놓기"가 같다
   "flip_riichi",
 ]);
@@ -1660,6 +1675,7 @@ const DISCARD_LIKE = new Set([
   "open_riichi",
   "stealth_riichi",
   "all_in_riichi",
+  "intimidate_riichi",
 ]);
 
 /**
@@ -2128,11 +2144,10 @@ interface Toast {
  */
 const TOAST_MAX = 3;
 
-/** 자풍 인덱스 (0=東/친). 역행하는 세계(direction -1)도 반영 */
+/** 자풍 인덱스 (0=東/친). 진행 방향과 무관하다 — 역풍은 차례 순서만 뒤집는다 */
 function seatWindIdx(view: PlayerView, player: PlayerInfo): number {
   const n = view.players.length;
-  const dir = view.round.direction >= 0 ? 1 : -1;
-  const diff = (player.seat - view.round.dealerSeat) * dir;
+  const diff = player.seat - view.round.dealerSeat;
   return ((diff % n) + n) % n;
 }
 
@@ -16568,6 +16583,7 @@ const AUG_EVENTS: Record<
   // ("소환 성공")이 따로 있어 한 번의 소환에 컷인이 두 번 터졌다 —
   // 2026-08-15 사용자 지시로 도착 알림을 없앴다(콘텐츠 쪽 채널도 함께 삭제).
   conjure_draw: { title: "소환", sub: "다음 쯔모로 이 패를 가져온다", augId: "conjure_draw" },
+  greed: { title: "욕심", sub: "다음 쯔모로 이 패를 한 장 더 가져온다", augId: "greed" },
   three_dragons_will: { title: "삼원패의 의지", sub: "삼원패가 손패로 들어온다", augId: "three_dragons_will" },
   haitei_lord: { title: "해저의 주인", sub: "마지막 한 장을 손에 넣었다", augId: "haitei_lord" },
   off_by_one: { title: "한 끗 차이", sub: "쯔모한 패가 한 칸 밀려 오름패가 됐다", augId: "off_by_one" },
@@ -16675,6 +16691,15 @@ function armedRoundNotices(view: PlayerView): ArmedRoundNotice[] {
         title: "눈먼 총알",
         augId: head,
         line: `${who}가 발동했다. 이번 국의 모든 론은 넷 중 무작위 한 명이 지불한다`,
+        ms: 2400,
+      });
+    } else if (head === "reverse_wind") {
+      out.push({
+        key,
+        raw,
+        title: "역풍",
+        augId: head,
+        line: "이번 국은 차례가 반대 방향(동→북→서→남)으로 돈다",
         ms: 2400,
       });
     } else if (head === "sign_flip") {
@@ -16945,6 +16970,8 @@ function augmentLogRows(
     if (AUG_EVENT_HEADS.has(head)) continue;
     // 아래는 손패 옆 뱃지 줄(ActiveInfoBadges)이 **전원 것을** 크게 띄운다 — 그대로 중복이다.
     if (head === "hidden_river" || head === "riichi_seal") continue;
+    // 강제 쯔모기리(늪·위압감)의 남은 순은 걸린 사람 이름표 배지가 보여준다
+    if (head === "forcedTsumogiri") continue;
 
     if (head === "cornucopia") {
       /*
@@ -17728,10 +17755,12 @@ function CenterPanel({
               供{r.riichiPot / 1000}
             </span>
           ) : null}
-          {/* 역행 — 2026-08-17 확인: `turn.direction`을 −1로 바꾸는 콘텐츠는 아직 없다.
-              규칙은 엔진·봇·삼세 예지까지 배선돼 있으므로 표시만 미리 서 있는 상태다.
-              (뒤집는 증강이 생기면 이 칩이 그대로 살아난다.) */}
-          {r.direction < 0 ? <span className="rev-dir" title="역행하는 세계">역행</span> : null}
+          {/* 역행 — 역풍(`reverse_wind`)이 켠 국에는 차례가 동→북→서→남으로 돈다 */}
+          {r.direction < 0 ? (
+            <span className="rev-dir" title="역풍: 이번 국은 차례가 반대 방향(동→북→서→남)으로 돈다">
+              역행
+            </span>
+          ) : null}
         </div>
         <div className="center-dora" title="도라 표시패">
           {r.doraIndicators.map((id) => (
@@ -18808,6 +18837,36 @@ const PILL_OWNED_HEADS: ReadonlySet<string> = new Set([
   "time_pressure",
 ]);
 
+/** 강제 쯔모기리 배지의 짧은 이름 (content `forcedTsumogiri.ts`를 쓰는 증강) */
+const FORCED_TSUMOGIRI_LABEL: Record<string, { label: string; name: string }> = {
+  swamp: { label: "늪", name: "늪" },
+  intimidate: { label: "위압", name: "위압감" },
+};
+
+/**
+ * 이 사람에게 걸린 강제 쯔모기리 — 증강별 남은 순(여럿이 걸면 가장 긴 것).
+ * 채널은 `forcedTsumogiri:{증강}:{보유자}:{대상}` (전원 공개, 국 스코프).
+ */
+function forcedTsumogiriOf(
+  view: PlayerView,
+  playerId: string,
+): { augId: string; label: string; name: string; turns: number }[] {
+  const byAug = new Map<string, number>();
+  for (const [key, raw] of Object.entries(view.augmentView ?? {})) {
+    if (!key.startsWith("forcedTsumogiri:") || typeof raw !== "number" || raw <= 0) continue;
+    const parts = key.split(":");
+    if (parts.length !== 4 || parts[3] !== playerId) continue;
+    const augId = parts[1] ?? "";
+    byAug.set(augId, Math.max(byAug.get(augId) ?? 0, raw));
+  }
+  return [...byAug.entries()].map(([augId, turns]) => ({
+    augId,
+    label: FORCED_TSUMOGIRI_LABEL[augId]?.label ?? "쯔모기리",
+    name: FORCED_TSUMOGIRI_LABEL[augId]?.name ?? "강제 쯔모기리",
+    turns,
+  }));
+}
+
 /**
  * 내부 쿨다운("2국에 1회")이 몇 국 남았는가 — 0이면 지금 쓸 수 있다.
  *
@@ -19277,6 +19336,8 @@ const NamePlate = memo(function NamePlate({
   // 일발이 살아 있는가 — 본인 뷰에만 오는 값이라 전원 공개 자리에는 못 놓는다.
   // 누가 울어서 일발이 깨졌는지가 화면에 남지 않아, 1판이 조용히 사라졌다.
   const ippatsu = isMe && view.round.byPlayer[player.id]?.ippatsu === true;
+  // 강제 쯔모기리(늪·위압감)가 걸린 남은 순 — 전원 공개
+  const forced = forcedTsumogiriOf(view, player.id);
   // 무장해제로 이번 국 잠긴 이 사람의 증강 — 이름표의 pill에 쇠사슬을 채운다.
   // 잠금이 화면 어디에도 드러나지 않아 "무장해제가 안 먹는다"로 보였다(2026-08-01).
   const disarmed = disarmedAugmentsOf(view, player.id);
@@ -19651,6 +19712,15 @@ const NamePlate = memo(function NamePlate({
         </span>
       ) : null}
       {ippatsu ? <span className="np-ippatsu" title="일발이 유효합니다. 누군가 후로하면 사라집니다">일발</span> : null}
+      {forced.map((f) => (
+        <span
+          key={f.augId}
+          className="np-forced"
+          title={`${f.name}: 앞으로 ${f.turns}순 동안 쯔모한 패만 버릴 수 있습니다`}
+        >
+          {f.label} {f.turns}순
+        </span>
+      ))}
       {furiten ? (
         <span
           className="np-furiten"

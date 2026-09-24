@@ -376,8 +376,8 @@ export function buildRead(
 
   const seat = view.players.find((p) => p.id === me)?.seat ?? 0;
   const n = view.players.length || 4;
-  const seatWind =
-    ((((seat - view.round.dealerSeat) * view.round.direction) % n) + n) % n + 1;
+  // 자풍은 진행 방향과 무관하다 (역풍은 차례 순서만 뒤집는다 — core helpers.nextSeat)
+  const seatWind = (((seat - view.round.dealerSeat) % n) + n) % n + 1;
 
   /**
    * 수비 저울 — 순목·도라·**스지 신뢰도**.

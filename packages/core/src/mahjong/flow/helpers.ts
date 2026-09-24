@@ -78,25 +78,20 @@ export function playerAtSeat(state: GameState, seat: number): PlayerState {
 /**
  * @param direction 1=시계(표준), -1=역방향 (`turn.direction` 규칙)
  *
- * ⚠ **−1을 쓰는 콘텐츠는 아직 없다** (감사 §10-11). 그래도 이 갈래는 죽은 코드가
- * 아니다 — 자리 순서·대기 계산·플로우가 전부 이 값을 읽고 있고, 지금은 전원이 1을
- * 받는다. 걷어내면 다섯 파일의 순서 계산을 손으로 풀어야 하고, 되살릴 때 그걸 다시
- * 짜야 한다. 값이 1일 때의 비용은 곱셈 한 번이다.
+ * `turn.direction`은 **차례 순서만** 뒤집는다 — 다음 차례·치 대상(상가)·동시 론 우선순위.
+ * 자풍과 다음 국 오야 이동은 방향과 무관하다(역풍 `reverse_wind`, 2026-09-24 사용자 확정:
+ * "동→북→서→남"으로 흐른다 = 바람 이름은 그대로 두고 순서만 거꾸로).
  */
 export function nextSeat(state: GameState, seat: number, direction = 1): number {
   const n = state.players.length;
   return (((seat + direction) % n) + n) % n;
 }
 
-/** 자풍 (1동 2남 3서 4북). direction -1이면 반대 방향으로 바람이 돈다 */
-export function seatWindOf(
-  state: GameState,
-  id: PlayerId,
-  direction = 1,
-): number {
+/** 자풍 (1동 2남 3서 4북). 진행 방향과 무관하다 — 자리와 오야만으로 정해진다 */
+export function seatWindOf(state: GameState, id: PlayerId): number {
   const n = state.players.length;
   const diff = playerOf(state, id).seat - state.round.dealerSeat;
-  return ((((diff * direction) % n) + n) % n) + 1;
+  return (((diff % n) + n) % n) + 1;
 }
 
 export function kindOf(state: GameState, tileId: TileId): TileKind {
@@ -1100,10 +1095,6 @@ export function buildWinContext(
   }).length;
 
   const rules = options.rules;
-  const direction =
-    rules !== undefined && rules.has("turn.direction")
-      ? rules.resolve<number>("turn.direction", { state })
-      : 1;
   // 채점상의 자풍 — 기본은 실제 자리에서 계산하고, 증강(만년 오야)이 고정할 수 있다.
   const seatWindOverride =
     rules !== undefined && rules.has("scoring.seatWind")
@@ -1118,7 +1109,7 @@ export function buildWinContext(
     melds,
     winningTile: winKind,
     winType,
-    seatWind: seatWindOverride ?? seatWindOf(state, winner, direction),
+    seatWind: seatWindOverride ?? seatWindOf(state, winner),
     prevalentWind: state.round.prevalentWind,
     riichi:
       rs?.riichi != null

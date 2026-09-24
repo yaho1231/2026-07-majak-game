@@ -1904,6 +1904,17 @@ button {
   cursor: help;
 }
 
+/* 강제 쯔모기리(늪·위압감) — 남은 순을 전원에게 보인다 */
+.np-forced {
+  color: #b9d98a;
+  font-size: 0.65em;
+  font-weight: 700;
+  border: 1px solid rgba(160, 200, 110, 0.6);
+  border-radius: 4px;
+  padding: 0 0.55em;
+  cursor: help;
+}
+
 .np-furiten {
   cursor: help;
   color: #f08a7c;
