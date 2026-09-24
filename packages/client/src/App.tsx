@@ -1117,6 +1117,18 @@ const KIND_TARGET_ARM_TYPES = new Set([
  */
 const ARM_CONFIRM_TYPES = new Set([
   "ura_swap",
+  // 후보가 한 장뿐인 패는 누르는 순간 서버로 나가 되돌릴 수 없다 — 조커의 白 변환, 스파이·소환의
+  // 국 1회, 연금술·염색·분열·위조의 횟수 소모. 어느 패가 한 장짜리인지(1·9, 2·3, 무늬 소진…)는
+  // 플레이어가 모르므로 같은 조작이 숨은 조건에 따라 «미리보기 / 즉시 확정»으로 갈렸다
+  // (2026-09-25, docs/59 U16). 후보가 여럿인 패는 팝오버(armSub)가 곧 확인이라 겹쳐 걸지 않는다.
+  // 누명(frame_discard)은 넣지 않는다 — 1단계는 심을 패를 고르기만 하고 확정은 상대 바닥 클릭이다.
+  "joker_call",
+  "conjure_tsumo",
+  "spy_mark",
+  "split_tile",
+  "peek_forge",
+  "tile_dye",
+  "alchemy",
 ]);
 
 /**
@@ -1201,7 +1213,8 @@ const RIICHI_AUG_IDS = new Set(
  * 동사 몫은 이름표(ACTION_LABEL — «대기패 위조»·«스파이 지정»)가 반쯤 했다. 이제 이름은
  * 증강 이름 하나라(docs/59 U18) 선언 간파의 위조·간파처럼 한 증강의 두 액션이 같은 이름으로
  * 합쳐진다 — 그 구분을 이 표가 맡는다(2026-09-25, docs/59 U19).
- * 소환·스파이는 패 종류마다 후보가 하나라 **한 번 누르면 곧바로 확정**이다 — 그래서 그걸 적는다.
+ * 소환·스파이·조커는 패마다 후보가 하나라 누르는 것이 곧 확정이다 — 어떻게 확정되는지는
+ * «두 번 눌러 확정» 설정에 따라 갈리므로 표가 아니라 armPromptText가 ARM_CONFIRM_TAIL로 붙인다(U16).
  * 문체는 docs/52(«~하세요», 줄표 대신 마침표). 증강 규칙이 바뀌면 그 증강 파일 머리 주석과 대조한다.
  */
 const ARM_PROMPT: Record<string, string> = {
@@ -1210,9 +1223,9 @@ const ARM_PROMPT: Record<string, string> = {
   alchemy: "숫자를 ±1 바꿀 수패를 클릭하세요",
   split_tile: "두 장으로 쪼갤 수패를 클릭하세요",
   peek_forge: "간파한 대기패로 바꿀 손패를 클릭하세요",
-  spy_mark: "몰래 지정할 패 종류를 클릭하세요. 누르면 바로 정해집니다",
-  conjure_tsumo: "다음 쯔모로 부를 패 종류를 클릭하세요. 누르면 바로 정해집니다",
-  joker_call: "백으로 바꿀 손패를 클릭하세요. 백을 고르면 바로 발동합니다",
+  spy_mark: "몰래 지정할 패 종류를 클릭하세요",
+  conjure_tsumo: "다음 쯔모로 부를 패 종류를 클릭하세요",
+  joker_call: "백으로 바꿀 손패를 클릭하세요",
   frame_discard: "심을 손패를 클릭한 뒤, 놓을 상대의 바닥을 클릭하세요",
   ura_swap: "뒷도라 표시패 자리로 보낼 손패를 클릭하세요. 지금 표시패는 내 손으로 옵니다",
   red_touch: "적도라로 만들 숫자의 패를 누르세요. 게임 끝까지 그 숫자는 내 적도라입니다",
@@ -1251,11 +1264,26 @@ const OPP_ARM_TAG: Record<string, string> = {
   swap3: "교환 상대로 고르기",
 };
 
-function armPromptText(mode: ArmMode | null, type?: string | null): string {
+/**
+ * 모든 패가 후보 한 장뿐이라 **누르는 것이 곧 확정**인 손패 무장 — 안내 줄 끝에 확정 방법을 붙인다.
+ * 예전 문구(«누르면 바로 정해집니다»·«백을 고르면 바로 발동합니다»)는 두 번 누르기가 켜진
+ * 터치에선 틀린 말이 됐고, 조커는 백이 아닌 패도 곧바로 발동했다(2026-09-25, docs/59 U16).
+ */
+const ARM_CONFIRM_TAIL: Record<string, string> = {
+  spy_mark: "정해집니다",
+  conjure_tsumo: "정해집니다",
+  joker_call: "발동합니다",
+};
+
+function armPromptText(mode: ArmMode | null, type?: string | null, tapTwice = false): string {
   if (type !== null && type !== undefined && DRAG_DISCARD_ARM_TYPES.has(type)) {
     return "버릴 패를 바닥으로 끌어 놓거나 클릭하세요";
   }
   const own = type !== null && type !== undefined ? ARM_PROMPT[type] : undefined;
+  const tail = type !== null && type !== undefined ? ARM_CONFIRM_TAIL[type] : undefined;
+  if (own !== undefined && tail !== undefined) {
+    return `${own}. ${tapTwice ? "두 번 누르면" : "누르면 바로"} ${tail}`;
+  }
   if (own !== undefined) return own;
   switch (mode) {
     case "opp":
@@ -21200,8 +21228,10 @@ function OwnArea(props: {
   const doomedNow = useMemo<ReadonlySet<number>>(() => {
     // 분할 팝오버가 열려 있으면 그 대상 기준으로 고정한다 — 손을 팝오버로 옮기는 순간
     // hoverId가 풀려 확정 직전에 ✕가 사라졌다(2026-09-25, docs/59 U13).
+    // 두 번 누르기로 들어 올린 패(armedTileId)도 같은 이유로 고정한다 — 첫 탭 뒤 손가락을 떼면
+    // hoverId가 풀려, 확정할 둘째 탭 직전에 무엇이 사라지는지가 보이지 않았다(docs/59 U16).
     if (armedAug === "split_tile") {
-      const t = armSub?.tileId ?? hoverId;
+      const t = armSub?.tileId ?? armedTileId ?? hoverId;
       if (t !== null) return new Set(doomedTileIdsOf(view, "split_tile", t));
     }
     // 회수 — 무장하는 동안 내내 쯔모패에 ✕를 둔다. 무장 직후 hintNone이 hover 신호를
@@ -21210,7 +21240,7 @@ function OwnArea(props: {
     // (2026-09-25, docs/59 U36).
     if (armedAug === "recall") return new Set(doomedTileIdsOf(view, "recall"));
     return doomedHint ?? new Set<number>();
-  }, [armedAug, armSub, hoverId, view, doomedHint]);
+  }, [armedAug, armSub, armedTileId, hoverId, view, doomedHint]);
   /*
    * 짚은 패 가운데 **회수 때문에** 짚힌 것 — 회수의 쯔모패는 사라지지 않고 내 바닥으로
    * 나가므로 이름을 따로 읽어 준다. 무장 중만 보면 ✦ 메뉴의 회수 줄 hover(무장 전)에서
@@ -21255,7 +21285,13 @@ function OwnArea(props: {
     );
   }, [hand3Picking, handPicks, sel.armedOptions]);
   const toggleHandPick = (id: number): void => {
-    if (!hand3Pool.has(id)) return;
+    if (!hand3Pool.has(id)) {
+      // 대상 영역(손패) 안의 빗나감 — 무시하되 말은 한다. 소리 없이 안 눌리면 고장으로 읽힌다
+      // (2026-09-25, docs/59 U26 — 손패 무장 분기와 같은 규칙)
+      haptics.reject();
+      props.onToast?.(`이 패는 ${armName} 대상이 아닙니다`);
+      return;
+    }
     sfx.pick();
     sel.setHandPicks(
       handPicks.includes(id)
@@ -21394,6 +21430,31 @@ function OwnArea(props: {
       cur === null ? "" : ` · 표시패 ${formatTile({ kind: cur })} → 내 손`
     } · ${confirm}`;
   }, [armedAug, armPreviewId, armedTileId, props.tapTwiceToDiscard, view.tiles, view.augmentView]);
+  /*
+   * 되돌릴 수 없는 손패 무장(ARM_CONFIRM_TYPES)에서 후보가 한 장뿐인 패의 결과 풍선 — 터치는 첫 탭,
+   * 마우스는 올리기만 해도 뜬다. «두 번 눌러 버리기» 대기 툴팁(WaitTip)과 같은 자리라, 무장 중엔
+   * 그 툴팁을 끈다(armNoDiscard). 이면투시는 안내 줄(uraSwapPreview)이 맡고, 후보가 여럿인 패는
+   * 팝오버가 결과를 보여 주므로 뺀다(2026-09-25, docs/59 U16).
+   */
+  const armTip = useMemo(() => {
+    if (armedAug === null || armedAug === "ura_swap" || !ARM_CONFIRM_TYPES.has(armedAug)) return null;
+    if (armPreviewId === null || armSub !== null) return null;
+    const opts = armedByTile.get(armPreviewId);
+    if (opts === undefined || opts.length !== 1) return null;
+    const res = armResultPreview(view, opts[0]!);
+    if (res === null) return null;
+    const confirm = !props.tapTwiceToDiscard
+      ? "누르면 바로 발동"
+      : armedTileId === armPreviewId
+        ? "한 번 더 누르면 발동"
+        : "두 번 누르면 발동";
+    return { id: armPreviewId, ...res, confirm };
+  }, [armedAug, armPreviewId, armSub, armedByTile, armedTileId, props.tapTwiceToDiscard, view]);
+  // 클릭이 «버리기»가 아닌 무장 — «이 패를 버리면» 전제의 대기 툴팁은 엉뚱한 말이 된다(U23).
+  // 증강 리치는 곧 버림이라 리치 판단의 핵심 정보로 남기고, 누명도 심은 패가 손을 떠나는
+  // 표준 버림 대체라 남긴다(후리텐 셈만 hoverFuriten에서 바로잡는다).
+  const armNoDiscard =
+    armedAug !== null && !DRAG_DISCARD_ARM_TYPES.has(armedAug) && armedAug !== "frame_discard";
 
   // ⚠ 레거시(48차 이전 등가교환 = 상대 × 내 3장 조합). 지금 swap3 payload는 `{target}`뿐이라
   // byKey가 비고 ARM_MODE.swap3도 "opp"여서 이 경로는 실행되지 않는다.
@@ -22045,7 +22106,11 @@ function OwnArea(props: {
   const hoverFuriten = useMemo<boolean>(() => {
     if (hoverId === null || hoverWaits.length === 0) return false;
     if ((view.round.byPlayer[me.id]?.furitenReasons ?? []).length > 0) return true;
+    // 누명으로 심는 패는 **상대** 바닥에 놓이고 내 바닥에는 남지 않는다(content frame_up.ts 머리
+    // 주석 — 누명의 후리텐 회피). 그 패를 내 바닥에 더해 세면 «심으면 후리텐»이라고 거꾸로 말한다
+    // (2026-09-25, docs/59 U23). 대기 자체는 일반 버림과 같으므로 툴팁은 그대로 띄운다.
     const droppedKey = (() => {
+      if (armedAug === "frame_discard") return null;
       const k = view.tiles[hoverId]?.kind;
       return k === undefined ? null : kindKey(k);
     })();
@@ -22053,7 +22118,7 @@ function OwnArea(props: {
       const key = kindKey(k);
       return key === droppedKey || myDiscardKeys.has(key);
     });
-  }, [hoverId, hoverWaits, myDiscardKeys, view.tiles, view.round.byPlayer, me.id]);
+  }, [hoverId, hoverWaits, myDiscardKeys, view.tiles, view.round.byPlayer, me.id, armedAug]);
 
   // hover 중인 패 종류를 상위로 올려 공개패(버림·후로) 강조에 사용
   useEffect(() => {
@@ -22531,17 +22596,11 @@ function OwnArea(props: {
         ) : armedAug === "frame_discard" && sel.frameTile !== null ? (
           <div className="arm-hint arm-swap">
             <span className="arm-hint-text">
-              {armName}: <b>{formatTile(view.tiles[sel.frameTile])}</b>을(를) 놓을 <b>상대의 바닥</b>을 클릭하세요
+              {armName}: <b>{formatTile(view.tiles[sel.frameTile])}</b>을(를) 놓을 <b>상대의 바닥</b>을
+              클릭하세요 (다른 손패를 누르면 바꿉니다)
             </span>
-            <button
-              className="arm-hint-cancel"
-              onClick={() => {
-                sel.setFrameTile(null);
-                setArmedTileId(null);
-              }}
-            >
-              패 다시 고르기
-            </button>
+            {/* [패 다시 고르기]는 뺐다 — 다른 후보 손패를 누르면 심을 패가 이미 바뀌어, 같은 일을
+                하는 버튼이 폰에서 안내 줄만 두 줄로 접었다(2026-09-25, docs/59 U22) */}
             <button className="arm-hint-cancel" onClick={() => sel.arm(null)}>
               취소
             </button>
@@ -22580,7 +22639,7 @@ function OwnArea(props: {
         ) : armedAug !== null ? (
           <div className="arm-hint">
             <span className="arm-hint-text">
-              {armName}: {uraSwapPreview ?? armPromptText(sel.armMode, armedAug)}
+              {armName}: {uraSwapPreview ?? armPromptText(sel.armMode, armedAug, props.tapTwiceToDiscard)}
             </span>
             <button className="arm-hint-cancel" onClick={() => sel.arm(null)}>
               취소
@@ -22794,8 +22853,12 @@ function OwnArea(props: {
             const active = props.riichiMode ? riichi : (discard ?? freeDiscard);
             // 등가교환: 상대를 정한 뒤엔 모든 손패가 선택 대상, 고른 3장은 강조
             const swapPicking = armedAug === "swap3" && swapTarget !== null;
+            // 누명의 심을 패도 «고른 패» 강조로 — 들어 올림(armedTileId)은 «한 번 더 누르면 나간다»는
+            // 신호라 다음 행동이 상대 바닥 클릭인 누명에는 맞지 않는다(2026-09-25, docs/59 U21)
             const swapChosen =
-              (swapPicking && swapGive.includes(id)) || (hand3Picking && handPicks.includes(id));
+              (swapPicking && swapGive.includes(id)) ||
+              (hand3Picking && handPicks.includes(id)) ||
+              (armedAug === "frame_discard" && sel.frameTile === id);
             const armable =
               armedAug === "swap3"
                 ? swapPicking
@@ -22846,7 +22909,7 @@ function OwnArea(props: {
             const safe =
               !danger && safeSet.size > 0 && tileKind !== undefined && safeSet.has(kindKey(tileKind));
             // 텐파이면 이 패를 버렸을 때의 대기패를 hover 시 표시 (리치 모드 아니어도)
-            const showWaits = hoverId === id && hoverWaits.length > 0;
+            const showWaits = hoverId === id && hoverWaits.length > 0 && !armNoDiscard;
             // 쏘이는 패 — 관전에서만, 그리고 이 좌석이 지금 두는 사람일 때만 선다.
             const hot = hotOf(id);
             return (
@@ -22874,13 +22937,14 @@ function OwnArea(props: {
                   // 사실 기반 표시는 이름에도 실어야 한다 — 링과 바람 글자는 둘 다
                   // 눈으로만 읽힌다(화면을 못 보면 중계 해설이 통째로 사라진다).
                   hot === null ? null : hotWaitTitle(hot),
-                  armedTileId === id
-                    ? sel.frameTile === id
-                      ? "심을 패로 선택됨. 놓을 상대의 바닥을 클릭"
-                      : armedAug !== null && !DRAG_DISCARD_ARM_TYPES.has(armedAug)
-                        ? "선택됨. 한 번 더 누르면 확정"
+                  armedAug === "frame_discard" && sel.frameTile === id
+                    ? "심을 패로 선택됨. 놓을 상대의 바닥을 클릭"
+                    : armedTileId === id
+                      ? armedAug !== null && !DRAG_DISCARD_ARM_TYPES.has(armedAug)
+                        ? "선택됨. 한 번 더 누르면 발동"
                         : "선택됨. 한 번 더 누르면 버림"
-                    : null,
+                      : null,
+                  armTip?.id === id ? `${armTip.label} ${armTip.tiles.map((t) => formatTile(t)).join(", ")}` : null,
                   armSub?.tileId === id ? "바꿀 모양을 고르는 중. 위에 뜬 후보에서 고르기" : null,
                   redPreviewIds.has(id) ? "붉은 손길 미리보기: 적도라가 될 패" : null,
                   coachLocked ? "튜토리얼 진행 중이라 지금은 누를 수 없음" : null,
@@ -22985,8 +23049,9 @@ function OwnArea(props: {
                    * (2026-09-14 사용자 요청). 다른 손패를 누르면 심을 패를 바꾼다.
                    */
                   if (armedAug === "frame_discard" && (armedByTile.get(id)?.length ?? 0) > 0) {
+                    // 들어 올리지는 않는다(setArmedTileId 없음) — «한 번 더» 뱃지가 붙고, 취소 뒤에도
+                    // 들린 채 남아 한 탭에 버려졌다. 고른 표시는 swapChosen이 맡는다(docs/59 U21)
                     sel.setFrameTile(id);
-                    setArmedTileId(id);
                     setArmSub(null);
                     sfx.pick();
                     return;
@@ -23011,9 +23076,11 @@ function OwnArea(props: {
                          * 오픈 리치·올인 리치 — 에는 하나도 안 걸렸다. 폰에서 오탭
                          * 한 번이 곧 확정이었다.
                          *
-                         * `DRAG_DISCARD_ARM_TYPES`(= "무장 → 버릴 패를 고른다" 형)에만
-                         * 건다. 나머지 선택형 증강은 «그 패를 버리는» 수가 아니라
-                         * 대상 지목이라 취소가 되고, 게이트를 걸면 손만 늘어난다.
+                         * `DRAG_DISCARD_ARM_TYPES`(= "무장 → 버릴 패를 고른다" 형)와
+                         * `ARM_CONFIRM_TYPES`(되돌릴 수 없는 손패 무장)에 건다. 예전엔 후자를
+                         * «대상 지목이라 취소가 된다»며 뺐지만, 취소는 패를 누르기 **전**까지고
+                         * 누르는 순간 서버로 나간다(docs/59 U16). 손이 느는 건 설정 연동
+                         * (터치 기본)으로만 감수한다.
                          */
                         if (
                           props.tapTwiceToDiscard &&
@@ -23041,16 +23108,29 @@ function OwnArea(props: {
                         const box = handRef.current?.getBoundingClientRect() ?? r;
                         // detail 0 = 키보드(Enter·Space)로 누른 click — 초점을 팝오버로 옮긴다
                         armSubFocusBack.current = e.detail === 0 ? e.currentTarget : null;
+                        // 다른 패를 첫 탭으로 들어 둔 채 팝오버를 열면 그 패의 «한 번 더: 발동»이
+                        // 남아 두 곳이 동시에 확정을 기다렸다 — 팝오버가 곧 확인이므로 내린다(U16)
+                        setArmedTileId(null);
                         setArmSub({
                           tileId: id,
                           options: opts,
                           anchor: { x: toLayoutPx(r.left + r.width / 2), top: toLayoutPx(box.top) },
                         });
                       }
+                    } else if (sel.armMode === "hand") {
+                      /*
+                       * 빗나감 규칙 하나(docs/59 §2 원칙 7, U26) — 손패가 대상인 무장에서 대상이 아닌
+                       * 패는 **대상 영역 안의 빗나감**이다. 26px 패 사이를 잘못 짚었다고 방금 켠 증강이
+                       * 소리 없이 꺼지면 안 되므로 무시하고, 왜 안 눌리는지는 말한다. 해제는 [취소]로.
+                       */
+                      haptics.reject();
+                      props.onToast?.(`이 패는 ${armName} 대상이 아닙니다`);
                     } else {
-                      // 대상이 아닌 패를 누르면(또는 상대·바닥 클릭형이면) 선택 모드 취소
+                      // 상대·바닥이 대상인 무장에서 손패를 누른 건 대개 «그만두고 패를 치겠다»다 —
+                      // 해제는 그대로 두되 조용히 풀지 않는다(docs/59 U26)
                       sel.arm(null);
                       setArmSub(null);
+                      props.onToast?.(`${armName} 선택을 취소했습니다`);
                     }
                     return;
                   }
@@ -23139,7 +23219,23 @@ function OwnArea(props: {
                  */}
                 {armedTileId === id ? (
                   <span className="hand-armed-badge" aria-hidden="true">
-                    한 번 더
+                    {/* 무장 중 둘째 탭은 버리기가 아니라 발동이다 — 결과는 위 풍선(armTip)이 그린다(U16) */}
+                    {armedAug !== null && !DRAG_DISCARD_ARM_TYPES.has(armedAug) ? "한 번 더: 발동" : "한 번 더"}
+                  </span>
+                ) : armedAug === "frame_discard" && sel.frameTile === id ? (
+                  <span className="hand-armed-badge" aria-hidden="true">
+                    심을 패
+                  </span>
+                ) : null}
+                {armTip?.id === id ? (
+                  <span className="arm-result-tip" aria-hidden="true">
+                    <span className="arm-result-tip-label">{armTip.label}</span>
+                    <span className="arm-result-tip-tiles">
+                      {armTip.tiles.map((t, i) => (
+                        <TileImg key={i} tile={t} size="mini" />
+                      ))}
+                    </span>
+                    <span className="arm-result-tip-confirm">{armTip.confirm}</span>
                   </span>
                 ) : null}
                 {showWaits ? (
@@ -27020,6 +27116,32 @@ function splitPreview(
     { kind: { suit: src.suit, rank: p.a }, attrs: { conjured: true } },
     { kind: { suit: src.suit, rank: b }, attrs: { conjured: true } },
   ];
+}
+
+/**
+ * 손패 무장 후보 **하나**를 냈을 때 무엇이 되는지 — 들어 올린(첫 탭)·마우스가 올라간 패 위에
+ * 작은 풍선(`.arm-result-tip`)으로 그린다. 후보가 한 장뿐인 패는 팝오버 없이 곧바로 나가므로
+ * 결과를 볼 자리가 여기뿐이다(2026-09-25, docs/59 U16). 그릴 결과가 없으면 null.
+ */
+function armResultPreview(
+  view: PlayerView,
+  option: ActionOption,
+): { label: string; tiles: { kind: TileKind; attrs?: { conjured: true } }[] } | null {
+  const pieces = splitPreview(view, option);
+  if (pieces !== null) return { label: "나뉜 뒤", tiles: pieces };
+  const id = (option.payload as { tileId?: unknown } | undefined)?.tileId;
+  const src = typeof id === "number" ? view.tiles[id]?.kind : undefined;
+  switch (option.type) {
+    case "joker_call":
+      // 조커는 고른 패를 백으로 바꾸고 그 백이 만능패가 된다(content joker.ts — 이미 백이면 해석만 켠다)
+      return { label: "백(만능패)으로", tiles: [{ kind: { suit: "dragon", rank: 1 }, attrs: { conjured: true } }] };
+    case "conjure_tsumo":
+      return src === undefined ? null : { label: "다음 쯔모", tiles: [{ kind: src }] };
+    case "spy_mark":
+      return src === undefined ? null : { label: "몰래 지정", tiles: [{ kind: src }] };
+  }
+  const after = morphedTile(view, option);
+  return after === null ? null : { label: "바뀐 뒤", tiles: [after] };
 }
 
 /**

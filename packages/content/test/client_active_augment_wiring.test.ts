@@ -138,6 +138,14 @@ describe("클라이언트 액티브 증강 배선", () => {
   it("되돌릴 수 없는 손패 무장은 «두 번 눌러 확정» 게이트를 탄다", () => {
     // docs/59 U01 — 국당 1회인 이면투시 바꿔치기는 증강 리치와 같은 게이트
     expect(ids(setLiterals("ARM_CONFIRM_TYPES"))).toContain("ura_swap");
+    // docs/59 U16 (B06) — 후보 한 장이면 누르는 순간 확정되는 손패 무장 전부. 누명은 1단계가
+    // 고르기일 뿐이라 빠지고, 증강 리치는 DRAG_DISCARD 쪽으로 이미 걸린다.
+    const confirm = ids(setLiterals("ARM_CONFIRM_TYPES"));
+    expect(confirm).toEqual(
+      ["alchemy", "conjure_tsumo", "joker_call", "peek_forge", "split_tile", "spy_mark", "tile_dye", "ura_swap"],
+    );
+    for (const t of confirm) expect(armMode.get(t), t).toBe("hand");
+    expect(confirm).not.toContain("frame_discard");
     expect(SRC).toContain(
       "(DRAG_DISCARD_ARM_TYPES.has(armedAug) || ARM_CONFIRM_TYPES.has(armedAug)) &&",
     );

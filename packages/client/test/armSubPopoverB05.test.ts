@@ -157,8 +157,9 @@ describe("U13 분열 — 사라질 재료가 확정 직전까지 보인다", () 
   });
 
   it("팝오버가 열린 동안 손패의 ✕는 그 대상 기준으로 고정된다", () => {
-    expect(APP_CODE).toContain("const t = armSub?.tileId ?? hoverId;");
-    expect(APP_CODE).toContain("}, [armedAug, armSub, hoverId, view, doomedHint]);");
+    // B06(U16): 두 번 누르기로 들어 올린 패(armedTileId)도 hover보다 앞서 고정한다
+    expect(APP_CODE).toContain("const t = armSub?.tileId ?? armedTileId ?? hoverId;");
+    expect(APP_CODE).toContain("}, [armedAug, armSub, armedTileId, hoverId, view, doomedHint]);");
     // armSub가 doomedNow보다 먼저 선언돼야 한다
     expect(APP_CODE.indexOf("const [armSub, setArmSub] = useState<")).toBeLessThan(
       APP_CODE.indexOf("const doomedNow = useMemo<"),

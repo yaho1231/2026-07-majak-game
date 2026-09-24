@@ -18415,6 +18415,62 @@ body:has(.rinshan-pick-overlay):not(.peeking) .game-root .quick-toggles {
   pointer-events: none;
 }
 
+/* 되돌릴 수 없는 손패 무장의 결과 풍선 — 후보가 한 장뿐인 패는 팝오버 없이 곧바로 나가므로
+   들어 올린(첫 탭)·마우스가 올라간 패 위에 «무엇이 되는지»를 그린다(App.tsx `armTip`,
+   2026-09-25 docs/59 U16). 자리는 대기 툴팁(.wait-tip)과 같다 — 무장 중엔 그 툴팁이 꺼진다.
+   pointer-events: none이라 옆 손패를 가리거나 클릭을 막지 않는다. */
+.arm-result-tip {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 35;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 9px;
+  border-radius: 10px;
+  background: rgba(11, 19, 16, 0.97);
+  border: 1px solid rgba(240, 200, 106, 0.7);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.arm-result-tip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: rgba(11, 19, 16, 0.97);
+}
+
+.arm-result-tip-label,
+.arm-result-tip-confirm {
+  font-size: 11px;
+  font-weight: 800;
+  color: #f0c86a;
+}
+
+.arm-result-tip-confirm {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.arm-result-tip-tiles {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.arm-result-tip-tiles .tile-mini {
+  width: 27px;
+  height: 40px;
+}
+
 /* 손패 탭 목표 넓히기.
    가로로는 넓힐 수 없다 — 패 사이 간격이 2px뿐이라 옆 패의 목표와 겹치고, 겹치면
    "엉뚱한 패가 나간다"가 오히려 늘어난다. 대신 **세로로** 넓힌다: 위아래는 비어

@@ -155,7 +155,10 @@ describe("이면투시 바꿔치기 — 목적지 칸과 결과 미리보기 (U0
 
   it("들어 올린(또는 올려 둔) 손패의 결과 — 새 뒷도라와 손으로 올 표시패 — 를 안내 줄에 적는다", () => {
     expect(APP_CODE).toContain("→ 뒷도라 ${formatTile({ kind: doraKindFor(tile.kind) })}");
-    expect(APP_CODE).toContain("{uraSwapPreview ?? armPromptText(sel.armMode, armedAug)}");
+    // B06(U16): 확정 방법 꼬리를 붙이려고 두 번 누르기 설정을 함께 넘긴다
+    expect(APP_CODE).toContain(
+      "{uraSwapPreview ?? armPromptText(sel.armMode, armedAug, props.tapTwiceToDiscard)}",
+    );
   });
 
   it("미리보기가 안내를 덮으므로 확정 방법을 함께 말한다 — 두 번 누르기 설정에 따라", () => {

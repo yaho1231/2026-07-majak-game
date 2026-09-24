@@ -107,9 +107,14 @@ describe("U19 무장 안내가 누르면 무슨 일이 생기는지 말한다", 
     expect(prompts.get("peek_forge")).not.toBe(prompts.get("peek_waits"));
   });
 
-  it("한 번 누르면 곧바로 확정되는 소환·스파이는 그걸 적는다", () => {
-    expect(prompts.get("spy_mark")).toContain("누르면 바로 정해집니다");
-    expect(prompts.get("conjure_tsumo")).toContain("누르면 바로 정해집니다");
+  it("누르는 것이 곧 확정인 소환·스파이는 확정 방법을 적는다 — 두 번 누르기 설정에 따라 (B06 U16)", () => {
+    // 2026-09-25 B06: 두 번 누르기(터치 기본)가 켜지면 «누르면 바로»는 틀린 말이라, 표에서 빼고
+    // armPromptText가 ARM_CONFIRM_TAIL과 설정으로 붙인다.
+    const tails = record("ARM_CONFIRM_TAIL");
+    expect(tails.get("spy_mark")).toBe("정해집니다");
+    expect(tails.get("conjure_tsumo")).toBe("정해집니다");
+    const fn = fnBody("armPromptText");
+    expect(fn).toContain('${tapTwice ? "두 번 누르면" : "누르면 바로"} ${tail}');
   });
 
   it("docs/52 문체 — «~하세요», 줄표 대신 마침표", () => {
