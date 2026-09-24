@@ -7087,9 +7087,13 @@ export function App(): JSX.Element {
       ) : null}
       {staleBuild ? (
         <div className="stale-build-bar" role="status">
-          새 버전이 배포됐습니다 — 새로고침해야 새 증강 이름과 화면이 제대로 보입니다
-          <button type="button" onClick={reloadForBuild}>
-            새로고침
+          새 버전이 배포됐습니다 — 이 판이 끝나면 자동으로 새로고침합니다
+          <button
+            type="button"
+            onClick={reloadForBuild}
+            title="지금 새로고침하면 홈의 «진행하던 방으로 재접속»으로 이 판에 돌아옵니다"
+          >
+            지금 새로고침
           </button>
         </div>
       ) : null}
