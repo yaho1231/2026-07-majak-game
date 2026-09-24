@@ -21752,6 +21752,180 @@ function PickTimer(props: { deadline: number | null }): JSX.Element | null {
  */
 const ARM_SUB_POP_GAP = 22;
 
+/** 예지가 공개한 패산 앞 장들의 kind — 뽑히는 대로 앞에서 한 장씩 줄어든다(보유자 채널 `foresight_peek`) */
+function foresightPeekOf(av: Record<string, unknown>): TileKind[] {
+  const raw = av["foresight_peek"];
+  return Array.isArray(raw)
+    ? (raw as string[]).map(parseKindKey).filter((k): k is TileKind => k !== null)
+    : [];
+}
+
+/**
+ * 손패 위 «패산 정보» 한 줄 — 예지·삼세 예지·밑장빼기가 보여 주는 «곧 나올 패»를 한 줄에 모은다.
+ *
+ * 예전엔 셋이 제각각이었다(2026-09-25, docs/59 U50): 예지는 ✦ 버튼 옆 알약(뒤→앞), 삼세 예지는
+ * 손패 위 보라 상자(왼쪽이 다음, 1·2·3), 밑장빼기는 그 아래 초록 상자(오른쪽 끝이 다음, «밑»).
+ * 함께 들면 눈이 세 군데를 오갔고, 밑장을 예약하면 **같은 패**가 삼세 예지의 왼쪽 끝과 밑장빼기의
+ * 오른쪽 끝에 동시에 떴다. 규칙을 하나로 맞춘다.
+ *
+ * - **오른쪽 끝 = 가장 먼저 나올 패**, 거기에 공통 «다음» 뱃지. 예지(2026-08-12 사용자 지적 —
+ *   뽑히며 앞에서 사라지니 뒤집어 그려야 내 칸이 제자리에 선다)와 밑장빼기는 원래 그랬고, 삼세 예지만 뒤집었다.
+ *   번호에 익은 사람이 헷갈리지 않게 «다음» 뱃지로 방향을 적는다.
+ * - 미니 패는 26×37 하나, 섹션마다 **테두리 색만** 다르다.
+ * - 예지의 자리 라벨·★와 «상시 표시, 조작은 전용 탭»(2026-08-12)은 그대로 — [순서 바꾸기]만 이 줄에 둔다.
+ * - 밑장빼기는 예약할 수 있을 때 태그와 밑장 칸이 버튼이 된다(docs/59 U35). 줄 전체가 아니라
+ *   거기만 — 손패 바로 위라 폰에서 잘못 누르지 않게 히트 영역을 좁힌다.
+ */
+function WallPeekRow(props: {
+  view: PlayerView;
+  foresight: {
+    kinds: readonly TileKind[];
+    seatLabels: readonly string[];
+    /** 재배열 탭을 여는 [순서 바꾸기] — 못 열면 null */
+    onReorder: (() => void) | null;
+  };
+  /** 삼세 예지 — 내 다음 쯔모(앞이 먼저) */
+  triple: readonly TileKind[];
+  bottom: {
+    /** 패산 맨 밑 장들(마지막이 맨 밑장 = 다음에 빼 올 패) */
+    ids: readonly number[];
+    armed: boolean;
+    /** 밑장 칸을 눌러 예약 — 못 누르면(관전·강제 선택·예약됨·후보 없음) null */
+    onReserve: (() => void) | null;
+  };
+}): JSX.Element | null {
+  const { view, foresight, triple, bottom } = props;
+  if (foresight.kinds.length === 0 && triple.length === 0 && bottom.ids.length === 0) return null;
+  const nextBadge = <span className="wall-peek-badge">다음</span>;
+  return (
+    <div className="wall-peek-row" role="group" aria-label="패산 정보">
+      {foresight.kinds.length > 0 ? (
+        <div
+          className="wall-peek-sec wall-peek-foresight"
+          title="예지: 공개된 패산 앞 장입니다. 오른쪽 끝이 가장 먼저 뽑히고, 아래 이름이 그 패를 뽑을 사람입니다."
+        >
+          <span className="wall-peek-tag">
+            <span className="wall-peek-icon" aria-hidden="true">🔮</span>
+            <span className="wall-peek-name">예지</span>
+          </span>
+          <span className="wall-peek-tiles">
+            {foresight.kinds
+              .map((kind, pos) => ({ kind, pos }))
+              .reverse()
+              .map(({ kind, pos }) => {
+                const seatLabel = foresight.seatLabels[pos] ?? "";
+                const isMine = seatLabel === "나";
+                return (
+                  <span
+                    key={pos}
+                    className={`wall-peek-cell${pos === 0 ? " wall-peek-next" : ""}${
+                      isMine ? " foresight-mine" : ""
+                    }`}
+                    title={`${pos + 1}번째 쯔모: ${seatLabel}`}
+                  >
+                    <TileImg tile={{ kind }} size="mini" />
+                    {pos === 0 ? nextBadge : null}
+                    <span className="wall-peek-label">
+                      {seatLabel}
+                      {isMine ? " ★" : ""}
+                    </span>
+                  </span>
+                );
+              })}
+          </span>
+          {foresight.onReorder !== null ? (
+            <button type="button" className="wall-peek-reorder" onClick={foresight.onReorder}>
+              순서 바꾸기 (국에 1회)
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {/* 삼세 예지 — 서버가 쯔모·버림·후로마다 다시 계산해 올린다(후로로 차례가 밀려도
+          맞는다). 국 끝물에 내 몫의 쯔모가 모자라면 두 칸·한 칸으로 줄어든다. */}
+      {triple.length > 0 ? (
+        <div
+          className="wall-peek-sec wall-peek-triple"
+          title="삼세 예지: 내 다음 쯔모 패를 최대 세 장까지 미리 보여 줍니다. 오른쪽 끝이 바로 다음 쯔모입니다. 상황에 따라 바뀝니다."
+        >
+          <span className="wall-peek-tag">
+            <span className="wall-peek-icon" aria-hidden="true">👁</span>
+            <span className="wall-peek-name">삼세 예지</span>
+          </span>
+          <span className="wall-peek-tiles">
+            {triple
+              .map((kind, i) => ({ kind, i }))
+              .reverse()
+              .map(({ kind, i }) => (
+                <span key={i} className={`wall-peek-cell${i === 0 ? " wall-peek-next" : ""}`}>
+                  <TileImg tile={{ kind }} size="mini" />
+                  {i === 0 ? nextBadge : <span className="wall-peek-badge wall-peek-ord">{i + 1}</span>}
+                </span>
+              ))}
+          </span>
+        </div>
+      ) : null}
+      {/* 밑장빼기 — 열람 증강이 visibility.wall을 peek(back)으로 열어 주는 실물 tileId다.
+          예약할 수 있으면 태그와 밑장 칸이 버튼이다(docs/59 U35). «고를 자리가 없는 단순 예약이라
+          모달을 쓰지 않는다»(docs/10 §2a-1)는 그대로 — 모달이 아니라 보이는 밑장을 누른다. */}
+      {bottom.ids.length > 0 ? (
+        <div
+          className={`wall-peek-sec wall-peek-bottom${bottom.armed ? " bottom-deal-armed" : ""}`}
+          title="밑장빼기: 패산 맨 밑 3장입니다. 예약하면 오른쪽 끝 패를 다음 쯔모로 가져옵니다."
+        >
+          {bottom.onReserve !== null ? (
+            <button
+              type="button"
+              className="wall-peek-tag wall-peek-arm"
+              title="눌러서 다음 쯔모를 패산 맨 밑장(오른쪽 끝)으로 예약합니다"
+              onClick={bottom.onReserve}
+            >
+              <span className="wall-peek-icon" aria-hidden="true">🃏</span>
+              <span className="wall-peek-name">밑장빼기</span>
+              <span className="wall-peek-cta"> — 눌러서 다음 쯔모 예약</span>
+              <span className="wall-peek-cta-short" aria-hidden="true">예약</span>
+            </button>
+          ) : (
+            <span className="wall-peek-tag">
+              <span className="wall-peek-icon" aria-hidden="true">🃏</span>
+              <span className="wall-peek-name">밑장빼기 (밑에서)</span>
+              {bottom.armed ? <span className="wall-peek-armed-note"> (예약됨)</span> : null}
+            </span>
+          )}
+          <span className="wall-peek-tiles">
+            {bottom.ids.map((id, i) => {
+              const isNext = i === bottom.ids.length - 1;
+              const tile = view.tiles[id];
+              // 밑장 칸도 같은 예약 버튼이다 — 키보드 초점은 태그 버튼 하나로 충분해 칸은 탭 순서에서 뺀다
+              return isNext && bottom.onReserve !== null ? (
+                <button
+                  key={id}
+                  type="button"
+                  className="wall-peek-cell wall-peek-next wall-peek-arm-cell"
+                  tabIndex={-1}
+                  aria-label="이 밑장을 다음 쯔모로 예약"
+                  title="눌러서 다음 쯔모를 이 밑장으로 예약합니다"
+                  onClick={bottom.onReserve}
+                >
+                  <TileImg tile={tile} size="mini" />
+                  {nextBadge}
+                </button>
+              ) : (
+                <span
+                  key={id}
+                  className={`wall-peek-cell${isNext ? " wall-peek-next" : " wall-peek-dim"}`}
+                >
+                  <TileImg tile={tile} size="mini" />
+                  {isNext ? nextBadge : null}
+                </span>
+              );
+            })}
+          </span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function OwnArea(props: {
   view: PlayerView;
   me: PlayerInfo;
@@ -22716,6 +22890,56 @@ function OwnArea(props: {
   const swap3Pending = !isSpectator && swap3Pick.stage !== null;
   /** 강제 선택 중 — 액션 바(쯔모 화료만 남긴다)와 ✦ 메뉴를 잠근다(FORCED_PICK_TYPES) */
   const forcedPick = !isSpectator && isForcedPickPrompt(myPrompt);
+  /*
+   * ── 예지 — 손패 위 «패산 정보» 줄(WallPeekRow)의 첫 섹션 ──
+   *
+   * 예전엔 ActiveAugmentControl이 ✦ 버튼 옆에 따로 그렸다. 삼세 예지·밑장빼기는 손패 위에
+   * 각자 한 줄씩 떠서, 셋을 함께 들면 «곧 나올 패»를 세 군데서 읽어야 했다(2026-09-25, docs/59 U50).
+   * 이제 여기서 focusAv로 읽는다 — 관전자도 초점 좌석이 본 예지를 본다(예전엔 !isSpectator로
+   * 컨트롤째 빠져 관전 화면에만 예지가 없었다).
+   */
+  const foresightPeek = useMemo<TileKind[]>(() => foresightPeekOf(focusAv), [focusAv]);
+  /*
+   * ActiveAugmentControl의 같은 이름 값과 **같은 식**이다(재배열 탭은 거기 남는다) — 강제 선택 중엔
+   * 열지 않는다(docs/59 U03·U07). [순서 바꾸기] 버튼과 탭 자동 열기는 이 값을 본다.
+   */
+  const foresightReorderable =
+    (myPrompt?.options ?? []).some((o) => o.type === "foresight_order") &&
+    foresightPeek.length === 4 &&
+    !forcedPick;
+  /** 공개된 패가 각각 누구의 쯔모가 되는지 — 관전이면 초점 좌석(me) 기준이다 */
+  const foresightSeatLabels = useMemo<string[]>(() => {
+    const seatCount = view.players.length;
+    const dir = view.round.direction;
+    return projectedDrawSeats(view.round.turnSeat, dir, seatCount, foresightPeek.length).map((s) =>
+      relativeSeatLabel(me.seat, s, dir, seatCount),
+    );
+  }, [view.players.length, view.round.turnSeat, view.round.direction, me.seat, foresightPeek.length]);
+  /**
+   * 예지 재배열 탭이 열려 있는가 — 탭(모달)은 ActiveAugmentControl에 남고 여닫이만 여기서 쥔다.
+   * [순서 바꾸기] 버튼이 패산 정보 줄로 옮겨 오면서 그 버튼과 탭이 한 상태를 봐야 했다(docs/59 U50).
+   */
+  const [foresightTab, setForesightTab] = useState(false);
+  // 재배열이 열리면 전용 탭을 곧바로 띄우고, 닫히면(제출·턴 종료·소진) 탭도 접는다.
+  // 발동=공개는 취소할 수 없으므로, 열자마자 크게 보여주는 편이 흐름에 맞는다.
+  useEffect(() => {
+    setForesightTab(foresightReorderable);
+  }, [foresightReorderable]);
+  /*
+   * 밑장빼기 — 스트립의 밑장 칸을 눌러 바로 예약한다(2026-09-25, docs/59 U35). 발동 대상인
+   * «다음에 빼 올 밑장»이 손패 바로 위에 늘 보이는데 ✦ → 메뉴를 거쳐야 했다. payload 없는
+   * 후보 하나라 ✦ 경로(activate)와 똑같이 즉시 제출한다 — ✦ 메뉴 경로는 보조로 남는다.
+   * 관전자·강제 선택 중(✦ 메뉴도 잠긴다)·이미 예약한 뒤에는 누를 수 없다.
+   */
+  const bottomDealOpt = (myPrompt?.options ?? []).find((o) => o.type === "bottom_deal");
+  const reserveBottomDeal =
+    !isSpectator && !forcedPick && !bottomDealArmed && bottomDealOpt !== undefined
+      ? (): void => {
+          // ✦ 경로와 같다 — 리치 중에도 쓰는 증강이라 리치 모드를 풀어 다음 손패 클릭이 선언으로 새지 않게
+          sel.exitRiichiMode();
+          sel.submit(bottomDealOpt);
+        }
+      : null;
   /** 고른 3장에 딱 맞는 서버 후보 — 3장이 차고 조합이 후보에 있을 때만 [확정]이 켜진다(U10) */
   const swap3Option =
     swap3Sel.length === 3 ? swap3Pick.byKey.get([...swap3Sel].sort((a, b) => a - b).join(",")) : undefined;
@@ -23333,6 +23557,8 @@ function OwnArea(props: {
                 catalog={props.catalog}
                 promptDeadline={props.promptDeadline}
                 forcedPick={forcedPick}
+                foresightTabOpen={foresightTab}
+                onForesightTab={setForesightTab}
                 {...(props.onToast !== undefined ? { onToast: props.onToast } : {})}
                 onUsableHint={(ids) => setUsableHint(ids === null ? null : new Set(ids))}
                 onDoomedHint={(ids) => setDoomedHint(ids === null ? null : new Set(ids))}
@@ -23645,19 +23871,19 @@ function OwnArea(props: {
             />
           </>
         ) : null}
-        {/* 삼세 예지 — 서버가 쯔모·버림·후로마다 다시 계산해 올린다(후로로 차례가 밀려도
-            맞는다). 국 끝물에 내 몫의 쯔모가 모자라면 두 칸·한 칸으로 줄어든다. */}
-        {nextTsumoKinds.length > 0 ? (
-          <div className="next-tsumo-strip" title="삼세 예지: 내 다음 쯔모 패를 최대 세 장까지 미리 보여 줍니다. 상황에 따라 바뀝니다.">
-            <span className="next-tsumo-tag">삼세 예지: 다음 쯔모</span>
-            {nextTsumoKinds.map((kind, i) => (
-              <span key={i} className="next-tsumo-cell">
-                <TileImg tile={{ kind }} size="mini" />
-                <span className="next-tsumo-ord">{i + 1}</span>
-              </span>
-            ))}
-          </div>
-        ) : null}
+        {/* 패산 정보 — 예지·삼세 예지·밑장빼기를 손패 위 한 줄에 모은다(2026-09-25, docs/59 U50).
+            셋 다 «패산에서 곧 나올 패»인데 자리·모양·순서 표기가 제각각이었다. */}
+        <WallPeekRow
+          view={view}
+          foresight={{
+            kinds: foresightPeek,
+            seatLabels: foresightSeatLabels,
+            onReorder:
+              !isSpectator && foresightReorderable && !foresightTab ? () => setForesightTab(true) : null,
+          }}
+          triple={nextTsumoKinds}
+          bottom={{ ids: bottomWallIds, armed: bottomDealArmed, onReserve: reserveBottomDeal }}
+        />
         {isSpectator && props.spectateChoice !== undefined && props.spectateChoice.mixed !== true ? (
           <SpectateChoicePanel
             choice={props.spectateChoice}
@@ -23665,26 +23891,6 @@ function OwnArea(props: {
             catalog={props.catalog}
             focus={props.spectateChoice.seat === me.id}
           />
-        ) : null}
-        {bottomWallIds.length > 0 ? (
-          <div
-            className={`bottom-deal-strip${bottomDealArmed ? " bottom-deal-armed" : ""}`}
-            title="밑장빼기: 패산 맨 밑 3장입니다. 오른쪽 끝 패를 다음에 가져옵니다."
-          >
-            <span className="bottom-deal-tag">
-              밑장빼기: 패산 밑{bottomDealArmed ? " (예약됨)" : ""}
-            </span>
-            {bottomWallIds.map((id, i) => (
-              <span
-                key={id}
-                className={`bottom-deal-cell${
-                  i === bottomWallIds.length - 1 ? " bottom-deal-next" : ""
-                }`}
-              >
-                <TileImg tile={view.tiles[id]} size="mini" />
-              </span>
-            ))}
-          </div>
         ) : null}
         {/* 등가교환 — 공개받은 상대 손패 참고 줄(docs/59 U08). 누르는 곳이 아니라 비교용이라
             흐리게 두고 클릭을 받지 않는다. 가져올 3장은 take 모달에서 고른다(U08-take 보류).
@@ -26538,6 +26744,12 @@ function ActiveAugmentControl(props: {
    * 전면 모달이 이 버튼을 덮어 막았다(2026-09-25, docs/59 U03·U07).
    */
   forcedPick?: boolean;
+  /**
+   * 예지 재배열 탭이 열려 있는가 — 상태는 OwnArea가 쥔다. [순서 바꾸기] 버튼이 손패 위 «패산 정보»
+   * 줄(WallPeekRow)로 옮겨 가 그 버튼과 이 탭이 한 상태를 봐야 한다(2026-09-25, docs/59 U50).
+   */
+  foresightTabOpen?: boolean;
+  onForesightTab?: (open: boolean) => void;
   /** 못 쓰는 이유처럼 터치에서 `title=` 로는 못 읽는 안내를 띄운다. */
   onToast?: (text: string) => void;
   /**
@@ -26574,14 +26786,15 @@ function ActiveAugmentControl(props: {
   const [foresightArr, setForesightArr] = useState<number[] | null>(null);
   const [foresightDragFrom, setForesightDragFrom] = useState<number | null>(null);
   /**
-   * 예지 재배열 탭이 열려 있는가.
+   * 예지 재배열 탭이 열려 있는가 — 여닫이 상태는 OwnArea가 쥔다(props.foresightTabOpen).
    *
    * 재배열은 여태 액티브 버튼 옆의 **작은 스트립 안에서** 해야 했다. 미니 패 넉 장이
    * 손가락보다 작고, 판 구석에 붙어 있어 무엇을 어디로 끌고 있는지 보이지 않았다
    * (2026-08-12 사용자 보고: "예지 조작이 어색하다"). 분열·염색처럼 **전용 탭**을
-   * 크게 띄운다. 닫아도 스트립은 남아 공개된 패는 계속 보인다.
+   * 크게 띄운다. 닫아도 손패 위 «패산 정보» 줄에 공개된 패는 계속 보인다.
    */
-  const [foresightTab, setForesightTab] = useState(false);
+  const foresightTab = props.foresightTabOpen === true;
+  const setForesightTab = (open: boolean): void => props.onForesightTab?.(open);
   /**
    * 영상 정찰 — 재배열 중인 순서. arr[새 자리] = 원래 인덱스. null이면 아직 안 열었다.
    * (예지와 같은 규약이라 조작감도 같다 — 드래그 / 두 번 누르기 / 좌우 이동 버튼.)
@@ -26646,16 +26859,14 @@ function ActiveAugmentControl(props: {
 
   // 예지 — 공개된 패산 앞 장들의 kind (뽑히는 대로 앞에서 한 장씩 줄어든다).
   // 훅은 조기 반환보다 위에 있어야 한다(Rules of Hooks).
-  const foresightPeek = useMemo<TileKind[]>(() => {
-    const raw = view.augmentView["foresight_peek"];
-    return Array.isArray(raw)
-      ? (raw as string[]).map(parseKindKey).filter((k): k is TileKind => k !== null)
-      : [];
-  }, [view.augmentView]);
+  const foresightPeek = useMemo<TileKind[]>(
+    () => foresightPeekOf(view.augmentView),
+    [view.augmentView],
+  );
   /*
    * 강제 선택(미래를 보는 자·등가교환 넘길 3장) 중에는 재배열을 열지 않는다 — 같은 프롬프트에
    * foresight_order가 실려 오면 [순서 바꾸기] 버튼과 탭 자동 열기가 «다른 수는 막는다»의
-   * 빈틈이 된다. 예전엔 전면 모달이 그 버튼을 덮고 있었다(2026-09-25, docs/59 U03·U07).
+   * 빈틈이 된다. OwnArea의 같은 이름 값과 **같은 식**이다 — 버튼·자동 열기는 거기서, 탭은 여기서 본다. 예전엔 전면 모달이 그 버튼을 덮고 있었다(2026-09-25, docs/59 U03·U07).
    * 강제 선택이 끝나고 후보가 남아 있으면 다시 열린다.
    */
   const foresightReorderable =
@@ -26685,7 +26896,7 @@ function ActiveAugmentControl(props: {
     foresightPeek.length,
   ]);
   // 재배열 후보가 뜨면 드래그용 항등 순서를 깐다. 후보가 사라지면(제출·턴 종료·국에 1회
-  // 소진) 비운다 — 그래도 공개된 패는 아래 스트립에 계속 보인다(열람만 되는 재발동 포함).
+  // 소진) 비운다 — 그래도 공개된 패는 손패 위 «패산 정보» 줄에 계속 보인다(열람만 되는 재발동 포함).
   useEffect(() => {
     if (foresightReorderable) {
       if (foresightArr === null) setForesightArr([0, 1, 2, 3]);
@@ -26693,11 +26904,7 @@ function ActiveAugmentControl(props: {
       setForesightArr(null);
     }
   }, [foresightReorderable, foresightArr]);
-  // 재배열이 열리면 전용 탭을 곧바로 띄우고, 닫히면(제출·턴 종료·소진) 탭도 접는다.
-  // 발동=공개는 취소할 수 없으므로, 열자마자 크게 보여주는 편이 흐름에 맞는다.
-  useEffect(() => {
-    setForesightTab(foresightReorderable);
-  }, [foresightReorderable]);
+  // (재배열이 열리면 탭을 곧바로 띄우는 effect는 여닫이 상태와 함께 OwnArea로 옮겼다 — docs/59 U50)
 
   // 모달이 떠 있는 동안 그 액션이 프롬프트에서 사라지면(교환 소진·턴 종료·리치 등)
   // 탭을 자동으로 닫는다. 예전엔 남아 있어서 이미 끝난 선택창을 손으로 닫아야 했다.
@@ -27022,7 +27229,7 @@ function ActiveAugmentControl(props: {
   //  «상대 셋의 바닥만» 규칙과 어긋난 «내 바닥» 행이 남아 있었다. 그 모달에만 있던 «이어서
   //  한 장을 버려야 한다»는 ARM_PROMPT로 옮겼다 — 2026-09-25, docs/59 U11)
 
-  // ── 예지 — 공개된 패를 버튼 옆 스트립에 늘어놓고, 재배열 가능할 때만 드래그시킨다 ──
+  // ── 예지 — 재배열 가능할 때만 전용 탭에서 드래그시킨다 (공개 패 표시는 WallPeekRow) ──
   // (후보 매핑·핸들러; 훅은 위에)
   const foresightOpts = byType.get("foresight_order") ?? [];
   const foresightByKey = new Map<string, ActionOption>();
@@ -27030,7 +27237,7 @@ function ActiveAugmentControl(props: {
     const ord = (o.payload as { order?: unknown }).order;
     if (Array.isArray(ord)) foresightByKey.set(ord.join(","), o);
   }
-  // 스트립에 그릴 순서 — 재배열 중이면 드래그 순서, 아니면 공개된 그대로.
+  // 탭에 그릴 순서 — 재배열 중이면 드래그 순서, 아니면 공개된 그대로.
   const foresightOrder: number[] =
     foresightReorderable && foresightArr !== null
       ? foresightArr
@@ -27593,56 +27800,10 @@ function ActiveAugmentControl(props: {
         ) : null}
       </button>
       {/*
-        예지 — 공개된 패산 앞장을 **액티브 증강 버튼 옆에 상시로** 늘어놓는다.
-        예전에는 재배열 후보가 있을 때만 뜨는 모달이 유일한 표시 수단이라,
-        재배열을 이미 쓴 국에 다시 발동하면(열람만 가능) 이펙트만 나오고
-        정작 본 패는 어디에도 안 보였다 — 정보 증강이 정보를 안 주는 셈이었다.
-        이제 공개 채널이 살아 있는 동안 계속 보인다.
-
-        조작(재배열)은 여기서 하지 않는다 — 미니 패 넉 장이 손가락보다 작고 판 구석에
-        붙어 있어 무엇을 어디로 끄는지 보이지 않았다(2026-08-12 사용자 보고).
-        분열·염색처럼 아래 전용 탭에서 크게 고른다. 여기는 "지금 무엇이 오는가"만 읽는 자리다.
+        예지 공개 패는 손패 위 «패산 정보» 줄(OwnArea의 WallPeekRow)에 상시로 뜬다 — 이 버튼 옆에
+        따로 그리던 스트립은 삼세 예지·밑장빼기와 한 줄로 합쳤다(2026-09-25, docs/59 U50).
+        [순서 바꾸기]도 그 줄로 옮겼고, 여기엔 재배열 탭만 남는다.
       */}
-      {foresightPeek.length > 0 ? (
-        <div className="foresight-strip">
-          <span className="foresight-strip-tag">🔮 예지</span>
-          {/*
-            **뒤에서 앞으로** 그린다 — 마지막(내 쯔모)이 왼쪽 끝, 가장 먼저 뽑히는 패가
-            오른쪽 끝이다. 공개된 패는 뽑히는 대로 **앞에서** 사라지므로, 순서대로
-            그리면 줄이 줄어들 때마다 남은 패가 통째로 왼쪽으로 밀렸다 — 방금 보던
-            "내 패"가 매 순 자리를 옮겼다(2026-08-12 사용자 지적). 뒤집어 그리면
-            사라지는 쪽이 오른쪽 끝이라 내 패는 늘 같은 자리에 서 있는다.
-          */}
-          <div className="foresight-strip-tiles">
-            {foresightOrder
-              .map((origIdx, pos) => ({ origIdx, pos }))
-              .reverse()
-              .map(({ origIdx, pos }) => {
-                const kind = foresightPeek[origIdx];
-                const seatLabel = foresightSeatLabels[pos] ?? "";
-                const isMine = seatLabel === "나";
-                return (
-                  <div
-                    key={pos}
-                    className={`foresight-cell${isMine ? " foresight-mine" : ""}`}
-                    title={`${pos + 1}번째 쯔모: ${seatLabel}`}
-                  >
-                    {kind !== undefined ? <TileImg tile={{ kind }} size="mini" /> : null}
-                    <span className="foresight-cell-label">
-                      {seatLabel}
-                      {isMine ? " ★" : ""}
-                    </span>
-                  </div>
-                );
-              })}
-          </div>
-          {foresightReorderable && !foresightTab ? (
-            <button className="foresight-strip-confirm" onClick={() => setForesightTab(true)}>
-              순서 바꾸기 (국에 1회)
-            </button>
-          ) : null}
-        </div>
-      ) : null}
       {/*
         예지 재배열 탭 — 분열·염색의 선택 탭(`rinshan-pick-*`)과 같은 자리·같은 뼈대다.
         ⚠ 포털은 필수다: 이 컨트롤의 조상 중에 transform을 가진 것이 있으면

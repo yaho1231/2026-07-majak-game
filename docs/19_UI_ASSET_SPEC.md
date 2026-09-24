@@ -125,7 +125,7 @@ docs/18의 네온·홀로그램 방향은 **폐기**. 17번 C안(수묵) 계열�
 | 점수 증감 플로팅 | 격상 | `scoreFx`(A:1422) → `.score-float` `.score-plus #8fe3a1`/`.score-minus #ff8d7e` | `num-score-set` 재사용 | §6.4 | 17 B-13. 큰 점수 이동 임팩트 부족 — 점수봉 날아가는 연출 여지 |
 | 버림 드롭존 | 격상 | `.discard-dropzone` — 금색 3px dashed + over 시 확대 | `dropzone-frame@2x.png` | PNG 9-slice | 17 B-14. 손그림 먹선 프레임+화살표. normal/over 2상태 |
 | 후로 배치 | 기존 | `MeldGroup`·`MeldTile`·`MeldStack` — `.mtile-{row\|col}(-lying)` `.mtile-stack`(가깡) `kan_closed`=[뒷,앞,앞,뒷] | (두께 패로 해결) | — | 눕힘은 전부 CSS 회전 → §1-A 두께 4변형이 "어디서 울었는지"를 표현. 가깡 2단 겹침 스펙 유지 |
-| 왕패/패산 시각화 | 신규 | 판 위 렌더 **없음**(왕패는 모달 안에서만, `deadWallSlotInfo` A:1173) | `deadwall-tray@2x.png` (선택) | PNG | 17 H급 제안. `dead_wall_master`가 왕패 14장 공개를 쓰므로 판 위 상설 표시 검토 가치 있음. **패산 밑**은 `bottom_deal`이 손패 위 스트립(`.bottom-deal-strip`, 실물 tileId 3장)으로 이미 상설 표시한다 — 판 위 렌더가 생기면 그쪽으로 옮길 후보 |
+| 왕패/패산 시각화 | 신규 | 판 위 렌더 **없음**(왕패는 모달 안에서만, `deadWallSlotInfo` A:1173) | `deadwall-tray@2x.png` (선택) | PNG | 17 H급 제안. `dead_wall_master`가 왕패 14장 공개를 쓰므로 판 위 상설 표시 검토 가치 있음. **패산 밑**은 `bottom_deal`이 손패 위 «패산 정보» 줄(`.wall-peek-bottom`, 실물 tileId 3장 — 2026-09-25 docs/59 U50로 예지·삼세 예지와 합침)으로 이미 상설 표시한다 — 판 위 렌더가 생기면 그쪽으로 옮길 후보 |
 
 ---
 

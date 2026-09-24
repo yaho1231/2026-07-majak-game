@@ -2729,38 +2729,88 @@ button {
   pointer-events: none;
 }
 
-/* 삼세 예지 — 내 다음 쯔모 3장을 손패 바로 위에 크게 띄운다 (왼쪽 위 패널 대체). */
-.next-tsumo-strip {
+/* ── 패산 정보 한 줄 (2026-09-25, docs/59 U50) ─────────────────────────────
+   예지·삼세 예지·밑장빼기가 보여 주는 «곧 나올 패»를 손패 바로 위 한 줄에 모은다. 예전엔
+   예지는 ✦ 버튼 옆 알약, 삼세 예지·밑장빼기는 손패 위에 각자 한 줄씩(모양·순서 표기가 제각각)
+   떠서 함께 들면 눈이 세 군데를 오갔다. 공통 규칙: 미니 패 26×37, 오른쪽 끝이 가장 먼저 나올
+   패(«다음» 뱃지), 섹션마다 테두리 색(--wp-accent)만 다르다. 한 줄이라 --own-band도 한 번만 자란다. */
+.wall-peek-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px 8px;
   margin: 0 auto 6px;
-  padding: 5px 12px;
-  width: max-content;
-  max-width: 92%;
+  max-width: 96%;
+}
+.wall-peek-sec {
+  --wp-accent: rgba(199, 188, 255, 0.55);
+  --wp-tag: #e2dcff;
+  --wp-badge: #a591ff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
   border-radius: 10px;
-  background: rgba(36, 26, 61, 0.9);
-  border: 1px solid rgba(199, 188, 255, 0.55);
+  background: rgba(22, 18, 36, 0.9);
+  border: 1px solid var(--wp-accent);
   box-shadow: 0 3px 14px rgba(0, 0, 0, 0.45);
   animation: bar-in 0.25s ease-out;
 }
-.next-tsumo-tag {
-  font-size: 13px;
+/* 섹션별 색 — 예지(분홍빛 보라) · 삼세 예지(푸른 보라) · 밑장빼기(초록). 모양은 같고 테두리만 다르다 */
+.wall-peek-foresight {
+  --wp-accent: rgba(222, 176, 255, 0.6);
+  --wp-tag: #ecd6ff;
+  --wp-badge: #b27ee0;
+}
+.wall-peek-triple {
+  --wp-accent: rgba(160, 172, 255, 0.6);
+  --wp-tag: #d9ddff;
+  --wp-badge: #7f8ff0;
+}
+.wall-peek-bottom {
+  --wp-accent: rgba(124, 196, 156, 0.55);
+  --wp-tag: #abddc4;
+  --wp-badge: #348a68;
+}
+/* 예약된 상태 — 다음 쯔모가 밑장으로 온다는 것을 테두리로 알린다 */
+.wall-peek-bottom.bottom-deal-armed {
+  --wp-accent: rgba(184, 151, 92, 0.9);
+  --wp-tag: #f0c86a;
+  --wp-badge: #9a7b42;
+  box-shadow: 0 0 14px rgba(184, 151, 92, 0.35);
+}
+.wall-peek-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12.5px;
   font-weight: 800;
-  letter-spacing: 0.5px;
-  color: #e2dcff;
+  letter-spacing: 0.4px;
+  color: var(--wp-tag);
   white-space: nowrap;
 }
-.next-tsumo-cell {
+.wall-peek-cta-short { display: none; }
+.wall-peek-tiles {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.wall-peek-cell {
   position: relative;
   display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
 }
-.next-tsumo-cell .tile-mini {
+.wall-peek-cell .tile-mini {
   width: 26px;
   height: 37px;
 }
-.next-tsumo-ord {
+/* 밑장빼기의 나머지 밑장은 그 뒤 순서라 흐리게 둔다(예전 규칙 그대로) */
+.wall-peek-cell.wall-peek-dim { opacity: 0.75; }
+/* 가장 먼저 나올 패 — 모든 섹션 공통 «다음» 뱃지. 나머지 번호(삼세 예지 2·3)도 같은 자리 */
+.wall-peek-badge {
   position: absolute;
   top: -7px;
   right: -6px;
@@ -2768,13 +2818,98 @@ button {
   height: 15px;
   padding: 0 3px;
   border-radius: 999px;
-  background: #a591ff;
+  background: var(--wp-badge);
   color: #f7f3e8;
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 800;
   line-height: 15px;
   text-align: center;
+  white-space: nowrap;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+.wall-peek-badge.wall-peek-ord {
+  background: rgba(255, 255, 255, 0.18);
+}
+/* 예지 — 그 패를 뽑을 자리 라벨, 내 쯔모는 ★와 푸른 테두리 */
+.wall-peek-label {
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+  color: rgba(226, 199, 147, 0.95);
+}
+.wall-peek-cell.foresight-mine .tile-mini {
+  outline: 2px solid rgba(130, 215, 245, 0.95);
+  outline-offset: 1px;
+  box-shadow: 0 0 12px rgba(118, 201, 233, 0.5);
+}
+.wall-peek-cell.foresight-mine .wall-peek-label {
+  color: #ece4d2;
+}
+.wall-peek-reorder {
+  padding: 4px 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(199, 188, 255, 0.8);
+  background: rgba(165, 145, 255, 0.35);
+  color: #f7f3e8;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.wall-peek-reorder:hover {
+  background: rgba(165, 145, 255, 0.55);
+}
+/* 밑장빼기 예약 — 누르는 곳은 태그와 밑장 칸뿐이다(docs/59 U35). 손패 바로 위라 줄 전체를
+   버튼으로 만들면 폰에서 잘못 누른다. 새 맥동은 두지 않고 정적인 테두리로만 «누를 수 있음»을 보인다. */
+.wall-peek-arm,
+.wall-peek-arm-cell {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.wall-peek-arm {
+  padding: 3px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--wp-accent);
+  background: rgba(124, 196, 156, 0.16);
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--wp-tag);
+}
+.wall-peek-arm:hover,
+.wall-peek-arm:focus-visible {
+  background: rgba(124, 196, 156, 0.3);
+}
+.wall-peek-arm-cell {
+  padding: 0;
+  border: 0;
+  background: none;
+  border-radius: 4px;
+}
+.wall-peek-arm-cell .tile-mini {
+  outline: 2px solid rgba(124, 196, 156, 0.85);
+  outline-offset: 1px;
+}
+.wall-peek-arm-cell:hover .tile-mini {
+  outline-color: #abddc4;
+  box-shadow: 0 0 10px rgba(124, 196, 156, 0.55);
+}
+/* 좁은 화면 — 섹션 태그는 아이콘만, 섹션은 줄을 넘긴다(예지 4 + 삼세 3 + 밑장 3 = 10장은 375px 한 줄에 안 든다) */
+@container ui (max-width: 700px) {
+  .wall-peek-sec {
+    padding: 3px 7px;
+    gap: 6px;
+  }
+  .wall-peek-name,
+  .wall-peek-cta,
+  .wall-peek-armed-note {
+    display: none;
+  }
+  .wall-peek-cta-short {
+    display: inline;
+  }
 }
 
 /* 영상패 재열기 버튼의 숨쉬는 발광. (2026-07-26까지 폐기된 도박사의 손과 공용
@@ -2937,77 +3072,6 @@ button {
   cursor: pointer;
 }
 .rinshan-pick-skip:hover { background: rgba(255, 255, 255, 0.16); }
-
-/* 예지 — 액티브 증강 버튼 옆 '다음 패' 스트립 (모달을 대체, 2026-08-04).
-   공개된 패는 뽑힐 때까지 계속 여기 남고, 재배열이 열려 있을 때만 드래그된다. */
-.foresight-strip {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  max-width: 100%;
-  padding: 4px 10px;
-  border-radius: 12px;
-  border: 1px solid rgba(199, 188, 255, 0.45);
-  background: rgba(58, 43, 99, 0.55);
-}
-.foresight-strip-tag {
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.5px;
-  color: #c7bcff;
-  white-space: nowrap;
-}
-.foresight-strip-tiles {
-  display: flex;
-  align-items: flex-end;
-  gap: 6px;
-}
-.foresight-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 3px 4px;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
-}
-.foresight-cell.foresight-mine {
-  border-color: rgba(130, 215, 245, 0.95);
-  box-shadow: 0 0 14px rgba(118, 201, 233, 0.5);
-}
-.foresight-cell-label {
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1.1;
-  white-space: nowrap;
-  color: rgba(226, 199, 147, 0.95);
-}
-.foresight-cell.foresight-mine .foresight-cell-label {
-  color: #ece4d2;
-}
-.foresight-strip-confirm {
-  padding: 5px 12px;
-  border-radius: 9px;
-  border: 1px solid rgba(199, 188, 255, 0.8);
-  background: rgba(165, 145, 255, 0.35);
-  color: #f7f3e8;
-  font-size: 12px;
-  font-weight: 800;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.foresight-strip-confirm:hover {
-  background: rgba(165, 145, 255, 0.55);
-}
-/* 좁은 화면 — 스트립은 패와 자리 라벨만 남긴다 (패가 먼저다) */
-@container ui (max-width: 700px) {
-  .foresight-strip {
-    padding: 3px 7px;
-    gap: 6px;
-  }
-}
 
 /* ── 예지 재배열 탭 ──────────────────────────────────────────────────────
    재배열은 스트립 안 미니 패 넉 장을 끄는 일이었다 — 손가락보다 작고 판 구석에
@@ -16645,70 +16709,6 @@ body.reconnecting .abort-banner {
   font-weight: 700;
 }
 .tier-axis-help { color: #7b9084; font-size: 11.5px; }
-
-/* 밑장빼기 — 패산 맨 밑 3장. 오른쪽 끝이 '다음에 빼올 밑장'이다.
-   열람은 visibility.wall peek(back)이 실시간으로 주므로 창은 상태에 따라 그대로 밀린다. */
-.bottom-deal-strip {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin: 0 auto 6px;
-  padding: 5px 12px;
-  width: max-content;
-  max-width: 92%;
-  border-radius: 10px;
-  background: rgba(11, 19, 16, 0.92);
-  border: 1px solid rgba(124, 196, 156, 0.5);
-  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.45);
-  animation: bar-in 0.25s ease-out;
-}
-/* 예약된 상태 — 다음 쯔모가 밑장으로 온다는 것을 테두리로 알린다 */
-.bottom-deal-strip.bottom-deal-armed {
-  border-color: rgba(184, 151, 92, 0.9);
-  box-shadow: 0 0 14px rgba(184, 151, 92, 0.35);
-}
-.bottom-deal-tag {
-  font-size: 13px;
-  font-weight: 800;
-  letter-spacing: 0.5px;
-  color: #abddc4;
-  white-space: nowrap;
-}
-.bottom-deal-armed .bottom-deal-tag { color: #f0c86a; }
-.bottom-deal-cell {
-  position: relative;
-  display: inline-flex;
-  opacity: 0.75;
-}
-.bottom-deal-cell .tile-mini {
-  width: 26px;
-  height: 37px;
-}
-/* 맨 밑장 = 다음에 빼올 한 장. 나머지는 그 뒤 순서라 흐리게 둔다 */
-.bottom-deal-cell.bottom-deal-next {
-  opacity: 1;
-}
-.bottom-deal-cell.bottom-deal-next::after {
-  content: "밑";
-  position: absolute;
-  bottom: -7px;
-  right: -5px;
-  min-width: 15px;
-  height: 15px;
-  padding: 0 3px;
-  border-radius: 999px;
-  background: #348a68;
-  color: #f7f3e8;
-  font-size: 10px;
-  font-weight: 800;
-  line-height: 15px;
-  text-align: center;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
-}
-.bottom-deal-armed .bottom-deal-cell.bottom-deal-next::after {
-  background: #9a7b42;
-}
 
 /* 등가교환 — 지정 순간 공개받은 상대 손패 참고 줄(2026-09-25, docs/59 U08). give 안내 바로 아래
    (이름표 줄 위)에 두어 넘길 3장을 고르는 동안 위아래로 견준다. 잠깐 뜨는 줄이라 --own-band
