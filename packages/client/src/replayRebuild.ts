@@ -25,6 +25,7 @@ import {
   uraIndicatorIds,
 } from "@majak/core";
 import type {
+  AugmentCategory,
   GameConfig,
   GameEvent,
   GameState,
@@ -46,8 +47,15 @@ export interface RebuiltReplay {
   events: GameEvent[];
   /** 각 국이 시작되는 이벤트 인덱스 (국 점프 내비게이션용) */
   roundStarts: number[];
-  /** 증강 카탈로그 (id → 이름·등급·설명) — 서버 catalog 메시지와 동일 정보 */
-  catalog: Record<string, { id: string; tier: string; name: string; description: string }>;
+  /**
+   * 증강 카탈로그 (id → 이름·등급·계열·설명) — 서버 catalog 메시지와 동일 정보.
+   * 계열까지 싣는 것은 공유 링크 관전자가 서버 catalog를 못 받아서다 — 뷰어가 이것으로
+   * 전역 이름표·계열표를 채운다(2026-09-25, docs/59 U68).
+   */
+  catalog: Record<
+    string,
+    { id: string; tier: string; category: AugmentCategory; name: string; description: string }
+  >;
 }
 
 export function rebuildReplay(lines: string[]): RebuiltReplay {
@@ -117,7 +125,13 @@ export function rebuildReplay(lines: string[]): RebuiltReplay {
 
   const catalog: RebuiltReplay["catalog"] = {};
   for (const a of game.augments.all()) {
-    catalog[a.id] = { id: a.id, tier: a.tier, name: a.name, description: a.description };
+    catalog[a.id] = {
+      id: a.id,
+      tier: a.tier,
+      category: a.category,
+      name: a.name,
+      description: a.description,
+    };
   }
 
   return { game, states, events, roundStarts, catalog };

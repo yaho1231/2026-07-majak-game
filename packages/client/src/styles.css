@@ -5009,6 +5009,15 @@ button {
   border: 1px solid rgba(240, 200, 106, 0.5);
 }
 
+/* 내 줄 — 판 위에서 «나»였던 줄을 한눈에 찾는다(2026-09-25, docs/59 U76).
+   1위의 금테와 겹쳐도 읽히게 테두리 대신 왼쪽 띠 + 이름 색으로 가른다. */
+.rank-me {
+  box-shadow: inset 4px 0 0 #7fd1a8;
+}
+.rank-me .rank-name {
+  color: #9fe3bf;
+}
+
 .rank-no {
   font-weight: 800;
   color: #f0c86a;

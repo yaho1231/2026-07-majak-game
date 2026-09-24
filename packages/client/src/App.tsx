@@ -1262,9 +1262,45 @@ function augmentCategory(id: string): AugmentCategory {
   return CATEGORY_BY_ID[id] ?? "etc";
 }
 
-/** 증강 id → 표시 이름 (카탈로그 도착 전이면 id 그대로) */
+/**
+ * 서버 catalog를 받지 못한 화면(공유 링크로 연 리플레이 — 인증 없이 replayGet만 보낸다)에서
+ * 전역 이름표·계열표를 채운다. 리플레이는 content 레지스트리로 제 이름표를 이미 들고 있다.
+ * `??=`라 이미 받은 서버 값은 덮지 않는다 — 낡은 탭의 번들 이름표가 서버 것을 이기면 안 된다
+ * (2026-09-25, docs/59 U68).
+ */
+function rememberCatalogIfMissing(
+  entries: readonly { id: string; name: string; category: AugmentCategory }[],
+): void {
+  for (const e of entries) {
+    CATEGORY_BY_ID[e.id] ??= e.category;
+    NAME_BY_ID[e.id] ??= e.name;
+  }
+}
+
+/** 이름을 못 찾은 id는 개발 모드에서 **한 번만** 경고한다 — 렌더마다 찍으면 콘솔이 잠긴다. */
+const warnedAugNames = new Set<string>();
+
+/**
+ * 증강 id → 사람이 읽는 이름. 폴백은 이 한 경로다(docs/59 §2 원칙 3, U63).
+ *
+ * 카탈로그 → 전역 이름표 → 중립 문구 순. 예전에는 자리마다 `entry?.name ?? id`로 따로
+ * 떨어져서, 이름이 비는 순간 `last_stand` 같은 내부 id가 알약·툴팁·드래프트 보유 목록에
+ * 그대로 섰다. 운영에서는 «알 수 없는 증강»으로 물러나고, 개발 모드에서만 원인을 알린다
+ * (2026-09-25).
+ */
+function augName(id: string, catalog?: Readonly<Record<string, { name: string } | undefined>>): string {
+  const known = catalog?.[id]?.name ?? NAME_BY_ID[id];
+  if (known !== undefined) return known;
+  if (import.meta.env.DEV && !warnedAugNames.has(id)) {
+    warnedAugNames.add(id);
+    console.warn(`[ui] 증강 "${id}" 의 이름을 찾지 못했습니다 — 카탈로그를 확인하세요.`);
+  }
+  return "알 수 없는 증강";
+}
+
+/** 증강 id → 표시 이름 (카탈로그 도착 전이면 중립 문구 — `augName`) */
 function augmentDisplayName(id: string): string {
-  return NAME_BY_ID[id] ?? id;
+  return augName(id);
 }
 
 /** 증강 카테고리 아이콘 (임시 이모지). */
@@ -2352,7 +2388,25 @@ function botLabel(view: PlayerView, player: PlayerInfo): string {
 function playerName(view: PlayerView, player: PlayerInfo): string {
   if (player.id === view.playerId) return "나";
   if (player.isBot) return botLabel(view, player);
-  return player.nickname !== "" ? player.nickname : player.id;
+  // 닉네임이 비었을 때 좌석 id(`p2`)를 찍지 않는다 — 원문 노출(2026-09-25, docs/59 U67)
+  return player.nickname !== "" ? player.nickname : "이름 없음";
+}
+
+/**
+ * 판 밖 목록(리플레이·진행 중 방·관전 탁자)에 이어 붙일 이름.
+ *
+ * 봇의 서버 닉네임은 `Bot_p2`라서 `p.nickname`을 그대로 이으면 «yaho · Bot_p1 · Bot_p2»가
+ * 됐다(docs/59 U67). 대기실(`p.isBot ? "봇" : p.nickname`)과 같은 규칙에, 여럿이면
+ * 목록 안 순서로 번호를 붙인다 — «봇 · 봇 · 봇»은 구분이 안 된다(2026-09-25).
+ */
+function rosterNames(players: readonly { nickname: string; isBot: boolean }[]): string[] {
+  const botCount = players.filter((p) => p.isBot).length;
+  let n = 0;
+  return players.map((p) => {
+    if (!p.isBot) return p.nickname !== "" ? p.nickname : "이름 없음";
+    n += 1;
+    return botCount <= 1 ? "봇" : `봇${n}`;
+  });
 }
 
 /** id만 있는 곳(컷인·결과·증강 패널)에서 표시명을 얻는다. 없으면 id 폴백. */
@@ -5280,7 +5334,9 @@ export function App(): JSX.Element {
         if (fxSeenRef.current.keys.has(key)) return;
         fxSeenRef.current.keys.add(key);
       }
-      const who = pv !== null ? playerNameById(pv, msg.player) : msg.player;
+      // 뷰가 아직 없으면 주체를 비운다 — 좌석 id(`p2`)를 곁줄에 세우느니 이름 없이 가는 편이
+      // 낫다. showCutIn은 who가 없으면 주체 조각을 생략한다(2026-09-25, docs/59 U66).
+      const who = pv !== null ? playerNameById(pv, msg.player) : undefined;
       /*
        * 곁줄은 «누가 — 무엇이 일어나는가» 두 조각이다.
        *
@@ -5295,7 +5351,7 @@ export function App(): JSX.Element {
       showCutIn(label, "augment", effect !== "" ? effect : "증강 발동", 1600, {
         sfx: () => sfx.augment(0),
         augId,
-        who,
+        ...(who !== undefined ? { who } : {}),
       });
       return;
     }
@@ -5831,7 +5887,8 @@ export function App(): JSX.Element {
         .sort((a, b) => (LIMIT_RANK[b.limit!] ?? 0) - (LIMIT_RANK[a.limit!] ?? 0))[0];
       const headline = yakumanWin ?? limitWin ?? infos[0]!;
       const pv = prevViewRef.current;
-      const who = pv !== null ? playerNameById(pv, headline.winner) : headline.winner;
+      // 뷰가 없으면 이름을 비운다 — 좌석 id를 찍지 않는다(docs/59 U66)
+      const who = pv !== null ? playerNameById(pv, headline.winner) : undefined;
       const wt = headline.winType === "tsumo" ? "쯔모" : "론";
       // 내가 화료했다 — 한 판에 한 번뿐인 신호라 진동도 여기서 유일하게 두 번 울린다.
       // (`haptics.win` 은 만들어만 두고 호출부가 0건이었다 — QA 4라운드 ingame-ux P2)
@@ -5868,7 +5925,9 @@ export function App(): JSX.Element {
         const sub = infos
           .map(
             (w) =>
-              `${pv !== null ? playerNameById(pv, w.winner) : w.winner} · ${gradeOf(w)} · ${w.points.toLocaleString()}점`,
+              [pv !== null ? playerNameById(pv, w.winner) : undefined, gradeOf(w), `${w.points.toLocaleString()}점`]
+                .filter((x) => x !== undefined)
+                .join(" · "),
           )
           .join("  /  ");
         // 셋 이상 «동시 론»은 삼가화 도중유국이라 여기 오지 않는다(아래 abort 분기).
@@ -5918,7 +5977,7 @@ export function App(): JSX.Element {
         showCutIn(
           label,
           "limit",
-          `${who} · ${wt} · ${limitWin.points.toLocaleString()}점`,
+          [who, wt, `${limitWin.points.toLocaleString()}점`].filter((x) => x !== undefined).join(" · "),
           big ? 2200 : 2000,
           {
             tier,
@@ -5938,7 +5997,9 @@ export function App(): JSX.Element {
       const special = msg.outcome === "draw" ? msg.settle.drawSpecial : undefined;
       if (special !== undefined) {
         showCutIn(
-          special.label.split(" — ")[0] ?? special.label,
+          // 구분자가 « — »가 아닌 라벨(예전 유국역만 «:»)이 와도 문장 통째가 제목에 서지 않게
+          // 둘 다 자른다(2026-09-25, docs/59 U79)
+          special.label.split(/\s*(?:—|:)\s*/)[0] ?? special.label,
           "yakuman",
           special.holder !== undefined && prevViewRef.current !== null
             ? playerNameById(prevViewRef.current, special.holder)
@@ -7790,6 +7851,17 @@ export function App(): JSX.Element {
           rankings={rankings}
           endReason={gameEndReason}
           stats={stats}
+          /* 판 위에서 부르던 이름(나·봇1…)을 결과에도 그대로 — 서버 닉네임은 봇이 `Bot_p2`다
+             (2026-09-25, docs/59 U76). gameOver는 view를 비우지 않으므로 여기서 읽을 수 있다. */
+          {...(view !== null
+            ? {
+                nameOf: (id: string) => {
+                  const p = view.players.find((x) => x.id === id);
+                  return p !== undefined ? playerName(view, p) : undefined;
+                },
+                myId: view.playerId,
+              }
+            : {})}
           onClose={returnHome}
           {...(canContinue && !isSpectator
             ? { onContinue: continueInRoom, sandbox: sandbox !== null }
@@ -9242,12 +9314,20 @@ interface AugRow {
 /** 증강 원시 통계 맵 → 표시용 행 배열 (파생 비율 계산). */
 function toAugRows(augments: Record<string, AugmentStatRaw> | undefined, catalog: AugCatalog): AugRow[] {
   const out: AugRow[] = [];
+  /*
+   * 카탈로그에 없는 id(폐기된 증강)는 행을 만들지 않는다. 누적 통계는 폐기 전 기록을 그대로
+   * 들고 있어서, 표에 `bounty_honitsu` 같은 내부 id가 이름 자리에 섰다(2026-09-25, docs/59 U63 —
+   * 운영 10명·33종). 카탈로그가 아직 비었으면 거르지 않는다 — 도착 전에 표가 통째로 비었다가
+   * 채워지며 깜빡이지 않게. 기록 자체는 서버에 남겨 둔다(지우면 되돌릴 수 없다).
+   */
+  const filter = Object.keys(catalog).length > 0;
   for (const [id, s] of Object.entries(augments ?? {})) {
     const cat = catalog[id];
+    if (filter && cat === undefined) continue;
     const top = s.placements[0] ?? 0;
     out.push({
       id,
-      name: cat?.name ?? id,
+      name: augName(id, catalog),
       tier: cat?.tier ?? "silver",
       offered: s.offered,
       picked: s.picked,
@@ -12730,7 +12810,7 @@ function HomeScreen(props: {
                     {date.toLocaleDateString()} {date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                   </span>
                   <span className="replay-players">
-                    {g.players.map((p) => p.nickname).join(" · ")}
+                    {rosterNames(g.players).join(" · ")}
                   </span>
                 </span>
                 <button className="replay-open" onClick={() => props.onOpenReplay(g.gameId)}>
@@ -13182,7 +13262,7 @@ function HomeScreen(props: {
                     <span className="live-code">{r.code}</span>
                     <span className="replay-meta">
                       <span className="replay-players">
-                        {r.players.map((p) => p.nickname).join(" · ")}
+                        {rosterNames(r.players).join(" · ")}
                       </span>
                       {/* 세워 둔 채 잊힌 탁자를 목록에서 알아볼 수 있어야 한다 —
                           세운 사람이 자리를 뜨면 판은 영영 서 있게 된다. */}
@@ -16930,6 +17010,9 @@ const AUG_EVENT_HEADS: ReadonlySet<string> = new Set([
 
 // ─────────────────────────── 증강 정보 로그 ───────────────────────────
 
+/** 📜 기록 폴백에서 이름을 못 찾은 채널 head — 개발 모드 경고를 한 번만 내려고 모아 둔다. */
+const warnedLogHeads = new Set<string>();
+
 /**
  * `PlayerView.augmentView`(증강 정보 채널)를 사람이 읽을 수 있는 줄로 바꾼다.
  *
@@ -16962,7 +17045,22 @@ function augmentLogRows(
     all_or_nothing: "모 아니면 도",
     take_back: "무르기",
   };
-  const nameOf = (h: string): string => HEAD_NAME[h] ?? catalog[h]?.name ?? h;
+  /*
+   * 태그 이름은 **허용 목록**이다 — HEAD_NAME이나 카탈로그에 없는 head는 행을 만들지 않는다.
+   * 예전의 마지막 `?? h`가 `seat`·`cooldownTurns` 같은 채널 이름을 태그에 그대로 찍었다
+   * (docs/59 U64). 새 채널이 이 폴백으로 떨어지면 개발 모드에서만 알린다(2026-09-25).
+   * 지금 content가 내는 head는 전부 카탈로그 id이거나 아래 건너뛰기 목록에 있다
+   * (client test `augmentLogRowsRawChannels`가 지킨다).
+   */
+  const nameOf = (h: string): string | null => {
+    const known = HEAD_NAME[h] ?? catalog[h]?.name;
+    if (known !== undefined) return known;
+    if (import.meta.env.DEV && !warnedLogHeads.has(h)) {
+      warnedLogHeads.add(h);
+      console.warn(`[auglog] 이름 없는 채널 ${h} — 제자리를 찾아 주거나 HEAD_NAME에 추가하세요.`);
+    }
+    return null;
+  };
   const tileRow = (k: string, tag: string, note: string, kinds: TileKind[]): JSX.Element => (
     <div key={k} className="auglog-row">
       <span className="auglog-tag">{tag}</span>
@@ -17006,6 +17104,9 @@ function augmentLogRows(
     if (head === "danger_sense") continue;
     // 삼세 예지: 손패 위 '다음 쯔모' 스트립
     if (head === "triple_peek") continue;
+    // 예지로 공개된 패산 앞 장: 증강 조작부의 예지 스트립이 그린다. head가 증강 id가 아니라
+    // 이름이 없는 채널이다 — 줄로 내리지 않는다는 뜻을 여기 적어 둔다(2026-09-25, docs/59 U64).
+    if (head === "foresight_peek") continue;
     // 미래를 보는 자 — 가져온 패는 뱃지 줄(ActiveInfoBadges), 쌓인 판수는 이름표 pill
     if (head === "future_sight") continue;
     // 스파이가 찍은 패: 뱃지 줄
@@ -17031,6 +17132,11 @@ function augmentLogRows(
     if (head === "cooldown") continue;
     // 선발동형이 끝났다는 표식(`spent:{증강id}:{좌석}`)도 그 증강의 pill이 "종료"로 그린다.
     if (head === "spent") continue;
+    // 좌석 공개 사본(`seat:{좌석}:{채널}`, 2026-09-01 pill 값 전원 공개)과 내 턴 단위 쿨다운·
+    // 발동 국 표식(`cooldownTurns:{id}`·`cooldownUsedRound:{id}`)은 전부 pill 소관(seatChannel)이다.
+    // 사본을 더할 때 이 목록을 갱신하지 않아 «seat | 봇1 누적 0»·«cooldownUsedRound | 선언»이
+    // 📜 기록에 쌓였다(2026-09-25, docs/59 U64).
+    if (head === "seat" || head === "cooldownTurns" || head === "cooldownUsedRound") continue;
     // "A가 B를 지목했다"는 관계는 양쪽 이름표 위의 표식(np-rel)이 보여준다.
     // 나에게 걸린 것의 **의미**("5판 미만 화료 불가")는 표식으로 못 쓰므로 뱃지 줄에 남는다.
     if (RELATION_HEADS.has(head)) continue;
@@ -17051,30 +17157,43 @@ function augmentLogRows(
       const ids = Array.isArray(value)
         ? value.filter((x): x is string => typeof x === "string")
         : [];
-      if (ids.length === 0) continue;
-      const names = ids.map((id) => catalog[id]?.name ?? id).join(", ");
-      rows.push(textRow(key, nameOf(head), `${who !== "" ? `${who}에게 ` : ""}${names}`));
-    } else if (PLAYER_VALUE[head] !== undefined) {
+      const tag = nameOf(head);
+      if (ids.length === 0 || tag === null) continue;
+      const names = ids.map((id) => augName(id, catalog)).join(", ");
+      rows.push(textRow(key, tag, `${who !== "" ? `${who}에게 ` : ""}${names}`));
+      continue;
+    }
+    const playerTag = PLAYER_VALUE[head];
+    if (playerTag !== undefined) {
       // 값이 좌석 id인 채널 — 이름으로 푼다.
       if (typeof value !== "string" || value === "") continue;
-      rows.push(textRow(key, PLAYER_VALUE[head] ?? head, `${who} → ${playerNameById(view, value)}`));
-    } else if (typeof value === "boolean") {
+      rows.push(textRow(key, playerTag, `${who} → ${playerNameById(view, value)}`));
+      continue;
+    }
+    // 아래는 값이 줄로 찍히는 모양일 때만 태그 이름을 찾는다 — 값이 객체라 어차피 줄이 안
+    // 생기는 채널까지 «이름 없음» 경고를 내지 않게. 이름이 없으면 줄을 만들지 않는다(nameOf 주석).
+    if (typeof value === "boolean") {
       // 발동 사실만 싣는 채널(진짜 용·개벽·배짱 등) — 예전엔 어떤 분기에도 안 걸려
       // 채널을 쐈는데 **화면에 아무것도 안 떴다**(2026-08-01 감사).
-      if (!value) continue;
-      rows.push(textRow(key, nameOf(head), `${who !== "" ? `${who} ` : ""}발동`));
+      const tag = value ? nameOf(head) : null;
+      if (tag === null) continue;
+      rows.push(textRow(key, tag, `${who !== "" ? `${who} ` : ""}발동`));
     } else if (typeof value === "number") {
-      rows.push(textRow(key, nameOf(head), `${who !== "" ? `${who} ` : ""}누적 ${value}`));
+      const tag = nameOf(head);
+      if (tag === null) continue;
+      rows.push(textRow(key, tag, `${who !== "" ? `${who} ` : ""}누적 ${value}`));
     } else if (typeof value === "string") {
+      const tag = nameOf(head);
+      if (tag === null) continue;
       // 폴백 안전망 — 내부값이 그대로 새어나가지 않게 좌석 id·패 키·roundKey를 먼저 푼다.
       const asKind = parseKindKey(value);
       if (isPlayerId(value)) {
-        rows.push(textRow(key, nameOf(head), `${who !== "" ? `${who} → ` : ""}${playerNameById(view, value)}`));
+        rows.push(textRow(key, tag, `${who !== "" ? `${who} → ` : ""}${playerNameById(view, value)}`));
       } else if (asKind !== null) {
-        rows.push(tileRow(key, nameOf(head), who, [asKind]));
+        rows.push(tileRow(key, tag, who, [asKind]));
       } else {
         const clean = /^\d+-\d+-\d+$/.test(value) ? "선언" : value;
-        rows.push(textRow(key, nameOf(head), `${who !== "" ? `${who} ` : ""}${clean}`));
+        rows.push(textRow(key, tag, `${who !== "" ? `${who} ` : ""}${clean}`));
       }
     }
   }
@@ -18413,7 +18532,9 @@ function OpponentStrip({
   const armProps = oppArmable
     ? {
         "data-arm-zone": "1",
-        ...clickableProps(() => sel.clickOpp(player.id), `${player.nickname} 고르기`),
+        // 화면에 보이는 이름과 같게 읽어 준다 — 봇 서버 닉네임(`Bot_p2`)이 아니라 «봇1»
+        // (2026-09-25, docs/59 U67)
+        ...clickableProps(() => sel.clickOpp(player.id), `${playerName(view, player)} 고르기`),
       }
     : {};
   // 선언 간파로 알아낸 이 상대의 화료패 — 발동한 본인에게만 상시 노출
@@ -18781,12 +18902,15 @@ const PILL_CUSTOM: Record<string, (raw: unknown) => PillStatus | null> = {
       : null,
   suit_unify: (raw) => {
     if (typeof raw !== "string" || raw === "") return null;
-    const ko = SUIT_KO[raw] ?? raw;
+    // 모르는 값이면 원문 칩을 세우지 않고 칩을 뺀다(2026-09-25, docs/59 U63)
+    const ko = SUIT_KO[raw];
+    if (ko === undefined) return null;
     return { chip: ko, note: `이번 국에는 손패가 ${ko}로 통일됩니다` };
   },
   blood_contract: (raw) => {
     if (typeof raw !== "string" || raw === "") return null;
-    const yaku = YAKU_NAMES[raw] ?? raw;
+    const yaku = YAKU_NAMES[raw];
+    if (yaku === undefined) return null;
     return { chip: yaku, note: `계약한 역은 ${yaku}입니다. 이 역을 포함해 화료하면 점수가 1.5배가 됩니다` };
   },
   all_or_nothing: (raw) => {
@@ -18823,7 +18947,9 @@ const PILL_CUSTOM: Record<string, (raw: unknown) => PillStatus | null> = {
   // 편식 — 통일한 무늬 (발동 뒤). 진행도는 아래 전용 분기가 그린다.
   picky_eater: (raw) => {
     if (typeof raw !== "string" || raw === "") return null;
-    const ko = SUIT_KO[raw] ?? raw;
+    // 모르는 값이면 원문 칩을 세우지 않고 칩을 뺀다(2026-09-25, docs/59 U63)
+    const ko = SUIT_KO[raw];
+    if (ko === undefined) return null;
     return { chip: ko, note: `손패의 수패가 ${ko}로 통일되었습니다` };
   },
   // 천하통일은 문턱이 45000 고정이라 공개 채널이 없다 — 카드 문구가 곧 목표다.
@@ -18860,7 +18986,7 @@ const PILL_CUSTOM: Record<string, (raw: unknown) => PillStatus | null> = {
   red_five_touch: (raw) => {
     if (typeof raw !== "string" || raw === "") return null;
     const rank = /(\d)/.exec(raw)?.[1];
-    if (rank === undefined) return { chip: raw, note: raw };
+    if (rank === undefined) return null;
     return {
       chip: `${rank} 각인`,
       note: `이 사람의 ${rank}만·${rank}통·${rank}삭은 이 사람에게만 적도라입니다. 버린 패를 후로해 가져와도 도라가 되지 않습니다`,
@@ -19314,7 +19440,7 @@ function PlayerAugSheet({
                 <li className={`aug-sheet-row${locked ? " aug-sheet-row-locked" : ""}`} key={a}>
                   <div className="aug-sheet-row-head">
                     <AugCatIcon id={a} />
-                    <span className="aug-sheet-name">{entry?.name ?? a}</span>
+                    <span className="aug-sheet-name">{augName(a, catalog)}</span>
                     <span className="aug-sheet-cat">{CATEGORY_META[augmentCategory(a)].label}</span>
                   </div>
                   <div className="aug-sheet-chips">
@@ -19624,7 +19750,7 @@ const NamePlate = memo(function NamePlate({
                 {reloaded.has(a) ? "♻ " : ""}
                 {fromDice.has(a) ? <span className="aug-pill-dice-mark" aria-hidden="true">🎲</span> : null}
                 {/* 이름만 별도 span — 무장해제 취소선이 잔량 칩까지 그어지지 않게 */}
-                <span className="aug-pill-name">{entry?.name ?? a}</span>
+                <span className="aug-pill-name">{augName(a, catalog)}</span>
                 {active ? (
                   <span
                     className="aug-pill-chip aug-pill-chip-active"
@@ -19671,7 +19797,7 @@ const NamePlate = memo(function NamePlate({
                 <button
                   type="button"
                   className="aug-pill-sheet-hit"
-                  aria-label={`${entry?.name ?? a} 증강 보기`}
+                  aria-label={`${augName(a, catalog)} 증강 보기`}
                   onClick={(e) => {
                     // 알약의 «고정» 토글까지 함께 터지면 시트 뒤에 툴팁이 남는다
                     e.stopPropagation();
@@ -19683,7 +19809,7 @@ const NamePlate = memo(function NamePlate({
                 <span className={`aug-tip${tipUp === true ? " aug-tip-up" : " aug-tip-down"} aug-tip-a-${tipAlign ?? "center"}`}>
                   <span className="aug-tip-name">
                     <AugCatIcon id={a} />
-                    {entry?.name ?? a}
+                    {augName(a, catalog)}
                   </span>
                   <span className="aug-tip-cat">{CATEGORY_META[augmentCategory(a)].label} 계열</span>
                   {locked ? (
@@ -22916,7 +23042,7 @@ function DockSettings(props: {
               onClick={() => {
                 if (r.code !== props.spectateCode) props.onSwitchTable?.(r.code);
               }}
-              title={`${r.players.map((p) => p.nickname).join(" · ")}${
+              title={`${rosterNames(r.players).join(" · ")}${
                 r.roundLabel !== undefined ? ` · ${r.roundLabel}` : ""
               }${(r.riichiCount ?? 0) > 0 ? ` · 리치 ${r.riichiCount}` : ""}${
                 r.paused === true ? " · 정지 중" : ""
@@ -23817,11 +23943,11 @@ function SeatAugments({
             /* 관전도 판 위다 — 횟수 표기는 그 판의 숫자 하나로(이름표 툴팁과 같은 규약) */
             note={
               catalog[id] === undefined
-                ? id
+                ? augName(id)
                 : forMode(catalog[id].description, view.round.mode)
             }
           >
-            {catalog[id]?.name ?? id}
+            {augName(id, catalog)}
             {left !== null ? (
               <span className="bcast-aug-uses">
                 {left}
@@ -24436,7 +24562,8 @@ const ActiveInfoBadges = memo(function ActiveInfoBadges({
     const holders = view.players.filter((p) => p.augments.includes("dora_conceal"));
     const others = holders.filter((p) => p.id !== me.id);
     if (view.round.doraIndicators.length === 0 && others.length > 0) {
-      const who = others.map((p) => p.nickname).join(" · ");
+      // 판 위 이름으로 — `p.nickname`이면 봇이 «Bot_p2만 볼 수 있습니다»로 떴다(docs/59 U67)
+      const who = others.map((p) => playerName(view, p)).join(" · ");
       textBadge(
         "dora_conceal",
         "🌑 가려진 도라",
@@ -27586,7 +27713,7 @@ function DraftOverlay({
         {locked !== null ? (
           <p className="draft-locked-note">
             튜토리얼에서는{" "}
-            <b>{draft.choices.find((c) => c.id === locked)?.name ?? locked}</b> 하나만
+            <b>{draft.choices.find((c) => c.id === locked)?.name ?? augName(locked, catalog)}</b> 하나만
             고를 수 있습니다. 실제 대국에서는 세 장 중 아무 카드나 고를 수 있습니다.
           </p>
         ) : null}
@@ -27601,10 +27728,10 @@ function DraftOverlay({
                 <InfoNote
                   key={id}
                   className={`draft-owned-pill aug-cat-${augmentCategory(id)}`}
-                  note={entry === undefined ? id : forMode(entry.description, mode)}
+                  note={entry === undefined ? augName(id) : forMode(entry.description, mode)}
                 >
                   <AugCatIcon id={id} />
-                  {entry?.name ?? id}
+                  {augName(id, catalog)}
                 </InfoNote>
               );
             })}
@@ -27747,6 +27874,8 @@ function GameOverModal({
   onPracticeAgain,
   onOpenReplay,
   sandbox = false,
+  nameOf,
+  myId,
 }: {
   rankings: RankingEntry[];
   /** 왜 끝났는가 — 헤더 아래 한 줄 */
@@ -27764,8 +27893,17 @@ function GameOverModal({
    */
   onOpenReplay?: () => void;
   sandbox?: boolean;
+  /**
+   * 좌석 id → 판 위 이름(나·봇1·닉네임). 뷰가 없으면(재접속 직후 등) 생략되고,
+   * 그때는 `displayName`의 폴백이 봇을 «봇»으로 부른다 — 서버의 `Bot_p2`는 절대 쓰지 않는다.
+   */
+  nameOf?: (id: string) => string | undefined;
+  /** 내 좌석 id — 순위표에서 내 줄을 강조한다(관전석이면 어느 줄과도 맞지 않는다) */
+  myId?: string;
 }): JSX.Element {
   const [tab, setTab] = useState<"rank" | "stats">("rank");
+  const displayName = (e: { playerId?: string; nickname: string; isBot: boolean }): string =>
+    (e.playerId !== undefined ? nameOf?.(e.playerId) : undefined) ?? (e.isBot ? "봇" : e.nickname);
   const gameStats = stats?.game ?? [];
   const careerByNick = useMemo(() => {
     const m: Record<string, StatsEntry> = {};
@@ -27796,13 +27934,21 @@ function GameOverModal({
         {tab === "rank" || gameStats.length === 0 ? (
           <div className="rank-list">
             {rankings.map((r) => (
-              <div key={r.playerId} className={`rank-row rank-${r.rank}`}>
+              <div
+                key={r.playerId}
+                className={`rank-row rank-${r.rank}${r.playerId === myId ? " rank-me" : ""}`}
+              >
                 <span className="rank-no">{r.rank}위</span>
-                <span className="rank-name">
-                  {r.isBot ? "봇" : r.nickname}
+                {/* «나»로 부를 때도 계정명은 title로 남긴다 */}
+                <span className="rank-name" title={r.isBot ? undefined : r.nickname}>
+                  {displayName(r)}
                   {r.isBot ? <span className="seat-bot">BOT</span> : null}
-                  {/* 어느 성향이 이겼는지 — 순위표에서 그게 읽혀야 다음 판이 달라진다 */}
-                  {r.isBot ? <BotArchetypeChip archetype={r.archetype} /> : null}
+                  {/* 어느 성향이 이겼는지 — 순위표에서 그게 읽혀야 다음 판이 달라진다.
+                      모르는 성향이면 칩 자체를 뺀다 — 칩의 폴백 «봇»이 이름 옆에 또 서면
+                      «봇 BOT 봇»이 됐다(docs/59 U76). 칩 컴포넌트는 대기실도 써서 그대로 둔다. */}
+                  {r.isBot && archetypeInfo(r.archetype) !== null ? (
+                    <BotArchetypeChip archetype={r.archetype} />
+                  ) : null}
                 </span>
                 {/* 원점 → 우마·오카 → 최종. 세 값 모두 서버가 이미 보내 주는데(RankingEntry)
                     예전에는 원점과 최종만 찍어서, 25000점이 왜 -5가 되는지 역산할 수 없었다.
@@ -27854,8 +28000,8 @@ function GameOverModal({
               return (
                 <div key={e.playerId ?? e.nickname} className="stats-player">
                   <div className="stats-head">
-                    <span className="stats-name">
-                      {e.nickname}
+                    <span className="stats-name" title={e.isBot ? undefined : e.nickname}>
+                      {displayName(e)}
                       {e.isBot ? <span className="seat-bot">BOT</span> : null}
                     </span>
                     {career !== null ? (
@@ -27969,7 +28115,12 @@ function ReplayViewer(props: {
   const replay = useMemo<RebuiltReplay | null>(() => {
     if (mod === null) return null;
     try {
-      return mod.rebuildReplay(props.data.lines);
+      const r = mod.rebuildReplay(props.data.lines);
+      // 공유 링크 관전자는 인증 없이 replayGet만 보내 서버 catalog를 못 받는다 — 결과창의
+      // 증강 보너스·점수 줄이 `yakuless_win` 같은 id로 떴다. 리플레이가 들고 온 이름표로
+      // 비어 있는 이름·계열만 채운다(2026-09-25, docs/59 U68).
+      rememberCatalogIfMissing(Object.values(r.catalog));
+      return r;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       return null;
