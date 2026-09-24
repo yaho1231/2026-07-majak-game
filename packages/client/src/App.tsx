@@ -2037,7 +2037,8 @@ function ScreenOverlay(props: {
 }
 
 /**
- * 도감·규칙 오버레이 맨 위에 서는 «내 차례» 띠 (2026-09-25, docs/59 U70).
+ * 도감·규칙 오버레이 맨 아래에 뜨는 «내 차례» 띠 (2026-09-25, docs/59 U70).
+ * 흐름 밖(absolute)에 둔다 — 왜 위·sticky 가 아닌지는 styles.css `.overlay-turn-bar` 주석.
  *
  * 두 오버레이는 게임을 멈추지 않는다(App 의 오버레이 주석 — 의도된 설계). 그런데 판
  * 전체를 덮어서, 상대 증강 하나를 찾아보는 사이 내 차례·론/퐁 기회가 와도 화면에 아무
@@ -15603,9 +15604,8 @@ const GameTable = memo(function GameTable(props: {
       {props.spectator !== true && props.abortVote != null && props.abortVote.votes > 0 ? (
         <AbortVoteBanner
           abortVote={props.abortVote}
-          iVoted={props.abortVote.voters.includes(view.playerId)}
-          isRequester={props.abortVote.voters[0] === view.playerId}
-          requesterName={playerNameById(view, props.abortVote.voters[0] ?? view.playerId)}
+          myId={view.playerId}
+          nameOf={(id) => playerNameById(view, id)}
           onVote={props.onVoteAbort}
         />
       ) : null}
@@ -16670,38 +16670,52 @@ function SettingsPanel(props: {
  * 이 투표에 대한 응답은 **여기 한 곳**에서 다 한다(2026-09-25, docs/59 U72) — 동의 취소가
  * 설정 패널에만 있어 두 곳이 할 수 있는 일이 달랐다. 버튼은 세 경우로 나뉜다:
  *   - 요청자: [요청 취소] 하나(= reject). 서버에서 reject 는 투표 전체를 지우므로, 요청자에게
- *     «반대»는 사실상 요청 취소였다. 요청자에게 withdraw 를 주지 않는다 — 요청자가 빠지면
- *     `voters[0]` 이 남은 첫 동의자가 되어 엉뚱한 사람이 «요청자»로 보인다.
+ *     «반대»는 사실상 요청 취소였다. 요청자에게 withdraw 는 주지 않는다.
  *   - 동의한 사람: [동의 취소](withdraw) · [반대](reject).
  *   - 아직 안 누른 사람: [동의] · [반대].
  * 요청자 문구는 «내가 무효를 요청했습니다» — `playerNameById` 는 나를 «나»로 돌려줘서
  * «나님이 …»라는 어색한 문장이 나왔다.
+ *
+ * ⚠ 요청자는 **배너가 뜬 순간의 `voters[0]`** 로 기억한다 — 매번 `voters[0]` 을 다시 보면
+ * 안 된다. 요청자가 끊기거나 나가면 서버 retallyAbortVotes 가 그 표를 빼고 다시 보내는데
+ * (서버 Set 삽입 순서라) 다음 동의자가 `voters[0]` 이 된다. 그러면 그 사람 화면에
+ * «내가 무효를 요청했습니다»와 [요청 취소]만 떠서, 사실이 아닌 문장에 동의 취소 길까지
+ * 사라졌다. 기억한 요청자가 voters 에 더는 없으면 요청자 문장 대신 일반 문장을 쓰고,
+ * 버튼은 동의 여부로만 가른다. 투표가 끝나면(votes 0) 배너가 내려가므로 다음 투표는 새로
+ * 마운트되어 새 요청자를 기억한다.
  */
 function AbortVoteBanner(props: {
   abortVote: AbortVoteMessage;
-  iVoted: boolean;
-  /** 내가 이 투표를 연 사람인가(`voters[0]` — 서버 Set 삽입 순서) */
-  isRequester: boolean;
-  requesterName: string;
+  /** 지금 보고 있는 좌석 */
+  myId: string;
+  nameOf: (id: string) => string;
   onVote: ((vote: "agree" | "withdraw" | "reject") => void) | undefined;
 }): JSX.Element {
-  const { votes, needed } = props.abortVote;
+  const { votes, needed, voters } = props.abortVote;
+  const [requesterId] = useState<string | null>(() => props.abortVote.voters[0] ?? null);
+  const requesterIn = requesterId !== null && voters.includes(requesterId);
+  const isRequester = requesterIn && requesterId === props.myId;
+  const iVoted = voters.includes(props.myId);
   // 화면 고정 표면은 전부 body 포털이다 — 이유는 FIXED_SURFACE_NOTE 참고
   return createPortal(
     <div className="abort-banner" role="alertdialog" aria-live="assertive">
       <div className="abort-banner-info">
         <span className="abort-banner-title">게임 무효 투표</span>
         <span className="abort-banner-sub">
-          {props.isRequester ? "내가 무효를 요청했습니다" : `${props.requesterName}님이 무효를 요청했습니다`}
+          {isRequester
+            ? "내가 무효를 요청했습니다"
+            : requesterIn
+              ? `${props.nameOf(requesterId)}님이 무효를 요청했습니다`
+              : "무효 투표가 진행 중입니다"}
           . 동의 {votes}/{needed}
         </span>
       </div>
       <div className="abort-banner-actions">
-        {props.isRequester ? (
+        {isRequester ? (
           <button className="abort-no" onClick={() => props.onVote?.("reject")}>
             요청 취소
           </button>
-        ) : props.iVoted ? (
+        ) : iVoted ? (
           <>
             <button className="abort-no" onClick={() => props.onVote?.("withdraw")}>
               동의 취소
@@ -20086,7 +20100,7 @@ const NamePlate = memo(function NamePlate({
                     // 문구는 짧게, 해제 방법은 툴팁·보조기술로 (2026-09-25, docs/59 U73) —
                     // 긴 문장 버튼이 설명 아래 한 줄을 통째로 먹었다. 해제 수단 자체는 그대로.
                     title={pinned.has(a) ? "눌러서 고정 해제 · Esc나 바깥 클릭으로도 해제됩니다" : "눌러서 이 설명을 고정합니다"}
-                    aria-label={pinned.has(a) ? "고정 해제 (Esc나 바깥 클릭으로도 해제됩니다)" : "설명 고정"}
+                    aria-label={pinned.has(a) ? "고정 해제 (Esc나 바깥 클릭으로도 해제됩니다)" : "고정 (이 설명을 고정합니다)"}
                   >
                     {pinned.has(a) ? "📌 고정 해제" : "📌 고정"}
                   </button>

@@ -111,12 +111,22 @@ describe("U71·U72 무효 투표는 화면 위 배너 한 곳에서", () => {
   it("배너는 요청자·동의함·미응답 세 경우로 나뉜다", () => {
     const banner = fnBody("AbortVoteBanner");
     expect(banner).toContain('"내가 무효를 요청했습니다"');
-    expect(banner).toMatch(/props\.isRequester \? \(\s*<button className="abort-no" onClick=\{\(\) => props\.onVote\?\.\("reject"\)\}>\s*요청 취소/);
+    expect(banner).toMatch(/isRequester \? \(\s*<button className="abort-no" onClick=\{\(\) => props\.onVote\?\.\("reject"\)\}>\s*요청 취소/);
     expect(banner).toMatch(/onVote\?\.\("withdraw"\)\}>\s*동의 취소/);
     expect(banner).toMatch(/onVote\?\.\("agree"\)\}>\s*동의\s*</);
     // 비활성 «동의함 ✓»는 사라졌다 — 동의한 사람은 여기서 바로 취소한다
     expect(banner).not.toContain("동의함");
-    expect(APP_CODE).toContain("isRequester={props.abortVote.voters[0] === view.playerId}");
+  });
+
+  it("요청자는 배너가 뜬 순간의 voters[0] 으로 기억한다 — 요청자가 빠지면 일반 문장", () => {
+    // 매번 voters[0] 을 보면, 요청자가 끊겨 표가 빠졌을 때 다음 동의자가 «요청자»가 되어
+    // [동의 취소] 길이 사라졌다(리뷰 라운드 1).
+    const banner = fnBody("AbortVoteBanner");
+    expect(banner).toContain("const [requesterId] = useState<string | null>(() => props.abortVote.voters[0] ?? null)");
+    expect(banner).toContain("const requesterIn = requesterId !== null && voters.includes(requesterId)");
+    expect(banner).toContain("const isRequester = requesterIn && requesterId === props.myId");
+    expect(banner).toContain('"무효 투표가 진행 중입니다"');
+    expect(APP_CODE).not.toContain("isRequester={props.abortVote.voters[0]");
   });
 
   it("설정 패널은 투표 중이면 버튼 대신 배너로 안내한다", () => {
