@@ -1291,7 +1291,9 @@ const warnedAugNames = new Set<string>();
 function augName(id: string, catalog?: Readonly<Record<string, { name: string } | undefined>>): string {
   const known = catalog?.[id]?.name ?? NAME_BY_ID[id];
   if (known !== undefined) return known;
-  if (import.meta.env.DEV && !warnedAugNames.has(id)) {
+  // 이름표가 아직 통째로 비었으면 카탈로그 도착 전이라 정상이다 — 그때 경고하면 헛경보인 데다
+  // «한 번만» 몫을 써 버려서, 도착 뒤 정말 빠진 id가 조용해진다(2026-09-25).
+  if (import.meta.env.DEV && Object.keys(NAME_BY_ID).length > 0 && !warnedAugNames.has(id)) {
     warnedAugNames.add(id);
     console.warn(`[ui] 증강 "${id}" 의 이름을 찾지 못했습니다 — 카탈로그를 확인하세요.`);
   }
@@ -2397,15 +2399,27 @@ function playerName(view: PlayerView, player: PlayerInfo): string {
  *
  * 봇의 서버 닉네임은 `Bot_p2`라서 `p.nickname`을 그대로 이으면 «yaho · Bot_p1 · Bot_p2»가
  * 됐다(docs/59 U67). 대기실(`p.isBot ? "봇" : p.nickname`)과 같은 규칙에, 여럿이면
- * 목록 안 순서로 번호를 붙인다 — «봇 · 봇 · 봇»은 구분이 안 된다(2026-09-25).
+ * 번호를 붙인다 — «봇 · 봇 · 봇»은 구분이 안 된다(2026-09-25).
+ *
+ * 번호는 판 위 `botLabel`처럼 **좌석순**이어야 같은 판의 «봇1»이 목록과 리플레이에서 같은
+ * 봇이다. 진행 중 방·관전 탁자 목록은 서버가 이미 좌석순(`agents`)으로 보내서 목록 순서가
+ * 곧 좌석순이다. 리플레이 목록은 서버 DB가 **순위순**(`ORDER BY rank`)으로 주고 좌석을 싣지
+ * 않으므로, 호출부가 `botOrderKey`로 서버 닉네임(`Bot_{id}`)을 넘겨 id순으로 번호를 매긴다 —
+ * 키로만 쓰고 화면에는 절대 세우지 않는다. 판 전에 대기실에서 자리를 옮긴 봇은 id순과
+ * 좌석순이 어긋날 수 있다 — 정확히 맞추려면 DB에 좌석을 실어야 한다(docs/59 U67 남은 일).
  */
-function rosterNames(players: readonly { nickname: string; isBot: boolean }[]): string[] {
-  const botCount = players.filter((p) => p.isBot).length;
-  let n = 0;
+function rosterNames(
+  players: readonly { nickname: string; isBot: boolean }[],
+  botOrderKey?: (p: { nickname: string; isBot: boolean }) => string,
+): string[] {
+  const bots = players.filter((p) => p.isBot);
+  const ordered =
+    botOrderKey === undefined
+      ? bots
+      : [...bots].sort((a, b) => botOrderKey(a).localeCompare(botOrderKey(b), undefined, { numeric: true }));
   return players.map((p) => {
     if (!p.isBot) return p.nickname !== "" ? p.nickname : "이름 없음";
-    n += 1;
-    return botCount <= 1 ? "봇" : `봇${n}`;
+    return bots.length <= 1 ? "봇" : `봇${ordered.indexOf(p) + 1}`;
   });
 }
 
@@ -12810,7 +12824,7 @@ function HomeScreen(props: {
                     {date.toLocaleDateString()} {date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                   </span>
                   <span className="replay-players">
-                    {rosterNames(g.players).join(" · ")}
+                    {rosterNames(g.players, (p) => p.nickname).join(" · ")}
                   </span>
                 </span>
                 <button className="replay-open" onClick={() => props.onOpenReplay(g.gameId)}>
@@ -17050,7 +17064,7 @@ function augmentLogRows(
    * 예전의 마지막 `?? h`가 `seat`·`cooldownTurns` 같은 채널 이름을 태그에 그대로 찍었다
    * (docs/59 U64). 새 채널이 이 폴백으로 떨어지면 개발 모드에서만 알린다(2026-09-25).
    * 지금 content가 내는 head는 전부 카탈로그 id이거나 아래 건너뛰기 목록에 있다
-   * (client test `augmentLogRowsRawChannels`가 지킨다).
+   * (`packages/client/test/rawIdentifierGuards.test.ts`의 U64 블록이 지킨다).
    */
   const nameOf = (h: string): string | null => {
     const known = HEAD_NAME[h] ?? catalog[h]?.name;
@@ -24598,18 +24612,19 @@ const ActiveInfoBadges = memo(function ActiveInfoBadges({
     const m = raw as { target?: string; augmentId?: string } | null;
     if (m === null || typeof m !== "object" || typeof m.target !== "string") continue;
     const by = key.slice("disarm:".length);
-    const augName = augmentDisplayName(m.augmentId ?? "");
+    // 증강 id가 빠진 기록이면 빈 id로 이름을 찾지 않고 «증강»으로 부른다 — 뱃지 자체는 살린다
+    const lockedName = typeof m.augmentId === "string" ? augmentDisplayName(m.augmentId) : "증강";
     if (m.target === me.id) {
       textBadge(
         `disarm_on_me_${by}`,
         "🔒 무장해제당함",
-        `${playerNameById(view, by)}의 무장해제로 이번 국에는 ${augName} 사용이 불가능합니다`,
+        `${playerNameById(view, by)}의 무장해제로 이번 국에는 ${lockedName} 사용이 불가능합니다`,
       );
     } else if (by === me.id) {
       textBadge(
         "disarm_mine",
         "🔒 무장해제",
-        `이번 국에는 ${playerNameById(view, m.target)}의 ${augName} 사용이 불가능합니다`,
+        `이번 국에는 ${playerNameById(view, m.target)}의 ${lockedName} 사용이 불가능합니다`,
       );
     }
   }
@@ -24620,18 +24635,18 @@ const ActiveInfoBadges = memo(function ActiveInfoBadges({
     const m = raw as { target?: string; augmentId?: string } | null;
     if (m === null || typeof m !== "object" || typeof m.target !== "string") continue;
     const by = key.slice("copy:".length);
-    const augName = augmentDisplayName(m.augmentId ?? "");
+    const copiedName = typeof m.augmentId === "string" ? augmentDisplayName(m.augmentId) : "증강";
     if (by === me.id) {
       textBadge(
         "copy_mine",
         "📋 카피",
-        `${playerNameById(view, m.target)}의 ${augName}을(를) 가져왔습니다. 이번 국에 한 번 쓸 수 있습니다`,
+        `${playerNameById(view, m.target)}의 ${copiedName}을(를) 가져왔습니다. 이번 국에 한 번 쓸 수 있습니다`,
       );
     } else if (m.target === me.id) {
       textBadge(
         `copy_on_me_${by}`,
         "📋 카피당함",
-        `${playerNameById(view, by)}가 내 ${augName}을(를) 가져갔습니다. 내 증강은 그대로입니다`,
+        `${playerNameById(view, by)}가 내 ${copiedName}을(를) 가져갔습니다. 내 증강은 그대로입니다`,
       );
     }
   }

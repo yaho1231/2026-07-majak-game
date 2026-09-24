@@ -121,7 +121,8 @@ describe("봇 서버 닉네임 — 판 위 이름으로 부른다 (U67)", () => 
   });
 
   it("리플레이·진행 중 방·관전 탁자 목록은 rosterNames로 봇을 «봇·봇1…»로 부른다", () => {
-    expect(SRC).toContain('{rosterNames(g.players).join(" · ")}');
+    // 리플레이 목록은 순위순이라 서버 닉네임(id)을 번호 순서의 키로만 넘긴다 — 판 위 좌석순 «봇N»과 맞춘다
+    expect(SRC).toContain('{rosterNames(g.players, (p) => p.nickname).join(" · ")}');
     expect(SRC).toContain('{rosterNames(r.players).join(" · ")}');
     expect(SRC).toContain('title={`${rosterNames(r.players).join(" · ")}');
     const fn = slice("function rosterNames(", "\n}");
