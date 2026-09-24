@@ -225,7 +225,8 @@ describe("⑫ 관전자도 액티브 증강의 선택창을 본다", () => {
     expect(APP.replace(/\s+/g, " ")).toContain("<SpectateChoicePanel choice={props.spectateChoice} view={view}");
     // 서버는 기계용 라벨("alchemy man3 1")을 보낸다 — 표기는 이 파일의 몫이다
     expect(APP).toContain("function ChoiceLabel(");
-    expect(APP).toContain('ACTION_LABEL[head ?? ""] ?? head');
+    // 첫 토막(액션 타입)은 대국자 버튼과 같은 증강 이름으로 부른다(2026-09-25, docs/59 U18)
+    expect(APP).toContain('const name = augActionName(catalog, head ?? "");');
   });
 
   it("판이 도는 중이므로 탁자를 어둡게 덮지 않는다 (드래프트 중계와 다른 점)", () => {

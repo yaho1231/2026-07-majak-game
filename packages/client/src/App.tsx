@@ -549,14 +549,23 @@ function actionLabel(type: string, catalog: Record<string, AugmentCatalogEntry>)
   return type;
 }
 
+/*
+ * 액션 이름표 — 표준 액션(퐁·치·깡·패스)의 이름이자, 카탈로그가 아직 안 온 첫 렌더의 폴백이다.
+ * 증강 액션은 화면 어디서나 **증강 이름 하나**로 부른다(`augActionName`, docs/59 §2 원칙 6).
+ * 그래서 값에 «(바꿀 3장 선택)» 같은 설명을 섞지 않는다 — 무엇을 하는지는 무장 안내
+ * (`ARM_PROMPT`)가 말하고, 여기 설명이 붙어 있으면 안내 줄이 같은 말을 두 번 했다
+ * (2026-09-25, docs/59 U18). ⚠ 키는 지우지 않는다: 액션 바 톤·코치가 «키가 없으면 증강»으로 가른다.
+ */
 const ACTION_LABEL: Record<string, string> = {
   win: "화료",
   pon: "퐁",
   chi: "치",
   bluff_pon: "허장성세 퐁",
-  silent_pon: "묵계 멘젠 퐁",
-  // 우는 국사무쌍의 특수 후로 — 버려진 요구패 1장 + 손패 2장(서로 다른 요구패 3종)
-  kokushi_pon: "우는 국사무쌍 요구패 퐁",
+  silent_pon: "묵계 퐁",
+  // 우는 국사무쌍의 특수 후로 — 버려진 요구패 1장 + 손패 2장(서로 다른 요구패 3종).
+  // 후로 컷인과 같은 이름 «국사 퐁» — 무슨 패로 우는지는 버튼 옆 ActionTiles가 그림으로 보여 준다
+  // (2026-09-25, docs/59 U18).
+  kokushi_pon: "국사 퐁",
   minkan: "깡",
   ankan: "안깡",
   shouminkan: "가깡",
@@ -567,7 +576,7 @@ const ACTION_LABEL: Record<string, string> = {
   swap3: "등가교환 대상 지정",
   swap3_give: "등가교환 넘길 3장",
   swap3_take: "등가교환 가져올 3장",
-  hand_swap: "손패 강탈",
+  hand_swap: "통째로 바꾸기",
   red_touch: "붉은 손길",
   future_exchange: "미래 보기",
   bottom_deal: "밑장빼기",
@@ -594,7 +603,7 @@ const ACTION_LABEL: Record<string, string> = {
   time_stop_use: "시간 정지",
   open_riichi: "오픈 리치",
   mono_world: "단색 세계",
-  parasite_attach: "기생",
+  parasite_attach: "기생충",
   seal_hands: "봉인",
   invincible_guard: "천하무적",
   // 2026-07-22 (52차) 신규 12종 — docs/16 §1c
@@ -633,24 +642,24 @@ const ACTION_LABEL: Record<string, string> = {
   split_tile: "분열 패 쪼개기",
   frame_discard: "누명 패 심기",
   dragons_will: "삼원의 의지 발동",
-  flip_riichi: "손바닥 뒤집기 손패 골라 버리기",
+  flip_riichi: "손바닥 뒤집기",
   north_pull: "북풍 상인 북빼기",
   // 2026-08-04 (6차) 신규
   dora_recall: "도라의 잔상 되살리기",
   soul_strike: "영혼의 일격 선언",
   picky_unify: "편식 단색화",
   // 2026-08-07 (7차) 신규
-  joker_call: "조커 (백으로 바꿀 패 선택)",
+  joker_call: "조커",
   // 2026-08-23 — 상시 패시브에서 2국 1회 액티브로 바뀐 모양 규칙 3종
   declare_mixed_triplet: "동수의 결속 선언",
   declare_broken_border: "무너진 국경 선언",
   declare_async_chiitoi: "비대칭 선언",
   // 2026-09-24 (8차) 신규
-  pruning_swap: "가지치기 (바꿀 3장 선택)",
+  pruning_swap: "가지치기",
   copy_take: "카피",
   yggdrasil_call: "위그드라실 발동",
   swamp_activate: "늪 발동",
-  greed_use: "욕심 (방금 쯔모한 패)",
+  greed_use: "욕심",
   intimidate_riichi: "위압 리치",
 };
 
@@ -780,21 +789,28 @@ function doomedTileIdsOf(
     }
     return [...new Set(Object.values(map).filter((v): v is number => typeof v === "number"))];
   }
+  if (actionType === "recall") {
+    // 회수 — 대가로 **지금 쯔모한 패**가 내 바닥으로 나간다(후리텐 이력에도 남는다, core
+    // standardAugments RECALL_PERFORMED). 대상이 서버가 고르는 재료가 아니라 myDrawnTile
+    // 그대로라 위의 «계산 두 벌 금지» 규약과 어긋나지 않는다(2026-09-25, docs/59 U36).
+    return view.round.myDrawnTile !== null ? [view.round.myDrawnTile] : [];
+  }
   return [];
 }
 
 /**
  * 액티브 액션 타입 → 화면에 쓸 이름. 카탈로그(서버가 보내는 증강 정의)의 증강 이름을
  * 우선 쓰고, 매칭이 없으면 액션 라벨로 떨어진다.
+ *
+ * 마지막 폴백은 `actionLabel` 한 경로다 — 예전엔 여기서 `?? type`으로 조용히 끝나
+ * 이름이 빠진 액션이 개발 중에도 경고 없이 내부 id로 섰다(2026-09-25, docs/59 U62).
  */
 function augActionName(
   catalog: Record<string, AugmentCatalogEntry>,
   type: string,
 ): string {
   const augId = ACTION_AUGMENT[type];
-  return (
-    (augId !== undefined ? catalog[augId]?.name : undefined) ?? ACTION_LABEL[type] ?? type
-  );
+  return (augId !== undefined ? catalog[augId]?.name : undefined) ?? actionLabel(type, catalog);
 }
 
 /** 플레이어가 버튼으로 발동하는 액티브 증강 액션 타입 (타일 클릭 액션은 제외). */
@@ -1009,7 +1025,8 @@ const QUEST_GOAL: Record<string, string> = {
  * - "hand"      : 내 손패의 패를 클릭 (payload에 tileId)
  * - "opp"       : 상대 플레이어를 클릭 (payload에 target)
  * - "own-river" : 내 바닥(버림패)의 패를 클릭 (payload에 recallTileId 또는 kind)
- * - "opp-river" : 상대 바닥의 (가장 최근) 버림패를 클릭 (payload에 snatchId/fromPlayer)
+ * - "opp-river" : 상대 바닥의 버림패를 클릭 (payload에 snatchId·graveId·tileId / fromPlayer)
+ *                 — 날치기는 각 상대의 최근 3장, 도굴은 화료가 되는 과거 버림패, 정적의 손은 서버 후보 그대로
  * - "swap3"     : 상대를 클릭한 뒤 내 손패 3장을 클릭 (등가교환 전용)
  * - "hand3"     : 내 손패 3장을 클릭해 고른 뒤 [확인] (payload에 정렬된 tileIds 3장 — 가지치기)
  */
@@ -1040,7 +1057,7 @@ const ARM_MODE: Record<string, ArmMode> = {
   peek_waits: "opp",
   // 내 바닥(버림패) 클릭 — 회수할/지뢰로 지정할 버림패를 고른다
   recall: "own-river",
-  // 상대 바닥 클릭 — 주울 상대의 최근 버림패를 고른다
+  // 상대 바닥 클릭 — 주울 상대의 버림패를 고른다(각 상대의 최근 3장 — content pond_snatch.ts)
   pond_snatch: "opp-river",
   // 상대 바닥 클릭 — 무덤에 잠든 과거의 버림패를 파낸다(바닥 전체가 대상)
   grave_rob: "opp-river",
@@ -1063,8 +1080,8 @@ const ARM_MODE: Record<string, ArmMode> = {
   conjure_tsumo: "hand",
   // 손바닥 뒤집기 — 리치 중, 쯔모기리 대신 버릴 손패를 클릭한다 (2026-08-15)
   flip_riichi: "hand",
-  // 정적의 손 — 새 탭 없이 실제 바닥패(네 사람 전부)를 직접 클릭해 주울 패를 고른다
-  // 정적의 손 — 2026-08-20부터 **상대 셋의 바닥만** 대상이다(내 바닥 제외)
+  // 정적의 손 — 새 탭 없이 실제 바닥패를 직접 클릭해 주울 패를 고른다.
+  // 2026-08-20부터 **상대 셋의 바닥만** 대상이다(내 바닥 제외)
   silent_take: "opp-river",
   // 영혼의 일격 — 리치처럼, 리치 걸 손패(버릴 패)를 직접 클릭해 선언한다
   soul_strike: "hand",
@@ -1089,7 +1106,6 @@ function armModeOf(type: string): ArmMode | undefined {
  */
 const HAND_MANIP_ACTIONS = new Set(["hand_swap", "swap3", "seat_swap"]);
 
-/** 무장 안내 문구 — 무엇을 클릭해야 하는지. */
 /**
  * 무장한 뒤 **패를 버리면서** 발동하는 리치 계열 액션.
  *
@@ -1128,12 +1144,67 @@ const RIICHI_AUG_IDS = new Set(
     .filter((id): id is string => id !== undefined),
 );
 
+/**
+ * 무장 안내 문구 — 무엇을 클릭하면 **무슨 일이 생기는지**. 안내 줄은 `{증강 이름}: {문구}`다.
+ *
+ * 예전엔 대부분이 모드 기본값(«발동할 손패를 클릭하세요»·«대상 상대를 클릭하세요»)이었고,
+ * 동사 몫은 이름표(ACTION_LABEL — «대기패 위조»·«스파이 지정»)가 반쯤 했다. 이제 이름은
+ * 증강 이름 하나라(docs/59 U18) 선언 간파의 위조·간파처럼 한 증강의 두 액션이 같은 이름으로
+ * 합쳐진다 — 그 구분을 이 표가 맡는다(2026-09-25, docs/59 U19).
+ * 소환·스파이는 패 종류마다 후보가 하나라 **한 번 누르면 곧바로 확정**이다 — 그래서 그걸 적는다.
+ * 문체는 docs/52(«~하세요», 줄표 대신 마침표). 증강 규칙이 바뀌면 그 증강 파일 머리 주석과 대조한다.
+ */
+const ARM_PROMPT: Record<string, string> = {
+  // 손패
+  tile_dye: "무늬를 바꿀 수패를 클릭하세요",
+  alchemy: "숫자를 ±1 바꿀 수패를 클릭하세요",
+  split_tile: "두 장으로 쪼갤 수패를 클릭하세요",
+  peek_forge: "간파한 대기패로 바꿀 손패를 클릭하세요",
+  spy_mark: "몰래 지정할 패 종류를 클릭하세요. 누르면 바로 정해집니다",
+  conjure_tsumo: "다음 쯔모로 부를 패 종류를 클릭하세요. 누르면 바로 정해집니다",
+  joker_call: "백으로 바꿀 손패를 클릭하세요. 백을 고르면 바로 발동합니다",
+  frame_discard: "심을 손패를 클릭한 뒤, 놓을 상대의 바닥을 클릭하세요",
+  // 상대
+  // 통째로 바꾸기는 «맞바꾸기»가 아니라 상대 손패를 가져온다(내 손패는 패산 맨 밑 — full_hand_swap.ts)
+  hand_swap: "손패를 통째로 가져올 상대를 클릭하세요",
+  peek_waits: "대기패를 간파할 상대를 클릭하세요",
+  parasite_attach: "기생할 상대를 클릭하세요",
+  copy_take: "증강을 빌려 올 상대를 클릭하세요",
+  seat_swap: "자리를 바꿀 상대를 클릭하세요",
+  scapegoat_mark: "내 쯔모 점수를 혼자 낼 상대를 클릭하세요",
+  push_brand: "낙인을 찍을 상대를 클릭하세요",
+  rank_gate_mark: "4판 이하로는 화료할 수 없게 할 상대를 클릭하세요",
+  // 바닥 — 회수의 대가(쯔모패가 내 바닥으로 나가 후리텐 이력에 남는다)는 손패의 ✕가 짚는다(U36)
+  recall: "되가져올 내 버림패를 클릭하세요. ✕ 표시된 쯔모패가 대신 바닥으로 나갑니다",
+  // 정적의 손 — 옛 모달에만 있던 «이어서 한 장을 버려야 한다»를 여기로 옮겼다(U11)
+  silent_take:
+    "가져올 상대의 버림패를 클릭하세요. 지금 쯔모한 패는 패산 맨 밑으로 돌아가고, 이어서 한 장을 버려야 합니다",
+};
+
+/**
+ * 상대 줄 위 무장 태그의 **동사** — 눈이 대상 쪽에 가 있는 순간 그 자리에서 무슨 일이
+ * 생기는지 읽히게 한다(2026-09-25, docs/59 U29). 태그는 `{증강 이름}: {동사}`, 표에 없으면
+ * «여기를 클릭»으로 물러난다(내부 type을 쓰지 않는다).
+ */
+const OPP_ARM_TAG: Record<string, string> = {
+  // 머리가 이미 증강 이름이라 같은 말을 되풀이하지 않는 동사로 둔다(«통째로 바꾸기: 손패 통째로 바꾸기» ✗)
+  hand_swap: "이 손패 가져오기",
+  seat_swap: "이 자리와 바꾸기",
+  copy_take: "증강 하나 빌려 오기",
+  peek_waits: "대기 엿보기",
+  scapegoat_mark: "이 사람에게 씌우기",
+  push_brand: "낙인 찍기",
+  parasite_attach: "기생하기",
+  rank_gate_mark: "4판 이하 화료 막기",
+  swap3: "교환 상대로 고르기",
+};
+
 function armPromptText(mode: ArmMode | null, type?: string | null): string {
   if (type !== null && type !== undefined && DRAG_DISCARD_ARM_TYPES.has(type)) {
     return "버릴 패를 바닥으로 끌어 놓거나 클릭하세요";
   }
-  if (type === "joker_call") return "백으로 바꿀 손패를 클릭하세요. 백을 고르면 바로 발동합니다";
-  if (type === "frame_discard") return "심을 손패를 클릭한 뒤, 놓을 상대의 바닥을 클릭하세요";
+  const own = type !== null && type !== undefined ? ARM_PROMPT[type] : undefined;
+  if (own !== undefined) return own;
   switch (mode) {
     case "opp":
       return "대상 상대를 클릭하세요";
@@ -15946,7 +16017,8 @@ function useSelection(
     if (armMode === "opp-river") {
       if (ownerId === view.playerId) return undefined;
       return armedOptions.find((o) => {
-        // 날치기는 최근 버림패(snatchId), 무덤 도굴은 바닥 전체(graveId)가 대상이다
+        // 날치기는 각 상대의 최근 3장(snatchId), 무덤 도굴은 화료가 성립하는 과거 버림패
+        // 한 장 한 장(graveId)이 대상이다 — 후보가 패 단위라 누른 패와 곧바로 짝이 맞는다
         const p = o.payload as {
           snatchId?: unknown;
           graveId?: unknown;
@@ -18757,13 +18829,32 @@ function OpponentStrip({
       const raw = view.augmentView["full_hand_swap:faster"];
       return Array.isArray(raw) && (raw as unknown[]).includes(player.id);
     })();
+  /*
+   * 무장 태그 — 눈이 대상 쪽에 가 있는 순간 **그 자리에서** 무슨 일이 생기는지 읽히게
+   * `{증강 이름}: {동사}`로 적는다. 예전엔 «여기를 클릭»뿐이라 자리 바꿈·통째로 바꾸기처럼
+   * 되돌릴 수 없는 지목 직전에 확인하려면 화면 아래 안내 줄로 눈을 옮겨야 했다
+   * (2026-09-25, docs/59 U29). 좌우 세로 줄은 폭이 좁아 동사만 둔다(compact).
+   */
+  const armType = sel.armedType;
+  const armVerb = armType !== null ? OPP_ARM_TAG[armType] : undefined;
+  const armAugName = armType !== null ? augActionName(catalog, armType) : "";
+  const armTagText = (compact: boolean): string => {
+    const body =
+      armVerb === undefined ? "여기를 클릭" : compact ? armVerb : `${armAugName}: ${armVerb}`;
+    return swapFaster ? `⚡ 나보다 빠름. ${body}` : body;
+  };
   // 무장 대상 상대에 붙일 공통 속성 (클릭 발동 + data-arm-zone로 빈곳-취소 방지)
   const armProps = oppArmable
     ? {
         "data-arm-zone": "1",
         // 화면에 보이는 이름과 같게 읽어 준다 — 봇 서버 닉네임(`Bot_p2`)이 아니라 «봇1»
-        // (2026-09-25, docs/59 U67)
-        ...clickableProps(() => sel.clickOpp(player.id), `${playerName(view, player)} 고르기`),
+        // (2026-09-25, docs/59 U67). 무엇을 하는지도 함께 — «봇1에게 통째로 바꾸기»(U29)
+        ...clickableProps(
+          () => sel.clickOpp(player.id),
+          armType !== null
+            ? `${playerName(view, player)}에게 ${armAugName}`
+            : `${playerName(view, player)} 고르기`,
+        ),
       }
     : {};
   // 선언 간파로 알아낸 이 상대의 화료패 — 발동한 본인에게만 상시 노출
@@ -18892,9 +18983,7 @@ function OpponentStrip({
         {...armProps}
       >
         {oppArmable ? (
-          <div className={`opp-arm-tag${swapFaster ? " opp-arm-fast" : ""}`}>
-            {swapFaster ? "⚡ 나보다 빠름. 여기를 클릭" : "여기를 클릭"}
-          </div>
+          <div className={`opp-arm-tag${swapFaster ? " opp-arm-fast" : ""}`}>{armTagText(false)}</div>
         ) : oppRiichiBlocked ? (
           <div className="opp-arm-tag opp-arm-blocked">리치 중이라 대상으로 고를 수 없습니다</div>
         ) : null}
@@ -18931,9 +19020,7 @@ function OpponentStrip({
       {...armProps}
     >
       {oppArmable ? (
-          <div className={`opp-arm-tag${swapFaster ? " opp-arm-fast" : ""}`}>
-            {swapFaster ? "⚡ 나보다 빠름. 여기를 클릭" : "여기를 클릭"}
-          </div>
+          <div className={`opp-arm-tag${swapFaster ? " opp-arm-fast" : ""}`}>{armTagText(true)}</div>
         ) : oppRiichiBlocked ? (
           <div className="opp-arm-tag opp-arm-blocked">리치 중이라 대상으로 고를 수 없습니다</div>
         ) : null}
@@ -21022,6 +21109,11 @@ function OwnArea(props: {
     if (armedAug === "split_tile" && hoverId !== null) {
       return new Set(doomedTileIdsOf(view, "split_tile", hoverId));
     }
+    // 회수 — 무장하는 동안 내내 쯔모패에 ✕를 둔다. 무장 직후 hintNone이 hover 신호를
+    // 걷으므로 여기서 따로 잡지 않으면 확정 전에 무엇을 잃는지 화면에서 사라진다.
+    // 대상이 서버 재료가 아니라 myDrawnTile 그대로라 계산 두 벌 금지 규약과 어긋나지 않는다
+    // (2026-09-25, docs/59 U36).
+    if (armedAug === "recall") return new Set(doomedTileIdsOf(view, "recall"));
     return doomedHint ?? new Set<number>();
   }, [armedAug, hoverId, view, doomedHint]);
   const swapTarget = sel.swapTarget;
@@ -21182,7 +21274,14 @@ function OwnArea(props: {
     sel.setSwapGive(next);
   };
 
-  const armName = armedAug !== null ? (ACTION_LABEL[armedAug] ?? armedAug) : "";
+  /*
+   * 무장 안내 줄·드롭존·armSub 제목의 이름 — 방금 누른 버튼과 **같은 증강 이름**이다.
+   * 예전엔 ACTION_LABEL(«불퇴 리치»·«손패 강탈»)이라 «⚡ 물러설 수 없는 선언»을 누르자마자
+   * 안내가 다른 이름으로 불러 «다른 걸 눌렀나?» 하고 손이 멎었다. 한 증강의 두 액션(선언 간파의
+   * 위조·간파)이 같은 이름이 되는 몫은 ARM_PROMPT가 가른다(2026-09-25, docs/59 U18·U19).
+   * 폴백은 augActionName → actionLabel 한 경로(U62).
+   */
+  const armName = armedAug !== null ? augActionName(props.catalog, armedAug) : "";
   const areaRef = useRef<HTMLDivElement>(null);
 
   /*
@@ -22080,7 +22179,7 @@ function OwnArea(props: {
             props.spectateChoice !== undefined &&
             props.spectateChoice.mixed === true &&
             props.spectateChoice.seat === me.id ? (
-              <SpectateUsableStrip choice={props.spectateChoice} />
+              <SpectateUsableStrip choice={props.spectateChoice} catalog={props.catalog} />
             ) : null}
             <ActiveInfoBadges view={focusView} me={me} spectator={isSpectator} />
           </div>
@@ -22190,13 +22289,22 @@ function OwnArea(props: {
           <div className="rinshan-pick-overlay" data-arm-zone="1">
             <div className="rinshan-pick-panel">
               <PickTimer deadline={props.promptDeadline} />
+              {/* 선언 간파의 위조 — 제목이 증강 이름(«선언 간파»)이 되면서 «간파한 대기패로
+                  위조한다»는 맥락이 사라지므로 제목·부제에 그 몫을 적는다(2026-09-25, docs/59 U15) */}
               <div className="rinshan-pick-title">
-                {armName}: {armSub.options[0]?.type === "split_tile" ? "어떻게 나눌지 선택" : "무엇으로 바꿀지 선택"}
+                {armName}:{" "}
+                {armSub.options[0]?.type === "split_tile"
+                  ? "어떻게 나눌지 선택"
+                  : armSub.options[0]?.type === "peek_forge"
+                    ? "간파한 대기패 중 무엇으로 바꿀까요"
+                    : "무엇으로 바꿀지 선택"}
               </div>
               <div className="rinshan-pick-sub">
                 {armSub.options[0]?.type === "split_tile"
                   ? "고른 패가 어떤 두 장으로 갈라지는지 보고 고르세요. 보라색 패가 새로 만들어지는 패입니다."
-                  : "고른 패가 어떻게 바뀌는지 보고 고르세요. 보라색 패가 새로 만들어지는 패입니다."}
+                  : armSub.options[0]?.type === "peek_forge"
+                    ? "고른 손패가 간파한 상대의 대기패 한 장으로 바뀝니다. 보라색 패가 새로 만들어지는 패입니다."
+                    : "고른 패가 어떻게 바뀌는지 보고 고르세요. 보라색 패가 새로 만들어지는 패입니다."}
               </div>
               <div className="rinshan-pick-tiles">
                 {armSub.options.map((o, i) => {
@@ -22285,6 +22393,7 @@ function OwnArea(props: {
           <SpectateChoicePanel
             choice={props.spectateChoice}
             view={view}
+            catalog={props.catalog}
             focus={props.spectateChoice.seat === me.id}
           />
         ) : null}
@@ -22401,7 +22510,11 @@ function OwnArea(props: {
                   formatTile(view.tiles[id]),
                   isDrawn ? "방금 쯔모" : null,
                   sealed ? "봉인됨" : null,
-                  doomed ? "누르면 이 발동에 쓰여 사라지는 패" : null,
+                  doomed
+                    ? armedAug === "recall"
+                      ? "회수하면 대신 내 바닥으로 나가는 패"
+                      : "누르면 이 발동에 쓰여 사라지는 패"
+                    : null,
                   kuikae ? "쿠이카에라 이번 순에는 버릴 수 없음" : null,
                   danger ? "위험패" : null,
                   safe ? "리치한 사람이 이미 버린 현물" : null,
@@ -25235,18 +25348,47 @@ function ActiveAugmentControl(props: {
    * ("국의 첫 순에만"·"리치 중 불가"처럼)은 서버가 이유를 실어 주지 않으므로 지어내지
    * 않는다 — 틀린 이유를 대느니 아는 것만 말하는 편이 낫다.
    */
-  const blockedNote = (id: string): string => {
-    const name = props.catalog[id]?.name ?? id;
+  const blockedReason = (id: string): string | null => {
     const rounds = cooldownRoundsLeft(view, me.id, id);
-    if (rounds > 0) return `${name}: 쿨다운 ${rounds}국 남음`;
+    if (rounds > 0) return `쿨다운 ${rounds}국 남음`;
     const turns = cooldownTurnsLeft(view, me.id, id);
-    if (turns > 0) return `${name}: 쿨다운 ${turns}순 남음`;
+    if (turns > 0) return `쿨다운 ${turns}순 남음`;
     const uses = view.augmentView[`uses:${id}`] as { left?: unknown } | undefined;
     if (uses !== undefined && typeof uses.left === "number" && uses.left <= 0) {
-      return `${name}: 남은 횟수 없음`;
+      return "남은 횟수 없음";
     }
-    if (disarmedAugmentsOf(view, me.id).has(id)) return `${name}: 무장해제로 잠김`;
-    return name;
+    if (disarmedAugmentsOf(view, me.id).has(id)) return "무장해제로 잠김";
+    return null;
+  };
+  /*
+   * 못 쓰는 이유 문장 — 토스트(한 줄)와 버튼 title(여러 줄)이 같은 조립을 쓴다.
+   *
+   * 예전엔 사유 있는 것과 이름만 있는 것이 같은 쉼표로 이어져(«예지: 쿨다운 2순 남음, 조커,
+   * 카피») «조커, 카피»가 사유인지 목록인지 읽히지 않았다. 게다가 이 토스트가 가장 자주 뜨는
+   * 때는 **내 차례가 아닐 때**인데, 클라가 확실히 아는 그 이유를 말하지 않았다
+   * (2026-09-25, docs/59 U43). 첫머리는 내 프롬프트가 있는지 하나로 가른다 — 지어낸 사유가
+   * 아니다. 사유를 모르는 나머지는 «지금 발동 조건이 아닙니다»로 묶기만 하고, 구체적 조건은
+   * 여전히 말하지 않는다(위 주석). 내 차례가 아니면 첫머리가 이미 이유라 그 덩어리는 뺀다.
+   */
+  const blockedLines = (): string[] => {
+    const notMyTurn = myPrompt === null;
+    const lines = [notMyTurn ? "지금은 내 차례가 아닙니다" : "지금은 사용할 수 없습니다"];
+    const unexplained: string[] = [];
+    for (const id of activeIds) {
+      const name = augName(id, props.catalog);
+      const why = blockedReason(id);
+      if (why !== null) lines.push(`${name}: ${why}`);
+      else unexplained.push(name);
+    }
+    if (!notMyTurn && unexplained.length > 0) {
+      lines.push(`${unexplained.join(", ")}: 지금 발동 조건이 아닙니다`);
+    }
+    return lines;
+  };
+  /** 토스트는 한 줄이다(.toast에 pre-line이 없다) — 첫머리 뒤 마침표, 나머지는 « · » */
+  const blockedToast = (): string => {
+    const [head, ...rest] = blockedLines();
+    return rest.length > 0 ? `${head}. ${rest.join(" · ")}` : (head ?? "");
   };
 
   // 액션 타입별로 옵션을 묶는다 (타일 선택형은 개별 옵션이 아니라 '패 클릭'으로 발동)
@@ -25353,11 +25495,7 @@ function ActiveAugmentControl(props: {
        * 같은 패턴 — QA 4라운드 mobile-a11y P1).
        */
       haptics.reject();
-      props.onToast?.(
-        activeIds.length > 0
-          ? `지금은 사용할 수 없습니다. ${activeIds.map(blockedNote).join(", ")}`
-          : "지금은 사용할 수 없습니다",
-      );
+      props.onToast?.(blockedToast());
       return;
     }
     // 다시 눌러 선택 모드 취소(같은 타입이면 해제). 증강 리치 무장은 이 버튼 소관이
@@ -25391,23 +25529,9 @@ function ActiveAugmentControl(props: {
   // 모달에 펼치는 내 손패는 **항상 정렬해서** 보여준다 — Zone 순서(뽑은 순)로 두면
   // 게임판의 손패와 배열이 달라 같은 패를 눈으로 못 찾는다.
   const myHandIds = sortTileIds(view.zones[`hand:${me.id}`]?.tileIds ?? [], view.tiles);
-
-  // ── 정적의 손 — 네 바닥을 통째로 펼쳐 주울 버림패 1장을 고른다 ──
-  const silentByOwner = (() => {
-    if (pickModal !== "silent_take") return [];
-    const opts = byType.get("silent_take") ?? [];
-    const byId = new Map<number, ActionOption>();
-    for (const o of opts) {
-      const t = (o.payload as { tileId?: unknown }).tileId;
-      if (typeof t === "number") byId.set(t, o);
-    }
-    return view.players.map((p) => ({
-      player: p,
-      tiles: (view.zones[`discards:${p.id}`]?.tileIds ?? [])
-        .filter((id) => byId.has(id))
-        .map((id) => ({ id, opt: byId.get(id) as ActionOption })),
-    }));
-  })();
+  // (정적의 손 전용 모달은 걷었다 — opp-river 무장이 먼저 가로채 열릴 길이 없었고, 2026-08-20
+  //  «상대 셋의 바닥만» 규칙과 어긋난 «내 바닥» 행이 남아 있었다. 그 모달에만 있던 «이어서
+  //  한 장을 버려야 한다»는 ARM_PROMPT로 옮겼다 — 2026-09-25, docs/59 U11)
 
   // ── 예지 — 공개된 패를 버튼 옆 스트립에 늘어놓고, 재배열 가능할 때만 드래그시킨다 ──
   // (후보 매핑·핸들러; 훅은 위에)
@@ -25582,7 +25706,7 @@ function ActiveAugmentControl(props: {
                       setPickModal(null);
                     }}
                   >
-                    <span className="aug-pick-row-label">{optionDetail(view, o) || suit}</span>
+                    <span className="aug-pick-row-label">{optionDetail(view, o)}</span>
                     <span className="aug-pick-row-tiles">
                       {preview.map((p) => (
                         <TileImg key={p.id} tile={p.tile} size="mini" />
@@ -25684,49 +25808,6 @@ function ActiveAugmentControl(props: {
             </div>
             <button className="rinshan-pick-skip" onClick={closeModal}>
               발동하지 않고 닫기
-            </button>
-          </div>
-        </div>,
-        document.body,
-      ) : null}
-      {/* 정적의 손 — 네 바닥을 통째로 펼쳐 주울 버림패 1장을 고른다 */}
-      {pickModal === "silent_take" ? createPortal(
-        <div className="rinshan-pick-overlay">
-          <div className="rinshan-pick-panel aug-pick-wide">
-            <PickTimer deadline={props.promptDeadline ?? null} />
-            <div className="rinshan-pick-title">🤫 {augNameFor("silent_take")}: 가져올 버림패 선택</div>
-            <div className="rinshan-pick-sub">
-              버림패 중 한 장을 골라 가져옵니다. 지금 쯔모한 패는 패산 맨 밑으로 돌아가고,
-              고른 패가 그 자리를 대신합니다. <b>이어서 한 장을 버려야 하며</b> 그 버림패로
-              상대가 론할 수 있습니다.
-            </div>
-            <div className="aug-pick-rows">
-              {silentByOwner.map(({ player, tiles }) =>
-                tiles.length === 0 ? null : (
-                  <div key={player.id} className="aug-pick-row aug-pick-row-static">
-                    <span className="aug-pick-row-label">
-                      {player.id === me.id ? "내 바닥" : playerNameById(view, player.id)}
-                    </span>
-                    <span className="aug-pick-row-tiles">
-                      {tiles.map(({ id, opt }) => (
-                        <button
-                          key={id}
-                          className="aug-pick-tile"
-                          onClick={() => {
-                            sel.submit(opt);
-                            closeModal();
-                          }}
-                        >
-                          <TileImg tile={view.tiles[id]} size="mini" />
-                        </button>
-                      ))}
-                    </span>
-                  </div>
-                ),
-              )}
-            </div>
-            <button className="rinshan-pick-skip" onClick={closeModal}>
-              가져오지 않고 닫기
             </button>
           </div>
         </div>,
@@ -26058,7 +26139,7 @@ function ActiveAugmentControl(props: {
                 // 단언(`!`)은 두지 않는다 — 그 단언이 «undefined 사용»을 화면까지
                 // 흘려보낸 장본인이다.
                 `${augNameFor(types[0] ?? "")} 사용`
-            : `지금은 사용할 수 없습니다\n${activeIds.map(blockedNote).join("\n")}`
+            : blockedLines().join("\n")
         }
         onClick={click}
         /* 손을 올리면 그 개수가 **어느 증강인지** 이름표 pill이 빛나 알려 준다.
@@ -26372,7 +26453,10 @@ function ActionBar(props: {
               여기서 사라지면 당한 사람은 왜 화료가 안 되는지 알 길이 없다.
               고를 것이 패스뿐이면 스스로 넘어가므로, 남은 시간을 버튼이 직접 보여 준다. */}
           {locked.map((l) => {
-            const label = l.type === "win" ? (isMyTurn ? "쯔모" : "론") : l.type;
+            // core 계약상 지금은 win뿐이지만, 늘어나도 내부 type이 조용히 서지 않게
+            // actionLabel 한 경로로 떨어뜨린다(2026-09-25, docs/59 U62)
+            const label =
+              l.type === "win" ? (isMyTurn ? "쯔모" : "론") : actionLabel(l.type, props.catalog);
             return (
               <button
                 key={`locked-${l.type}-${l.reason}`}
@@ -26518,7 +26602,7 @@ function ActionTiles({ view, option }: { view: PlayerView; option: ActionOption 
       );
     }
   }
-  // 숫자 증감(연금술 등): 바뀐 뒤 숫자(±1)를 '전→후'로 보여준다 (같은 무늬, rank±1)
+  // 숫자 증감(연금술 등): 바뀐 뒤 숫자(±1)를 '전→후'로 보여준다 (같은 무늬, rank±1 — 순환은 shiftedRank)
   if (typeof p.delta === "number" && typeof p.tileId === "number") {
     const src = view.tiles[p.tileId]?.kind;
     if (src !== undefined && typeof src.rank === "number") {
@@ -26527,7 +26611,7 @@ function ActionTiles({ view, option }: { view: PlayerView; option: ActionOption 
           <TileImg tile={view.tiles[p.tileId]} size="mini" />
           <span className="act-tiles-arrow" aria-hidden="true">→</span>
           <TileImg
-            tile={{ kind: { suit: src.suit, rank: src.rank + p.delta }, attrs: { conjured: true } }}
+            tile={{ kind: { suit: src.suit, rank: shiftedRank(src.rank, p.delta) }, attrs: { conjured: true } }}
             size="mini"
           />
         </span>
@@ -26576,6 +26660,20 @@ function ActionTiles({ view, option }: { view: PlayerView; option: ActionOption 
 }
 
 /**
+ * 숫자 증감(연금술 `{tileId, delta}`)의 결과 숫자 — 1~9 밖으로 나가면 **순환**시킨다.
+ *
+ * 서버는 끝없는 윤회(hand.wrapRanks)가 켜져 있을 때만 9의 +1·1의 −1 후보를 내고, 적용할 때
+ * 순환시킨다(content wrapRanks.shiftRank, 9+1=1). 그러니 범위 밖 후보가 왔다는 것 자체가
+ * 순환이 켜졌다는 뜻이다 — 보유 증강 id를 여기서 다시 보지 않는다(봇 alchemist.ts와 같은 논리).
+ * 예전엔 `rank + delta` 그대로라 미리보기에 «10삭»·«0만» 같은 없는 패가 섰다
+ * (2026-09-25, docs/59 U14).
+ */
+function shiftedRank(rank: number, delta: number): number {
+  const r = rank + delta;
+  return r > 9 ? 1 : r < 1 ? 9 : r;
+}
+
+/**
  * 패 변형형 액션(염색 `{tileId,suit}`·연금술 `{tileId,delta}`)의 '바꾼 뒤' 패를 만든다.
  * 전용 선택 모달이 전→후를 큰 패로 보여줄 때 쓴다. 변형형이 아니면 null.
  */
@@ -26591,7 +26689,7 @@ function morphedTile(
     return { kind: { suit: p.suit as TileKind["suit"], rank: src.rank }, attrs: { conjured: true } };
   }
   if (typeof p.delta === "number" && typeof src.rank === "number") {
-    return { kind: { suit: src.suit, rank: src.rank + p.delta }, attrs: { conjured: true } };
+    return { kind: { suit: src.suit, rank: shiftedRank(src.rank, p.delta) }, attrs: { conjured: true } };
   }
   // 종류를 통째로 지정하는 변형 (선언 간파 위조 — payload.kind는 kindKey 문자열)
   if (typeof p.kind === "string") {
@@ -26672,7 +26770,14 @@ function optionDetail(view: PlayerView, option: ActionOption): string {
   // 재장전은 반장전에 두 번뿐인데 무엇을 되살리는지 모른 채 찍어야 했다
   // (2026-08-08 QA §2-9).
   if (typeof p.augmentId === "string") return augmentDisplayName(p.augmentId);
-  if (typeof p.yaku === "string") return YAKU_NAMES[p.yaku] ?? p.yaku;
+  if (typeof p.yaku === "string") {
+    // 역 이름이 빠졌으면 내부 키(`ittsuu`)를 찍지 않고 라벨을 생략한다 — 버튼 본문은
+    // actionLabel이 따로 그린다. 개발 중에는 시끄럽게(2026-09-25, docs/59 U62)
+    const name = YAKU_NAMES[p.yaku];
+    if (name !== undefined) return name;
+    if (import.meta.env.DEV) console.warn(`[ui] 역 "${p.yaku}" 의 한글 이름이 없습니다 — YAKU_NAMES 에 추가하세요.`);
+    return "";
+  }
   // 분열 — 한 패에 후보가 여럿(9 → 1+8·2+7·3+6·4+5)이라 어느 분할인지 라벨로도 적는다
   if (option.type === "split_tile" && typeof p.a === "number" && typeof p.tileId === "number") {
     const src = view.tiles[p.tileId]?.kind;
@@ -26687,8 +26792,27 @@ function optionDetail(view: PlayerView, option: ActionOption): string {
       .filter((k): k is TileKind => k !== null);
     if (kinds.length > 0) return kinds.map((kind) => formatTile({ kind })).join("·");
   }
+  // 선언 간파 위조 — 후보마다 그림만 다르고 글자가 전부 같던(«이렇게 바꾸기») 것을 결과 패
+  // 이름으로 가른다. kind payload를 쓰는 다른 액션이 생겨도 라벨이 바뀌지 않게 type으로 좁힌다
+  // (2026-09-25, docs/59 U15)
+  if (option.type === "peek_forge" && typeof p.kind === "string") {
+    const k = parseKindKey(p.kind);
+    if (k !== null) return `→ ${formatTile({ kind: k })}`;
+  }
   const suitKo: Record<string, string> = { man: "만수", pin: "통수", sou: "삭수" };
-  if (typeof p.suit === "string") return suitKo[p.suit] ?? p.suit;
+  if (typeof p.suit === "string") {
+    const name = suitKo[p.suit];
+    if (name !== undefined) return name;
+    if (import.meta.env.DEV) console.warn(`[ui] 무늬 "${p.suit}" 의 한글 이름이 없습니다.`);
+    return "";
+  }
+  // 연금술 — «+1»만으로는 순환(9→1)인지 알 수 없어 결과 패 이름을 적는다(U14)
+  if (option.type === "alchemy" && typeof p.delta === "number" && typeof p.tileId === "number") {
+    const src = view.tiles[p.tileId]?.kind;
+    if (src !== undefined) {
+      return `→ ${formatTile({ kind: { suit: src.suit, rank: shiftedRank(src.rank, p.delta) } })}`;
+    }
+  }
   if (typeof p.delta === "number") return p.delta > 0 ? "+1" : "-1";
   if (typeof p.index === "number") return `영상패 ${p.index + 1}`;
   if (typeof p.kanKind === "string") {
@@ -27599,14 +27723,30 @@ function RoundResultPanel({
  *
  * 서버(`HanchanController.optionLabel`)는 `"alchemy man3 1"` 처럼 «액션 타입 + 인자»
  * 를 그대로 보낸다. core 에는 패의 한국어 표기가 없기 때문이다(그건 이 파일의 몫이다).
- * 그래서 여기서 첫 토막은 액션 이름표(`ACTION_LABEL`)로, 패 키(`man3`)는 실제 패
+ * 그래서 여기서 첫 토막은 증강 이름(`augActionName`)으로, 패 키(`man3`)는 실제 패
  * 그림으로 갈아 끼운다 — 남는 숫자·문자는 그대로 둔다(방향 ±1 같은 인자다).
+ *
+ * 이름은 대국자 화면의 버튼과 같은 증강 이름이다 — 예전엔 ACTION_LABEL이라 제목
+ * «미래를 보는 자» 아래 «미래 보기»가 붙었다. 제목(= 서버 choiceTitle, 증강 이름)과 같으면
+ * 같은 말을 줄마다 되풀이하지 않게 머리를 생략한다(인자가 없으면 남긴다 — 빈 줄이 되므로)
+ * (2026-09-25, docs/59 U18).
  */
-function ChoiceLabel({ label }: { label: string }): JSX.Element {
+function ChoiceLabel({
+  label,
+  catalog,
+  title,
+}: {
+  label: string;
+  catalog: Record<string, AugmentCatalogEntry>;
+  /** 선택창 제목 — 머리가 이것과 같으면 생략한다 */
+  title?: string;
+}): JSX.Element {
   const [head, ...rest] = label.split(" ");
+  const name = augActionName(catalog, head ?? "");
+  const showHead = rest.length === 0 || name !== title;
   return (
     <span className="spec-choice-opt-label">
-      <span className="spec-choice-opt-act">{ACTION_LABEL[head ?? ""] ?? head}</span>
+      {showHead ? <span className="spec-choice-opt-act">{name}</span> : null}
       {rest.map((tok, i) => {
         const kind = parseKindKey(tok);
         return kind === null ? (
@@ -27638,11 +27778,14 @@ function ChoiceLabel({ label }: { label: string }): JSX.Element {
 function SpectateChoicePanel({
   choice,
   view,
+  catalog,
   focus = false,
 }: {
   choice: SpectateChoiceShown;
   /** 좌석 이름·자풍을 얻는 곳 (관전 뷰) */
   view: PlayerView;
+  /** 선택지 머리를 증강 이름으로 부르는 곳 (U18) */
+  catalog: Record<string, AugmentCatalogEntry>;
   /**
    * 고르는 좌석이 지금 **아래 자리(초점)** 다 — 그 사람 화면을 같이 보는 셈이므로
    * 중계 카드가 아니라 그 사람에게 뜬 선택창처럼 크게 세운다(2026-09-04).
@@ -27681,7 +27824,7 @@ function SpectateChoicePanel({
                 }`}
                 key={`${i}-${o.label}`}
               >
-                <ChoiceLabel label={o.label} />
+                <ChoiceLabel label={o.label} catalog={catalog} title={choice.title} />
                 {o.detail !== undefined ? (
                   <span className="spec-choice-opt-detail">{o.detail}</span>
                 ) : null}
@@ -27691,7 +27834,7 @@ function SpectateChoicePanel({
         )}
         {picked !== undefined ? (
           <p className="spec-choice-note spec-choice-picked-line">
-            선택한 항목: <ChoiceLabel label={picked} />. 잠시 후 게임에 반영됩니다
+            선택한 항목: <ChoiceLabel label={picked} catalog={catalog} title={choice.title} />. 잠시 후 게임에 반영됩니다
           </p>
         ) : (
           <p className="spec-choice-note">
@@ -27711,29 +27854,42 @@ function SpectateChoicePanel({
  *
  * 그 사람 화면에는 이때 모달이 아니라 액티브 증강 **단추**만 서 있다. 관전 화면이
  * 이걸 선택창으로 그리면 매 순 «증강 사용 중»이 뜨는 거짓말이 되므로, 단추 자리에
- * 같은 것을 읽기 전용 띠로 세운다. 액션 타입별로 하나씩만 적는다(연금술사처럼
+ * 같은 것을 읽기 전용 띠로 세운다. **증강 이름**별로 하나씩만 적는다(연금술사처럼
  * 패마다 후보가 서는 증강은 수십 개다). 고르면(`picked`) 그 증강에 ✓가 붙는다.
+ *
+ * 칩 이름은 그 사람 단추와 같은 증강 이름이고, 그래서 중복도 증강 이름으로 걷는다 —
+ * 선언 간파의 간파·위조가 같은 칩 두 개로 서지 않게(2026-09-25, docs/59 U18).
  */
-function SpectateUsableStrip({ choice }: { choice: SpectateChoiceShown }): JSX.Element | null {
-  const types: string[] = [];
+function SpectateUsableStrip({
+  choice,
+  catalog,
+}: {
+  choice: SpectateChoiceShown;
+  catalog: Record<string, AugmentCatalogEntry>;
+}): JSX.Element | null {
+  const names: string[] = [];
   for (const o of choice.options) {
     const head = o.label.split(" ")[0] ?? "";
-    if (head !== "" && !types.includes(head)) types.push(head);
+    if (head === "") continue;
+    const name = augActionName(catalog, head);
+    if (!names.includes(name)) names.push(name);
   }
-  if (types.length === 0) return null;
+  if (names.length === 0) return null;
   const pickedHead = choice.picked?.split(" ")[0];
+  const pickedName =
+    pickedHead !== undefined && pickedHead !== "" ? augActionName(catalog, pickedHead) : undefined;
   return (
     <div className="spec-usable" title="관전 중인 플레이어의 화면에 표시된 액티브 증강 버튼입니다">
       <span className="spec-usable-tag">사용 가능한 증강</span>
-      {types.map((t) => (
+      {names.map((n) => (
         <span
-          key={t}
+          key={n}
           className={`spec-usable-chip${
-            pickedHead !== undefined ? (t === pickedHead ? " spec-usable-picked" : " spec-usable-dim") : ""
+            pickedName !== undefined ? (n === pickedName ? " spec-usable-picked" : " spec-usable-dim") : ""
           }`}
         >
-          {t === pickedHead ? "✓ " : ""}
-          {ACTION_LABEL[t] ?? t}
+          {n === pickedName ? "✓ " : ""}
+          {n}
         </span>
       ))}
     </div>

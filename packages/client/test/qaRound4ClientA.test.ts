@@ -156,7 +156,10 @@ describe("규칙·계산식 설명이 터치에서도 열린다", () => {
     expect(APP_CODE).toContain("aria-disabled={!usable}");
     // `aria-disabled` 는 이 부분문자열을 포함하므로 줄 시작까지 함께 본다
     expect(APP_CODE).not.toMatch(/\n\s*disabled=\{!usable\}/);
-    expect(APP_CODE).toContain("지금은 사용할 수 없습니다. ${activeIds.map(blockedNote).join(\", \")}");
+    // 2026-09-25 (docs/59 U43): 토스트와 title이 같은 조립(blockedLines)을 쓴다 —
+    // 첫머리는 «내 차례가 아님/사용할 수 없음», 사유 있는 것만 «이름: 사유»
+    expect(APP_CODE).toContain("props.onToast?.(blockedToast());");
+    expect(APP_CODE).toContain('const lines = [notMyTurn ? "지금은 내 차례가 아닙니다" : "지금은 사용할 수 없습니다"];');
     expect(CSS_CODE).toContain('.aug-btn[aria-disabled="true"]');
   });
 });

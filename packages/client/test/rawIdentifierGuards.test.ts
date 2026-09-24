@@ -149,7 +149,9 @@ describe("봇 서버 닉네임 — 판 위 이름으로 부른다 (U67)", () => 
   });
 
   it("상대 고르기 aria와 가려진 도라 뱃지는 playerName", () => {
-    expect(SRC).toContain("sel.clickOpp(player.id), `${playerName(view, player)} 고르기`)");
+    // 2026-09-25 (docs/59 U29): 무엇을 하는지도 함께 읽는다 — «봇1에게 통째로 바꾸기»
+    expect(SRC).toContain("? `${playerName(view, player)}에게 ${armAugName}`");
+    expect(SRC).toContain(": `${playerName(view, player)} 고르기`,");
     expect(SRC).toContain('const who = others.map((p) => playerName(view, p)).join(" · ");');
   });
 

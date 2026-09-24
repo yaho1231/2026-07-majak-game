@@ -113,6 +113,46 @@ describe("클라이언트 액티브 증강 배선", () => {
     expect(SRC).toMatch(/if \(hand3Option !== undefined\) sel\.submit\(hand3Option\)/);
   });
 
+  /*
+   * 2026-09-25 (docs/59 U62·U11): 버튼형(AUGMENT_ACTION_TYPES)만 라벨을 검사하면, 새 무장형
+   * 액션을 ARM_MODE에만 넣고 이름을 빠뜨렸을 때 «입구» 검사는 armMode.has로 통과하고
+   * 라벨 검사는 놓친다 — 그러면 무장 안내가 «frame_discard: …»처럼 내부 id로 선다.
+   * setLiterals는 주석 속 따옴표 문자열까지 줍기 때문에 식별자 모양만 남긴다.
+   */
+  const ids = (xs: Iterable<string>): string[] =>
+    [...xs].filter((x) => /^[a-z0-9_]+$/.test(x)).sort();
+
+  it("무장형·모달형·증강 리치 액션도 전부 사람이 읽는 라벨을 가진다", () => {
+    const pools = [
+      ids(armMode.keys()),
+      ids(setLiterals("MODAL_PICK_TYPES")),
+      ids(setLiterals("DRAG_DISCARD_ARM_TYPES")),
+    ];
+    // 파서가 헛돌아 빈 목록으로 통과하는 것을 막는다
+    for (const pool of pools) expect(pool.length).toBeGreaterThan(3);
+    const missing = pools.flat().filter((t) => !actionLabel.has(t));
+    expect(missing).toEqual([]);
+  });
+
+  it("무장형과 모달형은 겹치지 않는다 — 무장이 먼저 가로채 모달이 죽은 코드가 된다", () => {
+    // activate()는 ARM_MODE를 MODAL_PICK_TYPES보다 먼저 본다. 둘 다 등록하면 모달은
+    // 영영 안 열리고, 그 안의 옛 안내만 코드에 남는다(정적의 손 모달이 그렇게 남았었다).
+    const modal = new Set(ids(setLiterals("MODAL_PICK_TYPES")));
+    expect(ids(armMode.keys()).filter((t) => modal.has(t))).toEqual([]);
+    expect(SRC).not.toContain('pickModal === "silent_take"');
+  });
+
+  it("핏빛 계약이 고르게 하는 역은 전부 한글 역 이름이 있다", () => {
+    // 없으면 선택지 라벨이 비고(optionDetail은 원문 키 대신 생략한다) 버튼만 남는다
+    const bc = readFileSync(join(HERE, "../src/augments/blood_contract.ts"), "utf8");
+    const m = /const CONTRACT_YAKU = \[([\s\S]*?)\] as const;/.exec(bc);
+    if (m === null) throw new Error("CONTRACT_YAKU 선언을 못 찾았다 (형태가 바뀌었는가?)");
+    const contract = [...m[1]!.matchAll(/"([^"]+)"/g)].map((x) => x[1]!);
+    expect(contract.length).toBeGreaterThan(5);
+    const yakuNames = recordLiterals("YAKU_NAMES", "string");
+    expect(contract.filter((y) => !yakuNames.has(y))).toEqual([]);
+  });
+
   it("폐기된 도박사의 손 배선이 남아 있지 않다", () => {
     for (const s of [augmentActionTypes, activeAugmentIds, setLiterals("MODAL_PICK_TYPES")]) {
       expect(s.has("take_rinshan")).toBe(false);
