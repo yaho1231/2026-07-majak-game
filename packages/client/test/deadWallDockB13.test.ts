@@ -79,8 +79,11 @@ describe("U04 왕패의 주인 — 모달이 아니라 실제 손패 + 도킹 �
     const sel = fnBody("useSelection");
     expect(sel).toContain("const dwClickHand = (id: number)");
     expect(sel).toContain("const dwClickDead = (idx: number)");
-    expect(sel).toContain("if (dwDead !== null && dwHasOpt(id, dwDead)) {");
-    expect(sel).toContain("if (dwHand !== null && dwHasOpt(dwHand, idx)) {");
+    expect(sel).toContain("if (dwDead !== null) {");
+    expect(sel).toContain("if (dwHand !== null) {");
+    // 먼저 고른 반대쪽과 짝이 안 되는(흐리게 그려진) 쪽을 누르면 몰래 갈아타지 않고 까닭을 말한다(B13 리뷰)
+    expect(sel).toContain('if (!dwHasOpt(id, dwDead)) return dwHasOpt(id, null) ? "mismatch" : "none";');
+    expect(sel).toContain('if (!dwHasOpt(dwHand, idx)) return dwHasDeadOpt(idx) ? "mismatch" : "none";');
     // 남은 횟수가 예약 상한이다
     expect(sel).toContain('if (dwPairs.length >= dwRemaining) return "full";');
   });
@@ -178,5 +181,39 @@ describe("U05 왕패 칸의 자리 이름·색", () => {
     // 절벽 위 꽃(.rinshan-slot-rinshan 단독 규칙)은 바뀌지 않는다
     expect(CSS_CODE).toContain(".rinshan-slot-rinshan { border-color: rgba(111, 214, 167, 0.5); }");
     expect(CSS_CODE).not.toMatch(/\n\.rinshan-slot-(dora|ura)/);
+  });
+
+  it("고른 칸은 공개된 도라 자리의 금빛 바탕보다 선택 바탕이 앞선다 (B13 리뷰)", () => {
+    expect(ruleBody(".dw-dock .aug-pick-tile.aug-pick-tile-on")).toContain("background:");
+    expect(ruleBody(".dw-dock .aug-pick-tile.aug-pick-tile-staged")).toContain("background:");
+  });
+
+  it("좁은 화면·폰 가로에서 패널을 접는다 — 등가교환 참고 줄과 같은 처지(order:-1, --own-band 밖) (B13 리뷰)", () => {
+    const narrow = CSS_CODE.indexOf("@container ui (max-width: 820px) {\n  .dw-dock {");
+    // 주석을 걷으면 여는 괄호 뒤에 빈 줄이 남는다 — 공백은 느슨하게
+    const land = CSS_CODE.search(/@container ui \(max-height: 560px\) and \(orientation: landscape\) \{\s*\.dw-dock \{/);
+    expect(narrow, "좁은 화면 .dw-dock 규칙이 없다").toBeGreaterThan(-1);
+    expect(land, "폰 가로 .dw-dock 규칙이 없다").toBeGreaterThan(-1);
+    const narrowBody = CSS_CODE.slice(narrow, CSS_CODE.indexOf("\n}\n", narrow));
+    const landBody = CSS_CODE.slice(land, CSS_CODE.indexOf("\n}\n", land));
+    // 왕패와 버튼을 한 줄에(두 단을 한 단으로), 블록 태그는 칸 이름이 대신한다
+    expect(narrowBody).toContain(".dw-dock-body { flex-wrap: nowrap;");
+    expect(narrowBody).toContain(".dw-dock-tag { display: none; }");
+    expect(landBody).toContain("flex-direction: row;");
+    expect(landBody).toContain(".dw-dock-tag { display: none; }");
+  });
+
+  it("안 쓰는 옛 모달 규칙(.aug-pick-row-static·.aug-pick-pairs)이 남지 않는다", () => {
+    expect(CSS_CODE).not.toContain(".aug-pick-row-static");
+    expect(CSS_CODE).not.toContain(".aug-pick-pairs");
+  });
+
+  it("DeadWallDock은 «패산 정보» 주석과 WallPeekRow 사이에 끼지 않는다 — 주석이 제 함수에 붙는다", () => {
+    const doc = APP.indexOf(" * 손패 위 «패산 정보» 한 줄");
+    const fn = APP.indexOf("function WallPeekRow(");
+    expect(doc).toBeGreaterThan(-1);
+    const between = APP.slice(doc, fn);
+    expect(between).not.toContain("function DeadWallDock(");
+    expect(between).not.toContain("const DW_FULL_HINT");
   });
 });

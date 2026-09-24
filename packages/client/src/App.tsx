@@ -1905,6 +1905,9 @@ function isCallOnlyPrompt(opts: ActionOption[]): boolean {
  * 알려주는 컨텍스트. null이면 강조 없음.
  */
 
+/** 왕패의 주인 손패·왕패 칸 누르기의 결과 — null이면 처리됨, 아니면 못 누른 까닭 */
+type DwClickResult = "full" | "none" | "mismatch" | null;
+
 /**
  * 액티브 증강의 '클릭 발동(무장)' 상태를 게임판 전체가 공유하는 컨텍스트.
  * 액티브 버튼(내 영역)에서 무장하면, 손패(내 영역)·상대(상대 영역)·바닥(중앙)이
@@ -1913,6 +1916,7 @@ function isCallOnlyPrompt(opts: ActionOption[]): boolean {
  * GameTable이 상태를 소유하고, OwnArea·OpponentStrip·River가 이 값을 읽는다.
  * 무장이 없을 때(관전·리플레이 포함) armedType은 null이라 아무 것도 클릭되지 않는다.
  */
+
 interface SelectionCtx {
   /** 무장된 액션 타입 (null이면 무장 없음). */
   armedType: string | null;
@@ -1986,10 +1990,11 @@ interface SelectionCtx {
   dwRemaining: number;
   /**
    * 손패·왕패 칸 누르기 — 예약한 쪽이면 그 쌍을 빼고, 반대쪽이 서 있으면 짝을 짓고, 아니면 이쪽을 세운다.
-   * 못 누르는 까닭을 돌려준다: "full"(남은 횟수만큼 다 골랐다) · "none"(후보가 아니다) · null(처리됨).
+   * 못 누르는 까닭을 돌려준다: "full"(남은 횟수만큼 다 골랐다) · "none"(후보가 아니다) ·
+   * "mismatch"(후보지만 먼저 고른 반대쪽과 짝이 안 된다 — 화면에서 흐리게 그려진 것) · null(처리됨).
    */
-  dwClickHand: (id: number) => "full" | "none" | null;
-  dwClickDead: (idx: number) => "full" | "none" | null;
+  dwClickHand: (id: number) => DwClickResult;
+  dwClickDead: (idx: number) => DwClickResult;
   /** 예약한 쌍을 교환 큐로 넘기고 무장을 푼다 */
   dwConfirm: () => void;
 }
@@ -16546,14 +16551,20 @@ function useSelection(
    * 전부 disabled로 흐려 두어, 이 증강의 핵심 판단 재료(무엇을 가져올지)가 처음에 흐리게 떴다.
    * 이제 어느 쪽을 먼저 눌러도 되고, 반대쪽이 서 있으면 그 자리에서 짝이 지어진다.
    */
-  const dwClickHand = (id: number): "full" | "none" | null => {
+  const dwClickHand = (id: number): DwClickResult => {
     if (armedType !== "dw_swap") return "none";
     if (dwPairs.some((p) => p.handTileId === id)) {
       setDwPairs((cur) => cur.filter((p) => p.handTileId !== id));
       return null;
     }
     if (dwPairs.length >= dwRemaining) return "full";
-    if (dwDead !== null && dwHasOpt(id, dwDead)) {
+    if (dwDead !== null) {
+      /*
+       * 먼저 고른 왕패 칸이 서 있으면 그 칸과 짝이 되는 손패만 빛난다(dwHandArmable). 흐린 패를
+       * 눌렀을 때 칸을 몰래 버리고 그 패를 들어 올리면 화면(흐림·«이 칸과 바꿀 내 손패») 과
+       * 동작이 어긋난다 — 대상 아님으로 답한다. 칸을 바꾸려면 그 칸을 다시 눌러 뺀다(B13 리뷰).
+       */
+      if (!dwHasOpt(id, dwDead)) return dwHasOpt(id, null) ? "mismatch" : "none";
       setDwPairs((cur) => [...cur, { handTileId: id, deadIndex: dwDead }]);
       setDwDead(null);
       setDwHand(null);
@@ -16564,14 +16575,16 @@ function useSelection(
     setDwDead(null);
     return null;
   };
-  const dwClickDead = (idx: number): "full" | "none" | null => {
+  const dwClickDead = (idx: number): DwClickResult => {
     if (armedType !== "dw_swap") return "none";
     if (dwPairs.some((p) => p.deadIndex === idx)) {
       setDwPairs((cur) => cur.filter((p) => p.deadIndex !== idx));
       return null;
     }
     if (dwPairs.length >= dwRemaining) return "full";
-    if (dwHand !== null && dwHasOpt(dwHand, idx)) {
+    if (dwHand !== null) {
+      // 손패 쪽과 같은 규칙 — 들어 올린 손패와 짝이 안 되는 칸은 흐리게 그려진다(DeadWallDock의 off)
+      if (!dwHasOpt(dwHand, idx)) return dwHasDeadOpt(idx) ? "mismatch" : "none";
       setDwPairs((cur) => [...cur, { handTileId: dwHand, deadIndex: idx }]);
       setDwHand(null);
       setDwDead(null);
@@ -22024,24 +22037,10 @@ function foresightPeekOf(av: Record<string, unknown>): TileKind[] {
     : [];
 }
 
-/**
- * 손패 위 «패산 정보» 한 줄 — 예지·삼세 예지·밑장빼기가 보여 주는 «곧 나올 패»를 한 줄에 모은다.
- *
- * 예전엔 셋이 제각각이었다(2026-09-25, docs/59 U50): 예지는 ✦ 버튼 옆 알약(뒤→앞), 삼세 예지는
- * 손패 위 보라 상자(왼쪽이 다음, 1·2·3), 밑장빼기는 그 아래 초록 상자(오른쪽 끝이 다음, «밑»).
- * 함께 들면 눈이 세 군데를 오갔고, 밑장을 예약하면 **같은 패**가 삼세 예지의 왼쪽 끝과 밑장빼기의
- * 오른쪽 끝에 동시에 떴다. 규칙을 하나로 맞춘다.
- *
- * - **오른쪽 끝 = 가장 먼저 나올 패**, 거기에 공통 «다음» 뱃지. 예지(2026-08-12 사용자 지적 —
- *   뽑히며 앞에서 사라지니 뒤집어 그려야 내 칸이 제자리에 선다)와 밑장빼기는 원래 그랬고, 삼세 예지만 뒤집었다.
- *   번호에 익은 사람이 헷갈리지 않게 «다음» 뱃지로 방향을 적는다.
- * - 미니 패는 26×37 하나, 섹션마다 **테두리 색만** 다르다.
- * - 예지의 자리 라벨·★와 «상시 표시, 조작은 전용 탭»(2026-08-12)은 그대로 — [순서 바꾸기]만 이 줄에 둔다.
- * - 밑장빼기는 예약할 수 있을 때 태그와 밑장 칸이 버튼이 된다(docs/59 U35). 줄 전체가 아니라
- *   거기만 — 손패 바로 위라 폰에서 잘못 누르지 않게 히트 영역을 좁힌다.
- */
 /** 왕패의 주인 — 남은 횟수만큼 짝을 다 고른 뒤 더 누를 때의 안내(손패·왕패 칸 공통) */
 const DW_FULL_HINT = "남은 교환 횟수만큼 골랐습니다. [이대로 교환]을 누르거나 고른 패를 다시 눌러 빼세요";
+/** 왕패의 주인 — 먼저 고른 왕패 칸과 짝이 안 되는(흐린) 손패를 눌렀을 때 */
+const DW_MISMATCH_HAND_HINT = "고른 왕패 칸과 바꿀 수 없는 패입니다. 그 칸을 다시 눌러 빼세요";
 
 /**
  * 왕패의 주인 — 손패 위 **비차단** 도킹 패널. 판에 없는 왕패 14칸만 여기 펴고, 내 손패는 판에서
@@ -22085,13 +22084,19 @@ function DeadWallDock(props: {
     deadCands.add(p.deadIndex);
     if (sel.dwHand !== null && p.handTileId === sel.dwHand) pairOk.add(p.deadIndex);
   }
-  const answer = (r: "full" | "none" | null): void => {
+  const answer = (r: DwClickResult): void => {
     if (r === null) {
       sfx.pick();
       return;
     }
     haptics.reject();
-    props.onToast?.(r === "full" ? DW_FULL_HINT : `이 자리는 ${name} 대상이 아닙니다`);
+    props.onToast?.(
+      r === "full"
+        ? DW_FULL_HINT
+        : r === "mismatch"
+          ? "들어 올린 손패와 바꿀 수 없는 자리입니다. 그 손패를 다시 눌러 내리세요"
+          : `이 자리는 ${name} 대상이 아닙니다`,
+    );
   };
   const hint = full
     ? "고를 수 있는 만큼 다 골랐습니다. [이대로 교환]을 누르세요"
@@ -22187,6 +22192,22 @@ function DeadWallDock(props: {
   );
 }
 
+/**
+ * 손패 위 «패산 정보» 한 줄 — 예지·삼세 예지·밑장빼기가 보여 주는 «곧 나올 패»를 한 줄에 모은다.
+ *
+ * 예전엔 셋이 제각각이었다(2026-09-25, docs/59 U50): 예지는 ✦ 버튼 옆 알약(뒤→앞), 삼세 예지는
+ * 손패 위 보라 상자(왼쪽이 다음, 1·2·3), 밑장빼기는 그 아래 초록 상자(오른쪽 끝이 다음, «밑»).
+ * 함께 들면 눈이 세 군데를 오갔고, 밑장을 예약하면 **같은 패**가 삼세 예지의 왼쪽 끝과 밑장빼기의
+ * 오른쪽 끝에 동시에 떴다. 규칙을 하나로 맞춘다.
+ *
+ * - **오른쪽 끝 = 가장 먼저 나올 패**, 거기에 공통 «다음» 뱃지. 예지(2026-08-12 사용자 지적 —
+ *   뽑히며 앞에서 사라지니 뒤집어 그려야 내 칸이 제자리에 선다)와 밑장빼기는 원래 그랬고, 삼세 예지만 뒤집었다.
+ *   번호에 익은 사람이 헷갈리지 않게 «다음» 뱃지로 방향을 적는다.
+ * - 미니 패는 26×37 하나, 섹션마다 **테두리 색만** 다르다.
+ * - 예지의 자리 라벨·★와 «상시 표시, 조작은 전용 탭»(2026-08-12)은 그대로 — [순서 바꾸기]만 이 줄에 둔다.
+ * - 밑장빼기는 예약할 수 있을 때 태그와 밑장 칸이 버튼이 된다(docs/59 U35). 줄 전체가 아니라
+ *   거기만 — 손패 바로 위라 폰에서 잘못 누르지 않게 히트 영역을 좁힌다.
+ */
 function WallPeekRow(props: {
   view: PlayerView;
   foresight: {
@@ -24666,7 +24687,13 @@ function OwnArea(props: {
                       sfx.pick();
                     } else {
                       haptics.reject();
-                      props.onToast?.(r === "full" ? DW_FULL_HINT : `이 패는 ${armName} 대상이 아닙니다`);
+                      props.onToast?.(
+                        r === "full"
+                          ? DW_FULL_HINT
+                          : r === "mismatch"
+                            ? DW_MISMATCH_HAND_HINT
+                            : `이 패는 ${armName} 대상이 아닙니다`,
+                      );
                     }
                     return;
                   }
