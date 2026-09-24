@@ -5761,6 +5761,17 @@ export function App(): JSX.Element {
       setAbortVote(msg);
       return;
     }
+    if (msg.type === "serverRestarting") {
+      /*
+       * **서버가 재시작되지만 이 판은 되살아난다** — 방 기억을 지운다거나 홈으로
+       * 나가지 않는다. `activeRoomRef`/`activeSpectateRef`가 그대로 남아 있으면 곧
+       * 끊길 소켓의 평소 재연결(재로그인 → `authOk` → 자동 `joinRoom`/`spectate`)이
+       * 아무 조작 없이 같은 판으로 되돌려 놓는다. 예전에는 여기서 `gameAborted`가
+       * 와서 홈으로 튕겼고, 재접속 버튼을 누른 사람만 판으로 돌아왔다.
+       */
+      showToast(msg.message, "info", 5000);
+      return;
+    }
     if (msg.type === "gameAborted") {
       /*
        * **내가 나가서 접힌 판이면 알리지 않는다.**

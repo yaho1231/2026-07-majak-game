@@ -261,7 +261,7 @@ describe("StatsStore — 저장 실패가 이후 저장을 막지 않는다", ()
 });
 
 describe("정상 종료", () => {
-  it("진행 중인 판의 사람에게 gameAborted를 보내고 방을 모두 정리한다", async () => {
+  it("진행 중인 판의 사람에게 알리고 방을 모두 정리한다 (되살아날 판이면 serverRestarting)", async () => {
     const h = await newHarness();
     const sock = await register(h, "Farewell");
     await roomWithBots(sock);
@@ -270,7 +270,9 @@ describe("정상 종료", () => {
 
     h.rm.shutdown();
 
-    expect(sock.last("gameAborted")).toBeDefined();
+    // 기록되는 판은 다음 부팅이 되살린다 — «끝났다»가 아니라 «이어진다»를 알린다.
+    expect(sock.last("serverRestarting")).toBeDefined();
+    expect(sock.last("gameAborted")).toBeUndefined();
     expect(h.rm.healthSnapshot()).toMatchObject({ rooms: 0, playing: 0 });
   });
 

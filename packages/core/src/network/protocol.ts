@@ -1522,6 +1522,21 @@ export interface GameAbortedMessage {
   reason: string;
 }
 
+/**
+ * 서버가 곧 재시작되지만 **이 판은 되살아난다** — 끝난 것이 아니다.
+ *
+ * 예전에는 재시작 직전에 `gameAborted`를 보냈고, 클라이언트는 그걸 «판이 끝났다»로
+ * 받아 방 기억을 지우고 홈으로 나갔다. 서버는 판을 그대로 되살려 놓고 기다리는데
+ * 아무도 자동으로 돌아오지 않아, 홈의 재접속 버튼을 누른 사람만 이어서 둘 수 있었다.
+ * 이 메시지를 받은 클라이언트는 방 기억을 **지키고** 평소 재연결 경로로 돌아온다.
+ */
+export interface ServerRestartingMessage {
+  type: "serverRestarting";
+  /** 되살아날 방 코드 */
+  code: string;
+  message: string;
+}
+
 export interface ErrorMessage {
   type: "error";
   code: string;
@@ -2489,6 +2504,7 @@ export type ServerMessage =
   | GameOverMessage
   | AbortVoteMessage
   | GameAbortedMessage
+  | ServerRestartingMessage
   | ErrorMessage
   | EmoteBroadcastMessage
   | PongMessage

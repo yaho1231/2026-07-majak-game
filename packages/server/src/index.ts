@@ -1015,6 +1015,26 @@ function warnWeakSecrets(): void {
   }
 }
 
+/*
+ * 끊긴 대국 이어하기 (감사 §2-10, 사용자 결정 "완전 이어하기").
+ *
+ * **포트를 열기 전에 방부터 세운다.** 재시작 직후 사람들의 브라우저는 1초 안에
+ * 다시 붙어 자동으로 `joinRoom`을 보낸다. 예전에는 되살리기를 `listen` 뒤에 띄워
+ * 두어, 방이 서기 전에 도착한 재입장이 `ROOM_NOT_FOUND`를 받고 방 기억을 지울 수
+ * 있었다(판이 여럿이면 뒤쪽 판일수록 늦게 선다).
+ *
+ * 다만 되살리기가 어떤 이유로 늘어져도 서버가 닫힌 채 남아서는 안 된다 —
+ * 상한(`RESUME_BOOT_WAIT_MS`)까지만 기다리고 연다. 늦은 판은 그 뒤에 선다.
+ */
+const RESUME_BOOT_WAIT_MS = 5_000;
+const restoring = roomManager.restoreLiveGames().catch((err: unknown) => {
+  console.error("끊긴 대국 이어하기 실패:", err);
+});
+await Promise.race([
+  restoring,
+  new Promise<void>((resolve) => setTimeout(resolve, RESUME_BOOT_WAIT_MS).unref()),
+]);
+
 httpServer.listen(PORT, HOST, () => {
   console.log(`이능마작 server listening on http://localhost:${PORT} (HTTP+WS)`);
   console.log(`Client dist : ${CLIENT_DIST}${existsSync(CLIENT_DIST) ? "" : "  (없음 — 개발은 vite dev 사용)"}`);
@@ -1093,19 +1113,10 @@ async function pruneOldReplays(): Promise<void> {
 }
 
 /*
- * 끊긴 대국 이어하기 (감사 §2-10, 사용자 결정 "완전 이어하기").
- *
- * **리플레이 정리보다 먼저** 돌린다. 정리는 인덱스에 없는 `.jsonl`을 보존 기간
- * 기준으로 지우는데, 되살릴 판의 파일이 바로 그 "인덱스에 없는 파일"이다.
- * 보존 기간(기본 365일)이 훨씬 길어 실제로 겹칠 일은 없지만, 순서가 곧 의도다.
- *
- * `await` 하지 않고 띄운다 — 되살리기가 늦어져도 서버는 지금 열려 있어야 한다.
- * 사람들이 돌아오는 데는 어차피 몇 초가 걸리고, 그 사이 방이 서면 된다.
+ * 이어하기는 `listen` **앞에서** 시작했다 (위 `restoring`). 리플레이 정리는 그 뒤다 —
+ * 정리는 인덱스에 없는 `.jsonl`을 보존 기간 기준으로 지우는데, 되살릴 판의 파일이
+ * 바로 그 "인덱스에 없는 파일"이다.
  */
-void roomManager.restoreLiveGames().catch((err: unknown) => {
-  console.error("끊긴 대국 이어하기 실패:", err);
-});
-
 void pruneOldReplays();
 // 하루에 한 번 — 오래 켜 두는 서버에서도 계속 정리된다.
 const pruneTimer = setInterval(() => void pruneOldReplays(), 24 * 60 * 60 * 1000);
