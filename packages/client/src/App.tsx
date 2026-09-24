@@ -21479,7 +21479,13 @@ function OwnArea(props: {
     if (back?.isConnected === true) back.focus();
   };
   useEffect(() => {
-    if (armSub === null || armSubFocusBack.current === null) return;
+    // 어느 길로 닫혔든(바깥 누르기·드래그·무장 해제·새 프롬프트) 돌려줄 곳을 비운다. 초점을
+    // 되돌리는 건 Esc·✕·후보 확정·같은 패 다시 누르기뿐 — 바깥을 눌렀으면 초점은 누른 곳을 따른다
+    if (armSub === null) {
+      armSubFocusBack.current = null;
+      return;
+    }
+    if (armSubFocusBack.current === null) return;
     armSubRef.current?.querySelector<HTMLElement>(".arm-sub-pop-opt")?.focus();
   }, [armSub]);
   useEffect(() => {
@@ -21487,7 +21493,9 @@ function OwnArea(props: {
     const close = (): void => setArmSub(null);
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== "Escape" || isTypingTarget(e.target)) return;
-      // 첫 Esc는 팝오버만 접는다 — 같은 키가 무장 해제까지 번지지 않게 여기서 멈춘다
+      // 첫 Esc는 팝오버만 접는다 — 캡처 단계에서 멈추므로 다른 Esc 주인(연출 넘기기·고정한
+      // 알약 풀기·오버레이 보기 끄기·패널 닫기)은 **다음** Esc를 받는다. 한 번에 두 겹이 접히면
+      // 무엇이 닫혔는지 모른다(2026-09-25, docs/59 U12 리뷰)
       e.stopPropagation();
       closeArmSubToHand();
     };
@@ -22667,7 +22675,9 @@ function OwnArea(props: {
                       className="arm-sub-pop-opt"
                       onClick={() => {
                         sel.submit(o);
-                        setArmSub(null);
+                        // 키보드로 골랐으면 초점을 누른 손패로 돌려준다 — 팝오버가 사라지며 초점이
+                        // body로 떨어지지 않게(마우스면 돌려줄 곳이 null이라 아무것도 안 한다)
+                        closeArmSubToHand();
                       }}
                     >
                       <span className="arm-sub-pop-tiles">
@@ -23018,8 +23028,8 @@ function OwnArea(props: {
                         sel.submit(opts[0]!);
                         setArmSub(null);
                       } else if (armSub?.tileId === id) {
-                        // 열린 패를 한 번 더 누르면 접는다(무장은 그대로)
-                        setArmSub(null);
+                        // 열린 패를 한 번 더 누르면 접는다(무장은 그대로). 초점은 이미 그 패에 있다
+                        closeArmSubToHand();
                       } else {
                         /*
                          * 누른 패 바로 위에 팝오버를 붙인다(2026-09-25, docs/59 U12). 세로 기준은

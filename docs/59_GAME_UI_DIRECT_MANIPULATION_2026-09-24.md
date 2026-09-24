@@ -389,7 +389,9 @@ App.tsx 한 파일을 여러 배치가 건드리므로 **순서대로 한 배치
   특히 `qaRound2Client.test.ts:182`(무장 분기 문자열 + 뒤 900자 안의 게이트 순서), `client_active_augment_wiring.test.ts`
   (`MODAL_PICK_TYPES` 선언 형태·`ARM_MODE`의 `key: "value"` 형태·가지치기 정규식), `augPillPinAndTimer`(`togglePin(a)`).
 - `qaRound4ClientA.test.ts:46-56`의 «패널 ≥10» 하한은 모달을 지우는 배치(B03·B04·B05·B07·B13)가 **그때의 개수로 내린다**.
-  «PickTimer 개수 = 패널 개수» 등식은 유지한다.
+  «PickTimer 개수 = 패널 개수» 등식은 유지한다. 단 armSub 팝오버(`.arm-sub-pop`, B05)는 패널이 아니지만
+  손패 위에서 PromptTimer를 덮어 머리 줄에 PickTimer를 하나 갖는다 — 테스트는 그 분기
+  (`{armSub !== null ? (() => {` ~ `document.body,`)를 빼고 센다(B05 리뷰, 2026-09-25).
 - 배선 테스트의 `setLiterals` 파서는 주석 속 따옴표 문자열도 줍는다 — 새 검사는 `/^[a-z0-9_]+$/`로 거른다.
 - 새 맥동 애니메이션은 `prefers-reduced-motion` 블록에 넣는다(a11yPerfGuards).
 - 레이아웃이 바뀌는 배치(B02·B05·B09·B12·B13·B15·B17)는 375×700·740×360·태블릿 세로·1280×800에서 실측 스크린샷.

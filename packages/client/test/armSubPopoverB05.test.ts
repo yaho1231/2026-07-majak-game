@@ -122,6 +122,27 @@ describe("U12 한 패의 변형 고르기는 누른 패 위 팝오버다", () =>
     expect(block).toMatch(/e\.stopPropagation\(\);\s*closeArmSubToHand\(\);/);
     expect(popover()).toContain("onClick={closeArmSubToHand}");
   });
+
+  it("리뷰 2차: 후보 확정도 같은 길로 닫고, 어느 길로 닫혔든 돌려줄 곳을 비운다", () => {
+    // 키보드로 고르면 팝오버가 사라지며 초점이 body로 떨어졌다
+    expect(popover()).toMatch(/sel\.submit\(o\);\s*closeArmSubToHand\(\);/);
+    expect(APP_CODE).toMatch(
+      /if \(armSub === null\) \{\s*armSubFocusBack\.current = null;\s*return;\s*\}/,
+    );
+  });
+
+  it("리뷰 2차: 열린 패를 한 번 더 누르면 접는다 — 확정 분기 뒤, 여는 분기 앞", () => {
+    const submit = APP_CODE.indexOf("sel.submit(opts[0]!);");
+    expect(submit).toBeGreaterThan(-1);
+    const toggle = APP_CODE.indexOf("} else if (armSub?.tileId === id) {", submit);
+    expect(toggle).toBeGreaterThan(submit);
+    const open = APP_CODE.indexOf("setArmSub({", submit);
+    expect(open).toBeGreaterThan(toggle);
+    // 무장은 그대로 — 팝오버만 접는다
+    const body = APP_CODE.slice(toggle, open);
+    expect(body).toMatch(/\{\s*closeArmSubToHand\(\);\s*\} else \{/);
+    expect(body).not.toContain("sel.arm(null)");
+  });
 });
 
 describe("U13 분열 — 사라질 재료가 확정 직전까지 보인다", () => {
