@@ -162,11 +162,16 @@ stop() {
 case "${1:-}" in
   start) start ;;
   stop) stop ;;
+  build) build_client ;;
   # ⚠ 순서가 중요하다. 예전에는 stop → 빌드 → start 였고, 빌드가 깨진 커밋을 배포하면
   #   서버가 **내려간 채로** 남았다(빌드 실패로 start가 exit 1). 지금은 빌드를 먼저 하고
   #   성공했을 때만 서버를 교체한다 — 빌드가 깨져도 돌던 서버는 계속 돈다.
   restart)
-    build_client || { echo "✗ 빌드가 실패해 재시작을 중단합니다 — 돌고 있던 서버는 그대로 둡니다."; exit 1; }
+    # MAJAK_SKIP_BUILD=1 이면 이미 빌드해 둔 것으로 본다 (`serve.sh restart-idle` 이 쓴다 —
+    # 빌드를 먼저 끝내 두고, 판이 0이 된 **그 순간** 교체만 하려고).
+    if [ "${MAJAK_SKIP_BUILD:-0}" != "1" ]; then
+      build_client || { echo "✗ 빌드가 실패해 재시작을 중단합니다 — 돌고 있던 서버는 그대로 둡니다."; exit 1; }
+    fi
     stop --for-restart
     MAJAK_SKIP_BUILD=1 start
     ;;
@@ -175,5 +180,5 @@ case "${1:-}" in
     elif [ -f "$PAUSEFILE" ]; then echo "꺼짐 (사람이 끔 — 감시자가 되살리지 않습니다)";
     else echo "꺼짐"; fi ;;
   logs) exec tail -n 50 -f "$LOG" ;;
-  *) echo "사용법: $0 {start|stop|restart|status|logs}"; exit 1 ;;
+  *) echo "사용법: $0 {start|stop|restart|build|status|logs}"; exit 1 ;;
 esac

@@ -16,6 +16,7 @@
     "serve": "bash deploy/serve.sh start",
     "serve:stop": "bash deploy/serve.sh stop",
     "serve:restart": "bash deploy/serve.sh restart",
+    "serve:restart-idle": "bash deploy/serve.sh restart-idle",
     "serve:status": "bash deploy/serve.sh status",
     "serve:logs": "bash deploy/serve.sh logs",
     "watchdog": "bash deploy/watchdog.sh status",
