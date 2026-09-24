@@ -10536,6 +10536,34 @@ button {
   .own-area { width: calc(100cqw - 140px); }
   .own-top-main { min-width: 0; }
   .own-top-main > * { min-width: 0; }
+  /* ✦ 버튼은 이 줄의 **주 조작**이다 — 칸이 모자라면 정보 칩(.active-info, 눌러서 전문을 본다)이
+     먼저 물러나고 ✦는 제 폭을 지킨다(절반까지). 예전엔 이름표·✦·칩이 같은 비율로 줄어
+     375×700에서 ✦가 «✦ (2)»만 남기고 이름을 통째로 잃었다(2026-09-25 W3 실측). */
+  .own-top-main > .own-aug { flex-shrink: 0; max-width: 50%; }
+  /* 칩은 물러나도 **사라지지는 않는다** — 아이콘과 말줄임이 보이고 누를 수 있는 44px은 남긴다.
+     그 대신 이름표의 알약이 접힌다(알약은 줄바꿈으로 물러날 수 있다). */
+  .own-top-main > .active-info { flex: 1 1 0; min-width: 44px; }
+  /* 칩이 좁아지면 글자가 **한 글자씩 세로로** 접혀 위 아이콘 줄까지 솟았다(740×360 실측, 2026-09-25).
+     세로 폰 블록(③ 아래 띠)과 같은 «한 줄 + 말줄임 + 눌러서 전문 보기»를 여기에도 둔다. */
+  .own-top-main .active-info {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .own-top-main .active-info .ai-badge {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .own-top-main .active-info .ai-badge-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .own-top-main .active-info .ai-badge-btn {
+    pointer-events: auto;
+    cursor: pointer;
+  }
   /* 액티브 증강 단추를 한 급 줄여 줄 폭 예산을 벌어 준다 */
   .own-aug { padding: 6px 10px; font-size: 13px; }
   /* ✦ 버튼의 행동 부제는 여기서 숨긴다 — 이름 하나로도 «무엇이 나가는가»는 읽힌다(docs/59 U37) */
@@ -18739,6 +18767,13 @@ body:has(.rinshan-pick-overlay):not(.peeking) .game-root .quick-toggles {
      물러난다 — 증강 효과 안내(`.active-info`)는 전체 문구를 눌러서 볼 수 있다. */
   .own-top-main { flex-wrap: nowrap; }
   .own-top-main > * { min-width: 0; }
+  /* ✦ 버튼은 이 줄의 **주 조작**이다 — 칸이 모자라면 정보 칩(.active-info, 눌러서 전문을 본다)이
+     먼저 물러나고 ✦는 제 폭을 지킨다(절반까지). 예전엔 이름표·✦·칩이 같은 비율로 줄어
+     375×700에서 ✦가 «✦ (2)»만 남기고 이름을 통째로 잃었다(2026-09-25 W3 실측). */
+  .own-top-main > .own-aug { flex-shrink: 0; max-width: 50%; }
+  /* 칩은 물러나도 **사라지지는 않는다** — 아이콘과 말줄임이 보이고 누를 수 있는 44px은 남긴다.
+     그 대신 이름표의 알약이 접힌다(알약은 줄바꿈으로 물러날 수 있다). */
+  .own-top-main > .active-info { flex: 1 1 0; min-width: 44px; }
   .own-top-main .active-info {
     overflow: hidden;
     white-space: nowrap;
