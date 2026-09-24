@@ -51,7 +51,10 @@ describe("드래프트 분포 — 같은 축이 더 자주 뜬다", () => {
   ): { hit: number; total: number } {
     let hit = 0;
     let total = 0;
-    for (let seed = 1; seed <= 120; seed++) {
+    // 시드 120개(제시 360장)는 너무 적었다 — 카탈로그에 증강이 하나만 늘어도 추첨이 밀려
+    // 비율이 1.45~2.03 사이를 오갔다(2026-09-24, 모래시계·위그드라실 추가 때 실측).
+    // 480개면 1.70 근처로 모인다.
+    for (let seed = 1; seed <= 480; seed++) {
       const g = game(seed);
       if (held.length > 0) hold(g, "p0", held);
       const draft = new DraftController(g.engine, g.augments, { yaku: g.yaku });

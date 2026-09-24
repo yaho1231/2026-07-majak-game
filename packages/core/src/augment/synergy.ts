@@ -260,6 +260,7 @@ export const AUGMENT_SYNERGY: Readonly<Record<string, SynergyEntry>> = {
   wind_lineage: e(["shape", "honor"]),
   // 조커 — 백 한 장이 어떤 몸통·머리도 된다. 자패를 자원으로 쓰고 화료형을 넓힌다
   joker: e(["shape", "honor", "hand_edit"]),
+  yggdrasil: e(["honor", "yakuman", "hand_edit"]),
   async_chiitoi: e(["chiitoi", "shape", "menzen"]),
   true_dragon: e(["shape"]),
   tanyao_break: e(["tanyao"]),
@@ -293,6 +294,7 @@ export const AUGMENT_SYNERGY: Readonly<Record<string, SynergyEntry>> = {
   triple_peek: e(["wall_info"]),
   bottom_deal: e(["wall_info", "tempo"]),
   future_sight: e(["hand_edit", "wall_info"]),
+  sandglass: e(["hand_edit", "wall_info"]),
   xray_hand: e(["opp_info"]),
   tenpai_scan: e(["opp_info", "defense"]),
   danger_sense: e(["opp_info", "defense"]),

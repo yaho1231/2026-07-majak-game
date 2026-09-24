@@ -45,6 +45,9 @@
  * 진 쪽은 **아무것도 emit하지 않고 예약도 비우지 않는다**(순수한 양보). 예약은 전부 국
  * 스코프라 국이 끝나면 저절로 만료된다.
  *
+ * 6. **위그드라실**(2026-09-24): 켜진 국의 자패 쯔모를 발로 바꾼다. 상시 효과라 양보해도
+ *    자원이 타지 않고, 양보한 그 한 장만 자패로 남는다 — 가장 뒤다.
+ *
  * ## 가입 대상이 아닌 것 (2026-09-16 확인 — `TILE_DRAWN`·`tileKindChanged(` 문자열을 둘 다
  * 가진 파일이지만 이 조정과 무관하다. `draw_mutators_0916.test.ts`의 정적 스캔이 이 표를 고정한다)
  * - `red_five_touch` — 각인은 attrs(red/redFor)만 바꾸고 **kind는 불변**이다. 게다가 특정
@@ -60,6 +63,7 @@
 
 import {
   handIdsOf,
+  isHonor,
   isNumberSuit,
   kindOf,
   meldCountOf,
@@ -86,7 +90,8 @@ export type DrawMutator =
   | "giant_god"
   | "cliff_bloom"
   | "off_by_one"
-  | "conjure_draw";
+  | "conjure_draw"
+  | "yggdrasil";
 
 /** 우선순위 — 앞에 있을수록 세다 (근거는 머리말) */
 export const DRAW_MUTATOR_PRIORITY: readonly DrawMutator[] = [
@@ -95,6 +100,7 @@ export const DRAW_MUTATOR_PRIORITY: readonly DrawMutator[] = [
   "cliff_bloom",
   "off_by_one",
   "conjure_draw",
+  "yggdrasil",
 ];
 
 /**
@@ -121,6 +127,10 @@ export const conjurePendingKey = (state: GameState, h: PlayerId): string =>
 /** 거신병: 각성 다음 정상 쯔모를 오름패로 만드는 예약 */
 export const giantGodTsumoKey = (state: GameState, h: PlayerId): string =>
   roundScopedKey("giant_god", "tsumo", state, h);
+
+/** 위그드라실: 이번 국에 켰는가 (켜진 국의 자패 쯔모가 발이 된다) */
+export const yggdrasilOnKey = (state: GameState, h: PlayerId): string =>
+  roundScopedKey("yggdrasil", "on", state, h);
 
 /** 만개까지 필요한 깡 횟수 */
 export const CLIFF_BLOOM_KANS_TO_BLOOM = 2;
@@ -342,6 +352,9 @@ export function drawMutatorWinner(
     return "off_by_one";
   }
   if (conjurePendingKind(state, holder) !== null) return "conjure_draw";
+  if (flagOf(state, yggdrasilOnKey(state, holder)) && isHonor(kindOf(state, drawnTileId))) {
+    return "yggdrasil";
+  }
   return null;
 }
 
