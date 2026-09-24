@@ -25150,8 +25150,10 @@ function OwnArea(props: {
             {/* bloom_pick은 고른 영상패를 손으로 가져오고 **지금 쯔모한 패**를 그 왕패 자리로 보낸다
                 (content cliff_bloom BLOOM_PICK_TAKEN). 무엇과 맞바뀌는지를 부제가 말한다(docs/59 U47) */}
             <div className="rinshan-pick-sub">
-              깡을 선언했습니다. 고른 영상패가 지금 뽑은 패와 맞바뀝니다. 지금 패를 두려면 그 칸을
-              누르세요 — 창만 닫히고, 버릴 패는 손패에서 고릅니다. 도라 표시패는 보이지 않습니다.
+              깡을 선언했습니다. 고른 영상패가 지금 뽑은 패와 맞바뀝니다. 지금 패를 두려면{" "}
+              {/* «지금 패» 칸은 쯔모패가 보일 때만 선다 — 없으면 아래 대체 단추를 가리킨다(docs/59 U47 리뷰) */}
+              {bloomDrawnTile !== undefined ? "그 칸을" : "[지금 패 그대로 두기]를"} 누르세요 — 창만
+              닫히고, 버릴 패는 손패에서 고릅니다. 도라 표시패는 보이지 않습니다.
             </div>
             {/* 고를 수 있는 것은 **영상패뿐**이라 그것만 늘어놓는다 */}
             <div className="rinshan-pick-tiles">
@@ -27970,12 +27972,16 @@ function ActiveAugmentControl(props: {
     const pos = rinshanOrder.indexOf(rinshanTake);
     return pos >= 0 ? pos : null;
   })();
-  /** from 자리의 패를 교환 대상으로 올린다 — 이미 올린 그 패면 내린다(토글) */
-  const markRinshanTake = (from: number): void => {
+  /**
+   * from 자리의 패를 교환 대상으로 올린다 — 누르기(toggle)로 이미 올린 그 패를 다시 고르면 내린다.
+   * 끌어 놓기는 «여기에 둔다»라서 토글하지 않는다 — 올린 패를 한 번 더 끌어 놓았다고 교환이 풀리면
+   * 놀랍다(2026-09-25, docs/59 U44 리뷰).
+   */
+  const markRinshanTake = (from: number, toggle = true): void => {
     setRinshanDragFrom(null);
     const orig = rinshanOrder[from];
     if (orig === undefined) return;
-    setRinshanTake((cur) => (cur === orig ? null : orig));
+    setRinshanTake((cur) => (toggle && cur === orig ? null : orig));
   };
   // 손대지 않았으면(항등 + 교환 없음) 확정할 게 없다 — 국에 한 번뿐인 사용권이 효과 없이 타고
   // «영상패 순서를 다시 짰다»가 전원에게 공개돼 사실과 다른 정보가 된다(파일 머리 정직성 원칙,
@@ -28096,7 +28102,7 @@ function ActiveAugmentControl(props: {
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={() => {
                     if (rinshanDragFrom === null) return;
-                    markRinshanTake(rinshanDragFrom);
+                    markRinshanTake(rinshanDragFrom, false);
                   }}
                   onClick={() => {
                     if (rinshanDragFrom !== null) markRinshanTake(rinshanDragFrom);

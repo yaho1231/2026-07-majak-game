@@ -3005,9 +3005,11 @@ button {
 /* 좁은 화면 — U49로 안내문이 «시간이 다 되면 실제로 무엇이 일어나는지»를 말하게 되면서 두 배 가까이
    길어졌다(20자 → 40자 안팎). 375px에서는 999px 알약 안에서 두세 줄로 접혀 캡슐이 찌그러지므로,
    안내문을 알약 아래 제 줄로 내리고 모서리를 줄인다. 드래프트 창처럼 숨기지는 않는다 — 이 문구가
-   «증강이 사용되지 않는다»는 유일한 경고다(2026-09-25, docs/59 U49 리뷰). */
+   «증강이 사용되지 않는다»는 유일한 경고다(2026-09-25, docs/59 U49 리뷰).
+   선택자는 .draft-timer.pick-timer 로 올린다 — 컨테이너 쿼리는 특정도를 더하지 않아서, 파일 뒤쪽의
+   .draft-timer { border-radius: 999px } 가 같은 특정도로 이겨 모서리가 줄지 않았다. */
 @container ui (max-width: 700px) {
-  .pick-timer {
+  .draft-timer.pick-timer {
     flex-wrap: wrap;
     justify-content: center;
     max-width: 100%;

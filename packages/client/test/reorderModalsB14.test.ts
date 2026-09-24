@@ -76,6 +76,9 @@ describe("B14 U44 — 영상 정찰 창", () => {
     expect(cell).toContain("markRinshanTake(rinshanDragFrom)");
     expect(cell).toContain("onDrop=");
     expect(cell).toContain("setRinshanTake(null)");
+    // 끌어 놓기는 «여기에 둔다» — 토글하지 않는다(누르기만 토글, 라운드 2 리뷰)
+    expect(cell).toContain("markRinshanTake(rinshanDragFrom, false)");
+    expect(ctl).toContain("setRinshanTake((cur) => (toggle && cur === orig ? null : orig));");
   });
 
   it("교환 대상은 원래 인덱스로 들고, 제출 때 재배열 후 자리로 바꾼다(take 규약)", () => {
