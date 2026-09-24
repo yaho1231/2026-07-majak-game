@@ -22024,7 +22024,11 @@ function PickTimer(props: { deadline: number | null; fallback?: string }): JSX.E
       aria-live="off"
     >
       ⏳ 남은 시간 <strong>{Math.ceil(left / 1000)}</strong>초
-      <span className="pick-timer-note">. {props.fallback ?? PICK_TIMER_FALLBACK}</span>
+      {/* 구두점을 따로 둔다 — 좁은 화면에서는 안내문이 제 줄로 내려가 줄 머리의 «. »가 어색하다(styles.css 9-3) */}
+      <span className="pick-timer-note">
+        <span className="pick-timer-sep">. </span>
+        {props.fallback ?? PICK_TIMER_FALLBACK}
+      </span>
     </div>
   );
 }
@@ -28082,10 +28086,12 @@ function ActiveAugmentControl(props: {
                     rinshanTakePos !== null ? " rinshan-arr-drawn-on" : ""
                   }`}
                   title="영상패를 끌어다 놓거나, 집은 뒤 누르면 그 패와 맞바꿉니다. 다시 누르면 교환을 취소합니다"
+                  // 패 이름을 함께 읽는다 — 칸의 aria-label이 그림의 alt를 덮으므로, 이름이 없으면 듣는
+                  // 사람은 순서는 바꿔도 어느 패가 어느 패인지 모른다(2026-09-25, docs/59 U44 리뷰).
                   aria-label={
                     rinshanTakePos !== null
-                      ? `내 쯔모패. ${rinshanTakePos + 1}번째 영상패와 교환합니다. 누르면 취소합니다`
-                      : "내 쯔모패. 영상패를 집은 뒤 누르면 그 패와 교환합니다"
+                      ? `내 쯔모패 ${formatTile(rinshanDrawnTile)}. ${rinshanTakePos + 1}번째 영상패와 교환합니다. 누르면 취소합니다`
+                      : `내 쯔모패 ${formatTile(rinshanDrawnTile)}. 영상패를 집은 뒤 누르면 그 패와 교환합니다`
                   }
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={() => {
@@ -28118,7 +28124,7 @@ function ActiveAugmentControl(props: {
                       taken ? " rinshan-arr-taken" : ""
                     }`}
                     title="끌거나, 두 자리를 차례로 눌러 순서 변경 (←/→ 키로도 옮깁니다)"
-                    aria-label={`${pos + 1}번째 영상패${taken ? ", 쯔모패와 교환할 패" : ""}. 누르면 집거나 놓습니다`}
+                    aria-label={`${pos + 1}번째 영상패 ${formatTile(tile)}${taken ? ", 쯔모패와 교환할 패" : ""}. 누르면 집거나 놓습니다`}
                     draggable
                     onDragStart={() => setRinshanDragFrom(pos)}
                     onDragOver={(e) => e.preventDefault()}

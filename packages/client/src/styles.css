@@ -3002,6 +3002,28 @@ button {
   font-weight: 600;
   opacity: 0.85;
 }
+/* 좁은 화면 — U49로 안내문이 «시간이 다 되면 실제로 무엇이 일어나는지»를 말하게 되면서 두 배 가까이
+   길어졌다(20자 → 40자 안팎). 375px에서는 999px 알약 안에서 두세 줄로 접혀 캡슐이 찌그러지므로,
+   안내문을 알약 아래 제 줄로 내리고 모서리를 줄인다. 드래프트 창처럼 숨기지는 않는다 — 이 문구가
+   «증강이 사용되지 않는다»는 유일한 경고다(2026-09-25, docs/59 U49 리뷰). */
+@container ui (max-width: 700px) {
+  .pick-timer {
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 100%;
+    row-gap: 2px;
+    border-radius: 14px;
+    text-align: center;
+  }
+  .pick-timer-note {
+    flex-basis: 100%;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+  .pick-timer-sep {
+    display: none;
+  }
+}
 .rinshan-pick-sub {
   margin: 8px auto 18px;
   max-width: 420px;
@@ -3371,8 +3393,9 @@ button {
   }
 }
 /* 머리 줄의 남은 시간 — 팝오버가 PromptTimer를 덮으므로 한 번 더 세운다(App.tsx 주석).
-   드래프트 알약을 그대로 쓰되 손패 위 작은 창에 맞게 줄이고, 알림 문구는 뺀다
-   («자동으로 선택됩니다»가 아니라 쯔모패를 버린다 — 그건 PromptTimer 쪽 문구가 말한다). */
+   드래프트 알약을 그대로 쓰되 손패 위 작은 창에 맞게 줄이고, 알림 문구는 뺀다 — 좁은 머리 줄이라
+   시간만 둔다. 문구 자체는 이제 실제 결과(패 한 장이 버려지고 증강은 사용되지 않음)를 말한다
+   (docs/59 U49). */
 .arm-sub-pop .pick-timer {
   flex: none;
   margin: 0;
@@ -18539,7 +18562,7 @@ body.peeking .overlay-peekable > * {
  * 전체 화면 창(증강 선택·정산·설정·영상패 선택)보다 위이거나 그 위를 지나간다.
  * 폰에서는 공지 카드 하나가 폭의 69%·세로 최대 40%를 차지하므로 «반드시 골라야 하는
  * 창»의 왼쪽 열이 통째로 안 눌린다. 창이 떠 있는 동안에는 함께 걷는다 —
- * 아래 `.emote-bar` 와 같은 이유·같은 방식이다.
+ * `.emote-bar` 와 같은 이유라 같은 규칙에서 함께 숨긴다.
  */
 /* 한 목록으로 묶는다 — 예전엔 목록 끝이 재열기 알약(.rinshan-reopen)이었는데 그것을 걷으면서(U48)
    아래 .emote-bar 규칙과 합쳤다. 공지 카드 선택자로 끝나는 목록은 본 규칙을 찾는 검사
@@ -20766,6 +20789,12 @@ body:has(.prod-skip) .toast-stack {
 }
 .foresight-tab-cell.rinshan-arr-taken .foresight-tab-label {
   color: #bfe9fa;
+}
+/* 교환 대상을 탭-탭으로 집어 들었을 때는 «집었다»가 이긴다 — 위 규칙이 명시도가 같고 뒤에 와서
+   .foresight-dragging의 금빛 테두리를 파랗게 덮어, 어느 칸을 들고 있는지가 흐려졌다(B14 리뷰). */
+.foresight-tab-cell.rinshan-arr-taken.foresight-dragging {
+  border-color: #f0c86a;
+  box-shadow: 0 0 18px rgba(240, 200, 106, 0.5);
 }
 
 /* ─────────────── 이름표 → 증강 보기 시트 (폰 전용 경로) ───────────────
