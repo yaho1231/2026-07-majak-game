@@ -50,6 +50,26 @@ describe("U16 되돌릴 수 없는 손패 무장 — 두 번 눌러 확정과 �
     expect(b.indexOf("ARM_CONFIRM_TYPES.has(armedAug)")).toBeLessThan(b.indexOf("sel.submit(opts[0]!)"));
   });
 
+  it("첫 탭 게이트는 열린 팝오버를 닫는다 — 팝오버와 들어 올림은 둘 중 하나만 (라운드 2)", () => {
+    // 5m 팝오버를 연 채 1s를 첫 탭하면 둘 다 확정을 기다렸고, 풍선·분열 ✕도 팝오버 쪽에 남았다.
+    const b = armBranch();
+    const at = b.indexOf("setArmedTileId(id);");
+    expect(at).toBeGreaterThan(0);
+    const gate = b.slice(at, b.indexOf("return;", at));
+    expect(gate).toContain("setArmSub(null);");
+  });
+
+  it("종류 지목형은 같은 종류의 다른 장도 둘째 탭이다 (라운드 2)", () => {
+    const b = armBranch();
+    expect(b).toContain("!isArmSecondTap(id)");
+    const at = APP_CODE.indexOf("const isArmSecondTap = (id: number): boolean =>");
+    expect(at).toBeGreaterThan(0);
+    const fn = APP_CODE.slice(at, APP_CODE.indexOf(";", at));
+    expect(fn).toContain("armedTileId === id ||");
+    expect(fn).toContain("KIND_TARGET_ARM_TYPES.has(armedAug)");
+    expect(fn).toContain("armedByTile.get(armedTileId)?.[0] === armedByTile.get(id)?.[0]");
+  });
+
   it("결과 풍선은 후보가 한 장인 패에만, 팝오버가 열려 있으면 뜨지 않는다", () => {
     const at = APP_CODE.indexOf("const armTip = useMemo(");
     expect(at).toBeGreaterThan(0);
@@ -184,6 +204,14 @@ describe("U26 빗나감 규칙 — 손패가 대상이면 무시하고 알린다
     const skip = onDown.indexOf('if (t?.closest(".hand-tile") != null) return;');
     expect(skip).toBeGreaterThan(0);
     expect(skip).toBeLessThan(onDown.indexOf("close();"));
+  });
+
+  it("등가교환 상대 단계에서 손패를 누르면 상대 무장과 같이 해제 + 알림 (라운드 2)", () => {
+    const at = APP_CODE.indexOf('if (armedAug === "swap3") {\n                    if (swapTarget !== null) pickSwapTile(id);');
+    expect(at).toBeGreaterThan(0);
+    const b = APP_CODE.slice(at, APP_CODE.indexOf("return;", at));
+    expect(b).toContain("sel.arm(null);");
+    expect(b).toContain("props.onToast?.(`${armName} 선택을 취소했습니다`);");
   });
 
   it("가지치기 풀 밖의 패도 같은 말로 알린다", () => {

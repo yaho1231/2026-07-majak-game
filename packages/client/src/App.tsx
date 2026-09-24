@@ -21372,6 +21372,20 @@ function OwnArea(props: {
   }, [armedAug, myPrompt, rawHand, view.tiles]);
 
   /*
+   * 손패 무장 게이트의 «둘째 탭»인가 — 들어 올린 그 패를 다시 눌렀을 때. 종류 지목형(스파이·소환)은
+   * 같은 종류의 다른 장도 **같은 대표 옵션**을 내므로(위 armedByTile) 그 장을 눌러도 둘째 탭이다.
+   * tileId로만 비교하면 같은 그림 두 장을 번갈아 누를 때 들어 올림만 옮겨 가 세 번을 눌러야
+   * 나갔다 — 풍선·aria는 «한 번 더 누르면 발동»이라 말하는데(2026-09-25, docs/59 U16·U17).
+   */
+  const isArmSecondTap = (id: number): boolean =>
+    armedTileId === id ||
+    (armedAug !== null &&
+      KIND_TARGET_ARM_TYPES.has(armedAug) &&
+      armedTileId !== null &&
+      armedByTile.get(armedTileId)?.[0] !== undefined &&
+      armedByTile.get(armedTileId)?.[0] === armedByTile.get(id)?.[0]);
+
+  /*
    * 들어 올린(첫 탭) 무장 대상 — 없으면 마우스가 올라간 대상. 터치에는 hover가 없으므로
    * 미리보기는 첫 탭이 맡고, 데스크톱은 올리기만 해도 보인다(2026-09-25, docs/59 U01·U02).
    */
@@ -23038,6 +23052,13 @@ function OwnArea(props: {
                   // 등가교환: 상대를 정했으면 이 패를 교환 대상으로 토글(3장이면 제출)
                   if (armedAug === "swap3") {
                     if (swapTarget !== null) pickSwapTile(id);
+                    else {
+                      // 상대를 고르는 단계 — 아래 상대 무장과 같은 규칙(해제 + 알림). 소리 없이
+                      // 아무 일도 없으면 고장으로 읽힌다(docs/59 §2 원칙 7, U26). [취소]가 있는 단계다
+                      sel.arm(null);
+                      setArmSub(null);
+                      props.onToast?.(`${armName} 선택을 취소했습니다`);
+                    }
                     return;
                   }
                   // 가지치기: 이 패를 3장 선택에 넣고 뺀다 (제출은 [확인] 버튼)
@@ -23089,9 +23110,10 @@ function OwnArea(props: {
                         if (
                           props.tapTwiceToDiscard &&
                           (DRAG_DISCARD_ARM_TYPES.has(armedAug) || ARM_CONFIRM_TYPES.has(armedAug)) &&
-                          armedTileId !== id
+                          !isArmSecondTap(id)
                         ) {
                           setArmedTileId(id);
+                          setArmSub(null); // 열린 팝오버와 들어 올림은 둘 중 하나만(U16)
                           sfx.pick();
                           return;
                         }
