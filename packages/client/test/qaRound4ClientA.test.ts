@@ -131,10 +131,11 @@ describe("규칙·계산식 설명이 터치에서도 열린다", () => {
     // ③ 서든데스 규칙 (모드 뱃지)
     expect(APP_CODE).toMatch(/<InfoNote\s+className="mode-badge"/);
     // ④·⑤ 증강 설명 전문 (중계 · 드래프트 보유 목록)
+    // 카탈로그에 없을 때의 폴백은 원문 id가 아니라 공용 `augName`이다(2026-09-25, docs/59 U63)
     expect(APP_CODE).toContain(
-      "note={\n              catalog[id] === undefined\n                ? id\n                : forMode(catalog[id].description, view.round.mode)\n            }",
+      "note={\n              catalog[id] === undefined\n                ? augName(id)\n                : forMode(catalog[id].description, view.round.mode)\n            }",
     );
-    expect(APP_CODE).toContain("note={entry === undefined ? id : forMode(entry.description, mode)}");
+    expect(APP_CODE).toContain("note={entry === undefined ? augName(id) : forMode(entry.description, mode)}");
     // 옛 형태(맨 span 의 title)가 돌아오면 실패한다
     expect(APP_CODE).not.toContain('title="타점×3 + 속도×3 + 무대응×2 + 빈도×2"');
     expect(APP_CODE).not.toContain("title={catalog[id]?.description ?? id}");
@@ -155,7 +156,10 @@ describe("규칙·계산식 설명이 터치에서도 열린다", () => {
     expect(APP_CODE).toContain("aria-disabled={!usable}");
     // `aria-disabled` 는 이 부분문자열을 포함하므로 줄 시작까지 함께 본다
     expect(APP_CODE).not.toMatch(/\n\s*disabled=\{!usable\}/);
-    expect(APP_CODE).toContain("지금은 사용할 수 없습니다. ${activeIds.map(blockedNote).join(\", \")}");
+    // 2026-09-25 (docs/59 U43): 토스트와 title이 같은 조립(blockedLines)을 쓴다 —
+    // 첫머리는 «내 차례가 아님/사용할 수 없음», 사유 있는 것만 «이름: 사유»
+    expect(APP_CODE).toContain("props.onToast?.(blockedToast());");
+    expect(APP_CODE).toContain('const lines = [notMyTurn ? "지금은 내 차례가 아닙니다" : "지금은 사용할 수 없습니다"];');
     expect(CSS_CODE).toContain('.aug-btn[aria-disabled="true"]');
   });
 });

@@ -156,7 +156,9 @@ export const nagashiYakuman: AugmentDef = defineAugment({
           augPoints: notes,
           drawSpecial: {
             augId: ID,
-            label: "유국역만: 버림패가 전부 요구패·자패",
+            // 구분자는 코어 유국만관 라벨과 같은 « — » — 클라 컷인이 앞 조각만 제목으로 쓴다.
+            // «:»였을 때는 문장 통째가 역만 컷인 밴드를 넘쳤다(2026-09-25, docs/59 U79).
+            label: "유국역만 — 버림패가 전부 요구패·자패",
             holder,
           },
         },

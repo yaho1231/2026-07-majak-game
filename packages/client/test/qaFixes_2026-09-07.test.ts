@@ -81,7 +81,10 @@ describe("③ 허장성세·분열의 재료는 누르기 **전에** 손패에�
 
   it("손패가 그 표식을 그린다 — 이름에도 실어 화면을 못 보는 사람에게도 남는다", () => {
     expect(APP).toContain('doomed ? " hand-doomed" : ""');
-    expect(APP).toContain('doomed ? "누르면 이 발동에 쓰여 사라지는 패" : null');
+    // 2026-09-25 (docs/59 U36): 회수의 쯔모패는 «사라지는» 게 아니라 내 바닥으로 나가므로 따로 읽는다
+    expect(APP).toMatch(
+      /doomed\s*\?\s*recallDoomed\.has\(id\)\s*\?\s*"회수하면 대신 내 바닥으로 나가는 패"\s*:\s*"누르면 이 발동에 쓰여 사라지는 패"\s*:\s*null/,
+    );
     // 색만으로 말하지 않는다 (적록색맹·고대비)
     expect(CSS).toContain(".hand-doomed::after");
     expect(rule(".hand-doomed::after")).toContain('content: "✕"');

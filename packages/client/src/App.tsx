@@ -549,14 +549,23 @@ function actionLabel(type: string, catalog: Record<string, AugmentCatalogEntry>)
   return type;
 }
 
+/*
+ * 액션 이름표 — 표준 액션(퐁·치·깡·패스)의 이름이자, 카탈로그가 아직 안 온 첫 렌더의 폴백이다.
+ * 증강 액션은 화면 어디서나 **증강 이름 하나**로 부른다(`augActionName`, docs/59 §2 원칙 6).
+ * 그래서 값에 «(바꿀 3장 선택)» 같은 설명을 섞지 않는다 — 무엇을 하는지는 무장 안내
+ * (`ARM_PROMPT`)가 말하고, 여기 설명이 붙어 있으면 안내 줄이 같은 말을 두 번 했다
+ * (2026-09-25, docs/59 U18). ⚠ 키는 지우지 않는다: 액션 바 톤·코치가 «키가 없으면 증강»으로 가른다.
+ */
 const ACTION_LABEL: Record<string, string> = {
   win: "화료",
   pon: "퐁",
   chi: "치",
   bluff_pon: "허장성세 퐁",
-  silent_pon: "묵계 멘젠 퐁",
-  // 우는 국사무쌍의 특수 후로 — 버려진 요구패 1장 + 손패 2장(서로 다른 요구패 3종)
-  kokushi_pon: "우는 국사무쌍 요구패 퐁",
+  silent_pon: "묵계 퐁",
+  // 우는 국사무쌍의 특수 후로 — 버려진 요구패 1장 + 손패 2장(서로 다른 요구패 3종).
+  // 후로 컷인과 같은 이름 «국사 퐁» — 무슨 패로 우는지는 버튼 옆 ActionTiles가 그림으로 보여 준다
+  // (2026-09-25, docs/59 U18).
+  kokushi_pon: "국사 퐁",
   minkan: "깡",
   ankan: "안깡",
   shouminkan: "가깡",
@@ -567,7 +576,7 @@ const ACTION_LABEL: Record<string, string> = {
   swap3: "등가교환 대상 지정",
   swap3_give: "등가교환 넘길 3장",
   swap3_take: "등가교환 가져올 3장",
-  hand_swap: "손패 강탈",
+  hand_swap: "통째로 바꾸기",
   red_touch: "붉은 손길",
   future_exchange: "미래 보기",
   bottom_deal: "밑장빼기",
@@ -594,7 +603,7 @@ const ACTION_LABEL: Record<string, string> = {
   time_stop_use: "시간 정지",
   open_riichi: "오픈 리치",
   mono_world: "단색 세계",
-  parasite_attach: "기생",
+  parasite_attach: "기생충",
   seal_hands: "봉인",
   invincible_guard: "천하무적",
   // 2026-07-22 (52차) 신규 12종 — docs/16 §1c
@@ -633,24 +642,24 @@ const ACTION_LABEL: Record<string, string> = {
   split_tile: "분열 패 쪼개기",
   frame_discard: "누명 패 심기",
   dragons_will: "삼원의 의지 발동",
-  flip_riichi: "손바닥 뒤집기 손패 골라 버리기",
+  flip_riichi: "손바닥 뒤집기",
   north_pull: "북풍 상인 북빼기",
   // 2026-08-04 (6차) 신규
   dora_recall: "도라의 잔상 되살리기",
   soul_strike: "영혼의 일격 선언",
   picky_unify: "편식 단색화",
   // 2026-08-07 (7차) 신규
-  joker_call: "조커 (백으로 바꿀 패 선택)",
+  joker_call: "조커",
   // 2026-08-23 — 상시 패시브에서 2국 1회 액티브로 바뀐 모양 규칙 3종
   declare_mixed_triplet: "동수의 결속 선언",
   declare_broken_border: "무너진 국경 선언",
   declare_async_chiitoi: "비대칭 선언",
   // 2026-09-24 (8차) 신규
-  pruning_swap: "가지치기 (바꿀 3장 선택)",
+  pruning_swap: "가지치기",
   copy_take: "카피",
   yggdrasil_call: "위그드라실 발동",
   swamp_activate: "늪 발동",
-  greed_use: "욕심 (방금 쯔모한 패)",
+  greed_use: "욕심",
   intimidate_riichi: "위압 리치",
 };
 
@@ -780,21 +789,28 @@ function doomedTileIdsOf(
     }
     return [...new Set(Object.values(map).filter((v): v is number => typeof v === "number"))];
   }
+  if (actionType === "recall") {
+    // 회수 — 대가로 **지금 쯔모한 패**가 내 바닥으로 나간다(후리텐 이력에도 남는다, core
+    // standardAugments RECALL_PERFORMED). 대상이 서버가 고르는 재료가 아니라 myDrawnTile
+    // 그대로라 위의 «계산 두 벌 금지» 규약과 어긋나지 않는다(2026-09-25, docs/59 U36).
+    return view.round.myDrawnTile !== null ? [view.round.myDrawnTile] : [];
+  }
   return [];
 }
 
 /**
  * 액티브 액션 타입 → 화면에 쓸 이름. 카탈로그(서버가 보내는 증강 정의)의 증강 이름을
  * 우선 쓰고, 매칭이 없으면 액션 라벨로 떨어진다.
+ *
+ * 마지막 폴백은 `actionLabel` 한 경로다 — 예전엔 여기서 `?? type`으로 조용히 끝나
+ * 이름이 빠진 액션이 개발 중에도 경고 없이 내부 id로 섰다(2026-09-25, docs/59 U62).
  */
 function augActionName(
   catalog: Record<string, AugmentCatalogEntry>,
   type: string,
 ): string {
   const augId = ACTION_AUGMENT[type];
-  return (
-    (augId !== undefined ? catalog[augId]?.name : undefined) ?? ACTION_LABEL[type] ?? type
-  );
+  return (augId !== undefined ? catalog[augId]?.name : undefined) ?? actionLabel(type, catalog);
 }
 
 /** 플레이어가 버튼으로 발동하는 액티브 증강 액션 타입 (타일 클릭 액션은 제외). */
@@ -1009,7 +1025,8 @@ const QUEST_GOAL: Record<string, string> = {
  * - "hand"      : 내 손패의 패를 클릭 (payload에 tileId)
  * - "opp"       : 상대 플레이어를 클릭 (payload에 target)
  * - "own-river" : 내 바닥(버림패)의 패를 클릭 (payload에 recallTileId 또는 kind)
- * - "opp-river" : 상대 바닥의 (가장 최근) 버림패를 클릭 (payload에 snatchId/fromPlayer)
+ * - "opp-river" : 상대 바닥의 버림패를 클릭 (payload에 snatchId·graveId·tileId / fromPlayer)
+ *                 — 날치기는 각 상대의 최근 3장, 도굴은 화료가 되는 과거 버림패, 정적의 손은 서버 후보 그대로
  * - "swap3"     : 상대를 클릭한 뒤 내 손패 3장을 클릭 (등가교환 전용)
  * - "hand3"     : 내 손패 3장을 클릭해 고른 뒤 [확인] (payload에 정렬된 tileIds 3장 — 가지치기)
  */
@@ -1040,7 +1057,7 @@ const ARM_MODE: Record<string, ArmMode> = {
   peek_waits: "opp",
   // 내 바닥(버림패) 클릭 — 회수할/지뢰로 지정할 버림패를 고른다
   recall: "own-river",
-  // 상대 바닥 클릭 — 주울 상대의 최근 버림패를 고른다
+  // 상대 바닥 클릭 — 주울 상대의 버림패를 고른다(각 상대의 최근 3장 — content pond_snatch.ts)
   pond_snatch: "opp-river",
   // 상대 바닥 클릭 — 무덤에 잠든 과거의 버림패를 파낸다(바닥 전체가 대상)
   grave_rob: "opp-river",
@@ -1063,8 +1080,8 @@ const ARM_MODE: Record<string, ArmMode> = {
   conjure_tsumo: "hand",
   // 손바닥 뒤집기 — 리치 중, 쯔모기리 대신 버릴 손패를 클릭한다 (2026-08-15)
   flip_riichi: "hand",
-  // 정적의 손 — 새 탭 없이 실제 바닥패(네 사람 전부)를 직접 클릭해 주울 패를 고른다
-  // 정적의 손 — 2026-08-20부터 **상대 셋의 바닥만** 대상이다(내 바닥 제외)
+  // 정적의 손 — 새 탭 없이 실제 바닥패를 직접 클릭해 주울 패를 고른다.
+  // 2026-08-20부터 **상대 셋의 바닥만** 대상이다(내 바닥 제외)
   silent_take: "opp-river",
   // 영혼의 일격 — 리치처럼, 리치 걸 손패(버릴 패)를 직접 클릭해 선언한다
   soul_strike: "hand",
@@ -1089,7 +1106,6 @@ function armModeOf(type: string): ArmMode | undefined {
  */
 const HAND_MANIP_ACTIONS = new Set(["hand_swap", "swap3", "seat_swap"]);
 
-/** 무장 안내 문구 — 무엇을 클릭해야 하는지. */
 /**
  * 무장한 뒤 **패를 버리면서** 발동하는 리치 계열 액션.
  *
@@ -1128,12 +1144,67 @@ const RIICHI_AUG_IDS = new Set(
     .filter((id): id is string => id !== undefined),
 );
 
+/**
+ * 무장 안내 문구 — 무엇을 클릭하면 **무슨 일이 생기는지**. 안내 줄은 `{증강 이름}: {문구}`다.
+ *
+ * 예전엔 대부분이 모드 기본값(«발동할 손패를 클릭하세요»·«대상 상대를 클릭하세요»)이었고,
+ * 동사 몫은 이름표(ACTION_LABEL — «대기패 위조»·«스파이 지정»)가 반쯤 했다. 이제 이름은
+ * 증강 이름 하나라(docs/59 U18) 선언 간파의 위조·간파처럼 한 증강의 두 액션이 같은 이름으로
+ * 합쳐진다 — 그 구분을 이 표가 맡는다(2026-09-25, docs/59 U19).
+ * 소환·스파이는 패 종류마다 후보가 하나라 **한 번 누르면 곧바로 확정**이다 — 그래서 그걸 적는다.
+ * 문체는 docs/52(«~하세요», 줄표 대신 마침표). 증강 규칙이 바뀌면 그 증강 파일 머리 주석과 대조한다.
+ */
+const ARM_PROMPT: Record<string, string> = {
+  // 손패
+  tile_dye: "무늬를 바꿀 수패를 클릭하세요",
+  alchemy: "숫자를 ±1 바꿀 수패를 클릭하세요",
+  split_tile: "두 장으로 쪼갤 수패를 클릭하세요",
+  peek_forge: "간파한 대기패로 바꿀 손패를 클릭하세요",
+  spy_mark: "몰래 지정할 패 종류를 클릭하세요. 누르면 바로 정해집니다",
+  conjure_tsumo: "다음 쯔모로 부를 패 종류를 클릭하세요. 누르면 바로 정해집니다",
+  joker_call: "백으로 바꿀 손패를 클릭하세요. 백을 고르면 바로 발동합니다",
+  frame_discard: "심을 손패를 클릭한 뒤, 놓을 상대의 바닥을 클릭하세요",
+  // 상대
+  // 통째로 바꾸기는 «맞바꾸기»가 아니라 상대 손패를 가져온다(내 손패는 패산 맨 밑 — full_hand_swap.ts)
+  hand_swap: "손패를 통째로 가져올 상대를 클릭하세요",
+  peek_waits: "대기패를 간파할 상대를 클릭하세요",
+  parasite_attach: "기생할 상대를 클릭하세요",
+  copy_take: "증강을 빌려 올 상대를 클릭하세요",
+  seat_swap: "자리를 바꿀 상대를 클릭하세요",
+  scapegoat_mark: "내 쯔모 점수를 혼자 낼 상대를 클릭하세요",
+  push_brand: "낙인을 찍을 상대를 클릭하세요",
+  rank_gate_mark: "4판 이하로는 화료할 수 없게 할 상대를 클릭하세요",
+  // 바닥 — 회수의 대가(쯔모패가 내 바닥으로 나가 후리텐 이력에 남는다)는 손패의 ✕가 짚는다(U36)
+  recall: "되가져올 내 버림패를 클릭하세요. ✕ 표시된 쯔모패가 대신 바닥으로 나갑니다",
+  // 정적의 손 — 옛 모달에만 있던 «이어서 한 장을 버려야 한다»를 여기로 옮겼다(U11)
+  silent_take:
+    "가져올 상대의 버림패를 클릭하세요. 지금 쯔모한 패는 패산 맨 밑으로 돌아가고, 이어서 한 장을 버려야 합니다",
+};
+
+/**
+ * 상대 줄 위 무장 태그의 **동사** — 눈이 대상 쪽에 가 있는 순간 그 자리에서 무슨 일이
+ * 생기는지 읽히게 한다(2026-09-25, docs/59 U29). 태그는 `{증강 이름}: {동사}`, 표에 없으면
+ * «여기를 클릭»으로 물러난다(내부 type을 쓰지 않는다).
+ */
+const OPP_ARM_TAG: Record<string, string> = {
+  // 머리가 이미 증강 이름이라 같은 말을 되풀이하지 않는 동사로 둔다(«통째로 바꾸기: 손패 통째로 바꾸기» ✗)
+  hand_swap: "이 손패 가져오기",
+  seat_swap: "이 자리와 바꾸기",
+  copy_take: "증강 하나 빌려 오기",
+  peek_waits: "대기 엿보기",
+  scapegoat_mark: "이 사람에게 씌우기",
+  push_brand: "낙인 찍기",
+  parasite_attach: "기생하기",
+  rank_gate_mark: "4판 이하 화료 막기",
+  swap3: "교환 상대로 고르기",
+};
+
 function armPromptText(mode: ArmMode | null, type?: string | null): string {
   if (type !== null && type !== undefined && DRAG_DISCARD_ARM_TYPES.has(type)) {
     return "버릴 패를 바닥으로 끌어 놓거나 클릭하세요";
   }
-  if (type === "joker_call") return "백으로 바꿀 손패를 클릭하세요. 백을 고르면 바로 발동합니다";
-  if (type === "frame_discard") return "심을 손패를 클릭한 뒤, 놓을 상대의 바닥을 클릭하세요";
+  const own = type !== null && type !== undefined ? ARM_PROMPT[type] : undefined;
+  if (own !== undefined) return own;
   switch (mode) {
     case "opp":
       return "대상 상대를 클릭하세요";
@@ -1262,9 +1333,47 @@ function augmentCategory(id: string): AugmentCategory {
   return CATEGORY_BY_ID[id] ?? "etc";
 }
 
-/** 증강 id → 표시 이름 (카탈로그 도착 전이면 id 그대로) */
+/**
+ * 서버 catalog를 받지 못한 화면(공유 링크로 연 리플레이 — 인증 없이 replayGet만 보낸다)에서
+ * 전역 이름표·계열표를 채운다. 리플레이는 content 레지스트리로 제 이름표를 이미 들고 있다.
+ * `??=`라 이미 받은 서버 값은 덮지 않는다 — 낡은 탭의 번들 이름표가 서버 것을 이기면 안 된다
+ * (2026-09-25, docs/59 U68).
+ */
+function rememberCatalogIfMissing(
+  entries: readonly { id: string; name: string; category: AugmentCategory }[],
+): void {
+  for (const e of entries) {
+    CATEGORY_BY_ID[e.id] ??= e.category;
+    NAME_BY_ID[e.id] ??= e.name;
+  }
+}
+
+/** 이름을 못 찾은 id는 개발 모드에서 **한 번만** 경고한다 — 렌더마다 찍으면 콘솔이 잠긴다. */
+const warnedAugNames = new Set<string>();
+
+/**
+ * 증강 id → 사람이 읽는 이름. 폴백은 이 한 경로다(docs/59 §2 원칙 3, U63).
+ *
+ * 카탈로그 → 전역 이름표 → 중립 문구 순. 예전에는 자리마다 `entry?.name ?? id`로 따로
+ * 떨어져서, 이름이 비는 순간 `last_stand` 같은 내부 id가 알약·툴팁·드래프트 보유 목록에
+ * 그대로 섰다. 운영에서는 «알 수 없는 증강»으로 물러나고, 개발 모드에서만 원인을 알린다
+ * (2026-09-25).
+ */
+function augName(id: string, catalog?: Readonly<Record<string, { name: string } | undefined>>): string {
+  const known = catalog?.[id]?.name ?? NAME_BY_ID[id];
+  if (known !== undefined) return known;
+  // 이름표가 아직 통째로 비었으면 카탈로그 도착 전이라 정상이다 — 그때 경고하면 헛경보인 데다
+  // «한 번만» 몫을 써 버려서, 도착 뒤 정말 빠진 id가 조용해진다(2026-09-25).
+  if (import.meta.env.DEV && Object.keys(NAME_BY_ID).length > 0 && !warnedAugNames.has(id)) {
+    warnedAugNames.add(id);
+    console.warn(`[ui] 증강 "${id}" 의 이름을 찾지 못했습니다 — 카탈로그를 확인하세요.`);
+  }
+  return "알 수 없는 증강";
+}
+
+/** 증강 id → 표시 이름 (카탈로그 도착 전이면 중립 문구 — `augName`) */
 function augmentDisplayName(id: string): string {
-  return NAME_BY_ID[id] ?? id;
+  return augName(id);
 }
 
 /** 증강 카테고리 아이콘 (임시 이모지). */
@@ -1999,6 +2108,77 @@ function ScreenOverlay(props: {
 }
 
 /**
+ * 도감·규칙 오버레이 맨 아래에 뜨는 «내 차례» 띠 (2026-09-25, docs/59 U70).
+ * 흐름 밖(absolute)에 둔다 — 왜 위·sticky 가 아닌지는 styles.css `.overlay-turn-bar` 주석.
+ *
+ * 두 오버레이는 게임을 멈추지 않는다(App 의 오버레이 주석 — 의도된 설계). 그런데 판
+ * 전체를 덮어서, 상대 증강 하나를 찾아보는 사이 내 차례·론/퐁 기회가 와도 화면에 아무
+ * 표시가 없었다 — 소리를 끈 데스크톱이면 타이머가 끝나 자동 쯔모기리·패스로 흘렀다.
+ * 멈추는 대신 **알리기만** 한다: 자동으로 닫지 않는다(읽던 자리를 날리지 않게).
+ *
+ * `ScreenOverlay` 의 **children** 으로 들어간다 — 오버레이 안쪽이라 inert 에 안 걸리고,
+ * 오버레이 본문(포커스·Esc·inert 처리)은 손대지 않는다.
+ *
+ * ⚠ «판으로 돌아가기» 단추는 **마운트 한 박자 뒤에** 그린다. `ScreenOverlay` 는 열리는
+ * 순간 안쪽 첫 버튼으로 포커스를 옮기는데, 내 차례에 도감을 열면 이 단추가 그 첫 버튼이
+ * 되어 포커스를 빼앗는다(Enter 한 번에 방금 연 도감이 닫힌다). 자식의 effect 가 부모의
+ * effect 보다 먼저 돌지만 여기서 세운 state 는 부모 effect 뒤에 그려지므로, 부모가 첫
+ * 버튼을 찾을 때 이 단추는 아직 없다. 띠가 나중에 나타나는 경우(열어 둔 채 차례가
+ * 온다)는 부모 effect 가 다시 돌지 않으니 처음부터 문제없다.
+ */
+function OverlayTurnBar(props: {
+  /** 지금 보고 있는 좌석이 답해야 할 프롬프트 */
+  prompt: PromptMessage["prompt"];
+  deadline: number | null;
+  onBack: () => void;
+}): JSX.Element {
+  const { deadline } = props;
+  const paused = useContext(PausedContext);
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
+  const [left, setLeft] = useState<number | null>(
+    deadline === null ? null : Math.max(0, deadline - Date.now()),
+  );
+  useEffect(() => {
+    if (deadline === null) {
+      setLeft(null);
+      return;
+    }
+    // 판이 서 있으면 마지막 값에서 멈춘다 (PickTimer 와 같은 규칙).
+    if (paused) return;
+    setLeft(Math.max(0, deadline - Date.now()));
+    const t = setInterval(() => setLeft(Math.max(0, deadline - Date.now())), 500);
+    return () => clearInterval(t);
+  }, [deadline, paused]);
+  const opts = props.prompt.options;
+  // 선택지에 pass 가 있으면 남의 버림패에 대한 반응(론·퐁·치·깡) — 버림 차례와 구별해
+  // 적는다(프롬프트 수신부의 «삑» 판정과 같은 기준).
+  const reaction = opts.some((o) => o.type === "pass") && opts.some((o) => o.type !== "pass");
+  const urgent = left !== null && left <= TIMER_URGENT_MS;
+  return (
+    <div
+      className={`overlay-turn-bar${urgent ? " overlay-turn-bar-urgent" : ""}`}
+      role="status"
+      aria-live="polite"
+    >
+      <span className="overlay-turn-bar-text">
+        {reaction ? "론·퐁 선택 대기" : "내 차례"}
+        {/* 초는 따로 읽히지 않게 한다 — status(polite) 안에서 0.5초마다 바뀌면 스크린리더가
+            매번 읽는다. 띠가 뜰 때 «내 차례» 한 번이면 된다(PickTimer 의 timer/off 와 같은 식). */}
+        {left !== null ? (
+          <span role="timer" aria-live="off"> · <strong>{Math.ceil(left / 1000)}</strong>초</span>
+        ) : null}
+      </span>
+      {ready ? (
+        <button type="button" className="overlay-turn-bar-back" onClick={props.onBack}>
+          판으로 돌아가기
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/**
  * 게임 위에 뜨는 **비모달** 패널(설정·기록)용 — Esc로 닫고, 열 때 포커스를 옮긴다.
  *
  * 이쪽에는 `aria-modal`도 `inert`도 걸지 않는다. 판은 뒤에서 계속 돌고 결정 타이머도
@@ -2352,7 +2532,40 @@ function botLabel(view: PlayerView, player: PlayerInfo): string {
 function playerName(view: PlayerView, player: PlayerInfo): string {
   if (player.id === view.playerId) return "나";
   if (player.isBot) return botLabel(view, player);
-  return player.nickname !== "" ? player.nickname : player.id;
+  // 닉네임이 비었을 때 좌석 id(`p2`)를 찍지 않는다 — 원문 노출(2026-09-25, docs/59 U67)
+  return player.nickname !== "" ? player.nickname : "이름 없음";
+}
+
+/**
+ * 판 밖 목록(리플레이·진행 중 방·관전 탁자)에 이어 붙일 이름.
+ *
+ * 봇의 서버 닉네임은 `Bot_p2`라서 `p.nickname`을 그대로 이으면 «yaho · Bot_p1 · Bot_p2»가
+ * 됐다(docs/59 U67). 대기실(`p.isBot ? "봇" : p.nickname`)과 같은 규칙에, 여럿이면
+ * 번호를 붙인다 — «봇 · 봇 · 봇»은 구분이 안 된다(2026-09-25).
+ *
+ * 진행 중 방·관전 탁자 목록은 서버가 좌석순(`agents`)으로 보내서, 번호가 판 위 `botLabel`
+ * (좌석순)의 «봇N»과 같다. 리플레이 목록은 **다르다** — 서버 DB가 순위순(`ORDER BY rank`)으로
+ * 주고 좌석을 싣지 않는다. 그래서 호출부가 `botOrderKey`로 서버 닉네임(`Bot_{id}`)을 넘겨 id순
+ * 으로 번호를 매긴다(키로만 쓰고 화면에는 절대 세우지 않는다). 순위순보다 판마다 덜 흔들릴 뿐,
+ * **좌석순을 보장하지 않는다**: 좌석 id(`p0`~`p3`)는 비어 있는 가장 앞 번호, 자리는 비어 있는
+ * 가장 앞 자리를 따로 받고, 방장의 «자리 섞기»·«자리 옮기기»가 자리만 바꾼다. 그러니 리플레이
+ * 목록의 번호는 «봇끼리 구분»용이고, 리플레이 화면의 «봇1»과 같은 봇이라는 뜻이 아니다.
+ * 맞추려면 `game_players`에 좌석을 실어 키로 넘겨야 한다 — 스키마·프로토콜이 바뀌는 서버
+ * 일이라 여기서 하지 않았다(2026-09-25, docs/59 U67).
+ */
+function rosterNames(
+  players: readonly { nickname: string; isBot: boolean }[],
+  botOrderKey?: (p: { nickname: string; isBot: boolean }) => string,
+): string[] {
+  const bots = players.filter((p) => p.isBot);
+  const ordered =
+    botOrderKey === undefined
+      ? bots
+      : [...bots].sort((a, b) => botOrderKey(a).localeCompare(botOrderKey(b), undefined, { numeric: true }));
+  return players.map((p) => {
+    if (!p.isBot) return p.nickname !== "" ? p.nickname : "이름 없음";
+    return bots.length <= 1 ? "봇" : `봇${ordered.indexOf(p) + 1}`;
+  });
 }
 
 /** id만 있는 곳(컷인·결과·증강 패널)에서 표시명을 얻는다. 없으면 id 폴백. */
@@ -3465,8 +3678,6 @@ export function App(): JSX.Element {
   const seatMoveByMe = useRef(0);
   /** 직전 상세설정 — 무엇이 바뀌었는지 말해 주려고 둔다(로비와 같은 이유로 ref). */
   const prevRoomRules = useRef<RoomRules | null>(null);
-  /** 중단 투표를 이미 알렸는가 — 투표가 갱신될 때마다 토스트가 쌓이지 않게 한 번만 띄운다 */
-  const abortVoteNoticed = useRef(false);
   /** 지금 화면(=보고 있는 좌석)이 답해야 할 프롬프트 */
   const prompt = view === null ? null : (prompts[view.playerId] ?? null);
   /**
@@ -3584,6 +3795,15 @@ export function App(): JSX.Element {
   /** 종국 뒤에도 방이 살아 있어 같은 멤버로 한 판 더 갈 수 있는가 (결과 화면의 "이어하기") */
   const [canContinue, setCanContinue] = useState(false);
   const [abortVote, setAbortVote] = useState<AbortVoteMessage | null>(null);
+  /**
+   * 무효 투표 **회차** — 투표가 새로 시작될 때(표 0 → 1 이상)마다 1 오른다. GameTable 이
+   * AbortVoteBanner 의 key 로 써서 회차마다 새로 마운트시킨다(2026-09-25, docs/59 U72).
+   * 배너는 요청자를 마운트 순간의 `voters[0]` 으로 기억하는데, 반대(votes 0)와 다음 동의가
+   * 한 렌더 안에 몰려 오면 배너가 내려갔다 다시 뜨지 않아 **지난 투표의 요청자**가 남았다 —
+   * 새 요청자 화면에 [동의 취소]가 떴다. 메시지는 하나씩 처리되므로 ref 로 직전 상태를 본다.
+   */
+  const [abortVoteRound, setAbortVoteRound] = useState(0);
+  const abortVoteLive = useRef(false);
   const [riichiMode, setRiichiMode] = useState(false);
   const [intro, setIntro] = useState(false);
   const [scoreFx, setScoreFx] = useState<Record<string, number>>({});
@@ -4483,7 +4703,6 @@ export function App(): JSX.Element {
     setRoomRules(DEFAULT_ROOM_RULES);
     prevRoomRules.current = null;
     prevLobby.current = null;
-    abortVoteNoticed.current = false;
     setSandbox(null);
     setControlling(null);
     setView(null);
@@ -4496,6 +4715,7 @@ export function App(): JSX.Element {
     setCanContinue(false);
     setRoundResult(null);
     setAbortVote(null);
+    abortVoteLive.current = false;
     setSpectating(null);
     /*
      * 중계 오버레이도 관전석에 두고 나온다 (위 `overlayMode` 주석).
@@ -5280,7 +5500,9 @@ export function App(): JSX.Element {
         if (fxSeenRef.current.keys.has(key)) return;
         fxSeenRef.current.keys.add(key);
       }
-      const who = pv !== null ? playerNameById(pv, msg.player) : msg.player;
+      // 뷰가 아직 없으면 주체를 비운다 — 좌석 id(`p2`)를 곁줄에 세우느니 이름 없이 가는 편이
+      // 낫다. showCutIn은 who가 없으면 주체 조각을 생략한다(2026-09-25, docs/59 U66).
+      const who = pv !== null ? playerNameById(pv, msg.player) : undefined;
       /*
        * 곁줄은 «누가 — 무엇이 일어나는가» 두 조각이다.
        *
@@ -5295,7 +5517,7 @@ export function App(): JSX.Element {
       showCutIn(label, "augment", effect !== "" ? effect : "증강 발동", 1600, {
         sfx: () => sfx.augment(0),
         augId,
-        who,
+        ...(who !== undefined ? { who } : {}),
       });
       return;
     }
@@ -5364,6 +5586,7 @@ export function App(): JSX.Element {
       pendingResult.current = null;
       setRankings(null);
       setAbortVote(null);
+      abortVoteLive.current = false;
       setRiichiMode(false);
       clearProductions();
       setScoreFx({});
@@ -5443,7 +5666,9 @@ export function App(): JSX.Element {
           showToast(`제한 시간이 ${ROOM_PACE_LABEL[msg.pace] ?? msg.pace}(${paceSub(msg.pace)})로 바뀌었습니다`, "info");
         }
         if (prev.botDifficulty !== msg.botDifficulty) {
-          showToast(`봇 난이도가 ${BOT_DIFFICULTY_LABEL[msg.botDifficulty] ?? msg.botDifficulty}(으)로 바뀌었습니다`, "info");
+          // 이름표에 없는 난이도(탭이 낡았다)면 `hard` 같은 원문 대신 문장만 남긴다(2026-09-25, docs/59 U74).
+          const diffLabel = BOT_DIFFICULTY_LABEL[msg.botDifficulty];
+          showToast(diffLabel !== undefined ? `봇 난이도가 ${diffLabel}(으)로 바뀌었습니다` : "봇 난이도가 바뀌었습니다", "info");
         }
         const seatOf = (m: LobbyMessage): number | null =>
           m.players.find((p) => p.playerId === m.youId)?.seat ?? null;
@@ -5724,6 +5949,7 @@ export function App(): JSX.Element {
       setDraft(null);
       setDraftPicked(false);
       setAbortVote(null);
+      abortVoteLive.current = false;
       // 방이 남아 있으면(이어하기 가능) 재입장 대상도 그대로 둔다 —
       // 새로고침·재연결로 돌아와도 같은 대기실에 다시 앉는다.
       if (msg.canContinue !== true) {
@@ -5747,17 +5973,12 @@ export function App(): JSX.Element {
       return;
     }
     if (msg.type === "abortVote") {
-      // 투표 현황은 설정 패널 맨 아래에만 있어서, 남이 판을 접자고 해도 나는 몰랐다.
-      // 처음 한 번만 알린다 — 갱신마다 띄우면 잡음이 된다.
-      if (msg.votes > 0 && !abortVoteNoticed.current) {
-        abortVoteNoticed.current = true;
-        showToast(
-          `게임 무효 투표가 시작되었습니다 (${msg.votes}/${msg.needed}). 설정 맨 아래에서 응답할 수 있습니다`,
-          "info",
-          5000,
-        );
-      }
-      if (msg.votes === 0) abortVoteNoticed.current = false;
+      // 투표 시작 토스트(«설정 맨 아래에서 응답할 수 있습니다»)는 걷었다 (2026-09-25,
+      // docs/59 U71). 그 토스트는 «투표 현황이 설정 패널 맨 아래에만 있던» 시절의 것인데,
+      // 지금은 같은 순간 GameTable 이 화면 위에 AbortVoteBanner(aria-live=assertive)를
+      // 띄운다 — 눈앞에 응답 버튼이 있는데 ⚙ → 맨 아래로 가라고 안내하고 있었다.
+      if (msg.votes > 0 && !abortVoteLive.current) setAbortVoteRound((n) => n + 1);
+      abortVoteLive.current = msg.votes > 0;
       setAbortVote(msg);
       return;
     }
@@ -5831,7 +6052,8 @@ export function App(): JSX.Element {
         .sort((a, b) => (LIMIT_RANK[b.limit!] ?? 0) - (LIMIT_RANK[a.limit!] ?? 0))[0];
       const headline = yakumanWin ?? limitWin ?? infos[0]!;
       const pv = prevViewRef.current;
-      const who = pv !== null ? playerNameById(pv, headline.winner) : headline.winner;
+      // 뷰가 없으면 이름을 비운다 — 좌석 id를 찍지 않는다(docs/59 U66)
+      const who = pv !== null ? playerNameById(pv, headline.winner) : undefined;
       const wt = headline.winType === "tsumo" ? "쯔모" : "론";
       // 내가 화료했다 — 한 판에 한 번뿐인 신호라 진동도 여기서 유일하게 두 번 울린다.
       // (`haptics.win` 은 만들어만 두고 호출부가 0건이었다 — QA 4라운드 ingame-ux P2)
@@ -5868,7 +6090,9 @@ export function App(): JSX.Element {
         const sub = infos
           .map(
             (w) =>
-              `${pv !== null ? playerNameById(pv, w.winner) : w.winner} · ${gradeOf(w)} · ${w.points.toLocaleString()}점`,
+              [pv !== null ? playerNameById(pv, w.winner) : undefined, gradeOf(w), `${w.points.toLocaleString()}점`]
+                .filter((x) => x !== undefined)
+                .join(" · "),
           )
           .join("  /  ");
         // 셋 이상 «동시 론»은 삼가화 도중유국이라 여기 오지 않는다(아래 abort 분기).
@@ -5918,7 +6142,7 @@ export function App(): JSX.Element {
         showCutIn(
           label,
           "limit",
-          `${who} · ${wt} · ${limitWin.points.toLocaleString()}점`,
+          [who, wt, `${limitWin.points.toLocaleString()}점`].filter((x) => x !== undefined).join(" · "),
           big ? 2200 : 2000,
           {
             tier,
@@ -5938,7 +6162,9 @@ export function App(): JSX.Element {
       const special = msg.outcome === "draw" ? msg.settle.drawSpecial : undefined;
       if (special !== undefined) {
         showCutIn(
-          special.label.split(" — ")[0] ?? special.label,
+          // 구분자가 « — »가 아닌 라벨(예전 유국역만 «:»)이 와도 문장 통째가 제목에 서지 않게
+          // 둘 다 자른다(2026-09-25, docs/59 U79)
+          special.label.split(/\s*(?:—|:)\s*/)[0] ?? special.label,
           "yakuman",
           special.holder !== undefined && prevViewRef.current !== null
             ? playerNameById(prevViewRef.current, special.holder)
@@ -6839,6 +7065,16 @@ export function App(): JSX.Element {
   const inGame = (joined !== null || isSpectator) && view !== null;
   const inWaiting = joined !== null && view === null && rankings === null && !isSpectator;
   const draftVisible = inGame && draft !== null && !intro && roundResult === null && !isSpectator;
+  /**
+   * 도감·규칙 오버레이 위에 «내 차례» 띠를 세울 프롬프트(docs/59 U70) — 대국 중이고,
+   * 관전이 아니고, 지금 보는 좌석이 답해야 할 것이 있을 때만. 관전자는 답할 차례가 없다.
+   */
+  const overlayTurnPrompt = inGame && !isSpectator ? prompt : null;
+  /** 띠의 [판으로 돌아가기] — 겹쳐 열린 도움말까지 한 번에 걷어 판을 바로 보인다. */
+  const backToTable = (): void => {
+    setCodexOpen(false);
+    setHelpOpen(false);
+  };
 
   /*
    * ── 배포 뒤 낡은 탭 ── (2026-09-24)
@@ -7310,6 +7546,7 @@ export function App(): JSX.Element {
           botDifficulty={isSpectator ? null : (lobby?.botDifficulty ?? null)}
           pastRounds={roundHistory}
           abortVote={abortVote}
+          abortVoteRound={abortVoteRound}
           onVoteAbort={cbVoteAbort}
           sandbox={sandbox}
           controlling={controlling}
@@ -7524,6 +7761,11 @@ export function App(): JSX.Element {
           도감이 그 위에 얹히고, 닫으면 읽던 자리로 그대로 돌아온다. */}
       {helpOpen ? (
         <ScreenOverlay label="규칙 · 도움말" onClose={() => setHelpOpen(false)}>
+          {/* 둘이 겹쳐 열렸으면(도움말 → 도감) 띠는 위에 얹힌 도감 쪽 하나만 — 두 개가
+              동시에 읽히지 않게(docs/59 U70). */}
+          {overlayTurnPrompt !== null && !codexOpen ? (
+            <OverlayTurnBar prompt={overlayTurnPrompt} deadline={promptDeadline} onBack={backToTable} />
+          ) : null}
           <HelpScreen
             augmentKinds={augmentKinds}
             /* 예전에는 `auth === null ? "← 로그인으로" : "← 닫기"` 였다 — 로그인 전
@@ -7541,6 +7783,9 @@ export function App(): JSX.Element {
       ) : null}
       {codexOpen ? (
         <ScreenOverlay label="증강 도감" onClose={() => setCodexOpen(false)}>
+          {overlayTurnPrompt !== null ? (
+            <OverlayTurnBar prompt={overlayTurnPrompt} deadline={promptDeadline} onBack={backToTable} />
+          ) : null}
           <CodexScreen
             catalog={catalog}
             career={stats?.career.find((e) => e.nickname === auth?.username)?.stats ?? null}
@@ -7790,6 +8035,17 @@ export function App(): JSX.Element {
           rankings={rankings}
           endReason={gameEndReason}
           stats={stats}
+          /* 판 위에서 부르던 이름(나·봇1…)을 결과에도 그대로 — 서버 닉네임은 봇이 `Bot_p2`다
+             (2026-09-25, docs/59 U76). gameOver는 view를 비우지 않으므로 여기서 읽을 수 있다. */
+          {...(view !== null
+            ? {
+                nameOf: (id: string) => {
+                  const p = view.players.find((x) => x.id === id);
+                  return p !== undefined ? playerName(view, p) : undefined;
+                },
+                myId: view.playerId,
+              }
+            : {})}
           onClose={returnHome}
           {...(canContinue && !isSpectator
             ? { onContinue: continueInRoom, sandbox: sandbox !== null }
@@ -7897,8 +8153,14 @@ function PauseOverlay({
         <div className="pause-reason">{pause.reason ?? "관리자가 게임을 일시정지했습니다"}</div>
         <div className="pause-hint">
           제한 시간도 함께 멈춰 있습니다. 재개하면 멈춘 곳부터 이어집니다.
-          {pause.by !== undefined ? ` (${pause.by})` : ""}
         </div>
+        {/* 세운 사람(관리자 계정명)은 **관전석에만** 적는다 (2026-09-25, docs/59 U83).
+            대국자 화면에서는 문장 끝 «(yaho1231)»처럼 설명 없는 괄호값이 오류 코드로
+            읽혔고, docs/36 C4 «운영의 신원은 판에 필요 없다»와도 어긋났다. 관전석은
+            관리자만 앉으므로, 누가 세웠는지 알아야 하는 운영 쪽 필요는 여기서 채운다. */}
+        {!blocking && pause.by !== undefined ? (
+          <div className="pause-hint">세운 사람: {pause.by}</div>
+        ) : null}
       </div>
     </div>
   );
@@ -9242,12 +9504,23 @@ interface AugRow {
 /** 증강 원시 통계 맵 → 표시용 행 배열 (파생 비율 계산). */
 function toAugRows(augments: Record<string, AugmentStatRaw> | undefined, catalog: AugCatalog): AugRow[] {
   const out: AugRow[] = [];
+  /*
+   * 카탈로그에 없는 id(폐기된 증강)는 행을 만들지 않는다. 누적 통계는 폐기 전 기록을 그대로
+   * 들고 있어서, 표에 `bounty_honitsu` 같은 내부 id가 이름 자리에 섰다(2026-09-25, docs/59 U63 —
+   * 운영 10명·33종). 기록 자체는 서버에 남겨 둔다(지우면 되돌릴 수 없다).
+   *
+   * 카탈로그가 아직 비었으면 행을 **하나도** 만들지 않는다. 거르지 않고 두면 이름이 전부
+   * `augName`의 폴백 «알 수 없는 증강»이라, 통계가 먼저 오면 똑같은 줄이 표를 채웠다가
+   * 바뀌었다(2026-09-25, docs/59 U63 리뷰). 표 쪽은 카탈로그가 비면 «불러오는 중»을 낸다.
+   */
+  if (Object.keys(catalog).length === 0) return out;
   for (const [id, s] of Object.entries(augments ?? {})) {
     const cat = catalog[id];
+    if (cat === undefined) continue;
     const top = s.placements[0] ?? 0;
     out.push({
       id,
-      name: cat?.name ?? id,
+      name: augName(id, catalog),
       tier: cat?.tier ?? "silver",
       offered: s.offered,
       picked: s.picked,
@@ -9397,6 +9670,10 @@ function PersonalAugmentStats({ stats, catalog }: { stats: PlayerStatsView | nul
   const catalogSize = useMemo(() => Object.keys(catalog).length, [catalog]);
   // 훅은 아래 early return보다 위에 있어야 한다 (기록이 없으면 표 대신 안내문을 낸다).
   const { sort, toggle } = useTableSort({ key: "avg", dir: "asc" });
+  // 카탈로그 전에는 toAugRows가 빈 배열이다 — «기록 없음»이 아니라 아직 못 받은 것이다
+  if (stats !== null && catalogSize === 0) {
+    return <p className="home-empty home-loading">불러오는 중…</p>;
+  }
   if (stats === null || rows.length === 0) {
     return <p className="home-empty">아직 증강 기록이 없습니다. 증강 드래프트가 있는 대국을 끝까지 플레이하면 기록됩니다.</p>;
   }
@@ -9499,7 +9776,8 @@ function AugmentMeta({
     [rows, sort],
   );
 
-  if (leaderboard === null) {
+  // 카탈로그 전에는 행이 없다(toAugRows) — «기록이 부족합니다»가 아니라 아직 못 받은 것이다
+  if (leaderboard === null || Object.keys(catalog).length === 0) {
     return <p className="home-empty home-loading">불러오는 중…</p>;
   }
   if (ranked.length === 0) {
@@ -9838,8 +10116,23 @@ function AugDesc({
   );
 }
 
-/** "자세히 ▾ / 간단히 ▴" 토글 — Shift가 없는 터치 기기의 통로 */
-function MoreToggle({ open, onToggle }: { open: boolean; onToggle: () => void }): JSX.Element {
+/**
+ * "자세히 ▾ / 간단히 ▴" 토글 — Shift가 없는 터치 기기의 통로.
+ *
+ * `showKey` — «Shift» 키 칩은 **Shift 가 실제로 연결된 곳**(이름표 툴팁·드래프트 카드,
+ * `useShiftHeld`)에서만 붙인다. 예전에는 늘 붙어서, Shift 를 듣지 않는 증강 시트에서도
+ * 누를 수 없는 키 이름이 떴다. 터치 기기에서는 CSS `(hover: none)` 이 이 칩을 또 걷는다
+ * (2026-09-25, docs/59 U75).
+ */
+function MoreToggle({
+  open,
+  onToggle,
+  showKey = false,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  showKey?: boolean;
+}): JSX.Element {
   return (
     <span
       className={`augdesc-more${open ? " augdesc-more-on" : ""}`}
@@ -9847,7 +10140,7 @@ function MoreToggle({ open, onToggle }: { open: boolean; onToggle: () => void })
       onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggle(); }}
     >
       {open ? "간단히 ▴" : "자세히 ▾"}
-      <span className="augdesc-more-key">Shift</span>
+      {showKey ? <span className="augdesc-more-key">Shift</span> : null}
     </span>
   );
 }
@@ -12730,7 +13023,7 @@ function HomeScreen(props: {
                     {date.toLocaleDateString()} {date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                   </span>
                   <span className="replay-players">
-                    {g.players.map((p) => p.nickname).join(" · ")}
+                    {rosterNames(g.players, (p) => p.nickname).join(" · ")}
                   </span>
                 </span>
                 <button className="replay-open" onClick={() => props.onOpenReplay(g.gameId)}>
@@ -13182,7 +13475,7 @@ function HomeScreen(props: {
                     <span className="live-code">{r.code}</span>
                     <span className="replay-meta">
                       <span className="replay-players">
-                        {r.players.map((p) => p.nickname).join(" · ")}
+                        {rosterNames(r.players).join(" · ")}
                       </span>
                       {/* 세워 둔 채 잊힌 탁자를 목록에서 알아볼 수 있어야 한다 —
                           세운 사람이 자리를 뜨면 판은 영영 서 있게 된다. */}
@@ -14869,6 +15162,8 @@ const GameTable = memo(function GameTable(props: {
   spectateCode?: string | null;
   /** 게임 무효 투표 현황 (없으면 아직 투표 없음) */
   abortVote?: AbortVoteMessage | null;
+  /** 무효 투표 회차 — AbortVoteBanner 의 key (App 의 abortVoteRound 주석) */
+  abortVoteRound?: number;
   onVoteAbort?: (vote: "agree" | "withdraw" | "reject") => void;
   /** 증강 테스트 게임이면 그 상태 (관리자 전용). null이면 일반 게임. */
   sandbox?: SandboxMessage | null;
@@ -15252,8 +15547,22 @@ const GameTable = memo(function GameTable(props: {
         <div className={`room-notice${props.spectator === true ? " room-notice-spec" : ""}`} role="status">
           <span className="room-notice-mark">📢</span>
           <span className="room-notice-text">{props.roomNotice.text}</span>
+          {/* 공지한 사람 — 서버가 싣는 `by` 는 «튜토리얼»·«관리자» 같은 역할 이름일 때도,
+              관리자 계정명일 때도 있다. 계정명만 알약에 덩그러니 두면 무슨 값인지 알 수
+              없어 «— 관리자»로 적는다(2026-09-25, docs/59 U83 · docs/36 C4 «운영의 신원은
+              판에 필요 없다»). 계정명은 관전석(= 관리자)에게만 title 로 보인다 — 대국자
+              에게까지 hover 로 내주면 문구에서 지운 의미가 없다(PauseOverlay 와 같은 선). */}
           {props.roomNotice.by !== undefined ? (
-            <span className="room-notice-by">{props.roomNotice.by}</span>
+            props.roomNotice.by === "튜토리얼" || props.roomNotice.by === "관리자" ? (
+              <span className="room-notice-by">{props.roomNotice.by}</span>
+            ) : (
+              <span
+                className="room-notice-by"
+                title={props.spectator === true ? `공지한 사람: ${props.roomNotice.by}` : "공지한 사람: 관리자"}
+              >
+                — 관리자
+              </span>
+            )
           ) : null}
         </div>
       ) : null}
@@ -15278,14 +15587,19 @@ const GameTable = memo(function GameTable(props: {
       ) : null}
       <ModeBadge mode={view.round.mode} />
       {/* 봇 난이도 — 대기실에서만 보이고 판에 들어오면 사라지던 값. 봇이 없는 판에서는
-          띄우지 않는다. */}
-      {props.botDifficulty != null && view.players.some((p) => p.isBot) ? (
-        <div
+          띄우지 않는다. 이름표에 없는 값(서버가 새 난이도를 더했는데 탭이 낡았다)이면
+          `hard` 같은 원문 대신 배지를 세우지 않는다(2026-09-25, docs/59 U63). */}
+      {props.botDifficulty != null &&
+      BOT_DIFFICULTY_LABEL[props.botDifficulty] !== undefined &&
+      view.players.some((p) => p.isBot) ? (
+        /* 옆 ModeBadge와 같은 InfoNote — `title=`만 두면 터치에서 설명이 영영 안 뜨고,
+           나란히 선 두 배지의 조작이 달랐다(2026-09-25, docs/59 U74). */
+        <InfoNote
           className="mode-badge bot-diff-badge"
-          title={`봇 난이도: ${BOT_DIFFICULTY.find(([id]) => id === props.botDifficulty)?.[2] ?? ""}`}
+          note={`봇 난이도 ${BOT_DIFFICULTY_LABEL[props.botDifficulty] ?? "봇"}: ${BOT_DIFFICULTY.find(([id]) => id === props.botDifficulty)?.[2] ?? ""}`}
         >
-          <span className="mode-badge-name">🤖 {BOT_DIFFICULTY_LABEL[props.botDifficulty] ?? props.botDifficulty}</span>
-        </div>
+          <span className="mode-badge-name">🤖 {BOT_DIFFICULTY_LABEL[props.botDifficulty]}</span>
+        </InfoNote>
       ) : null}
       <button
         className="icon-btn settings-btn"
@@ -15294,15 +15608,23 @@ const GameTable = memo(function GameTable(props: {
           setLogOpen(false);
         }}
         title="설정"
+        aria-label="설정"
       >⚙</button>
       {/* 게임 중에도 찾아볼 수 있어야 한다 — 상대 증강 위의 `title=` 툴팁은 터치에서
           아예 뜨지 않아, 모바일에서는 그게 무엇인지 알 길이 전혀 없었다.
-          아래 화면은 그대로 살아 있으므로 결정 타이머도 게임 상태도 멈추지 않는다. */}
+          아래 화면은 그대로 살아 있으므로 결정 타이머도 게임 상태도 멈추지 않는다.
+
+          ⚙·📖·?·나가기 모두 `aria-label` 을 단다 — `title` 만으로는 스크린리더가 이름을
+          못 읽는 경우가 있고 📜(AugmentLog)만 달려 있었다. 규칙은 📘 대신 «?» 글자다:
+          📖·📘 둘 다 책 그림이라 무엇이 도감이고 무엇이 규칙인지 구별되지 않았다
+          (2026-09-25, docs/59 U69 — docs/35 의 판 밖 이모지 걷어내기와 같은 방향).
+          두 버튼을 하나로 합치는 것은 보류(docs/59 §6 U69-2). */}
       {props.onOpenCodex !== undefined ? (
         <button
           className="icon-btn codex-btn"
           onClick={props.onOpenCodex}
           title="증강 도감 (게임은 그대로 진행됩니다)"
+          aria-label="증강 도감"
         >📖</button>
       ) : null}
       {props.onOpenHelp !== undefined ? (
@@ -15310,7 +15632,8 @@ const GameTable = memo(function GameTable(props: {
           className="icon-btn help-btn"
           onClick={props.onOpenHelp}
           title="규칙 · 도움말 (게임은 그대로 진행됩니다)"
-        >📘</button>
+          aria-label="규칙 도움말"
+        >?</button>
       ) : null}
       {/* 게임 중 나가기 = 포기(좌석은 자동 진행으로 완주한다) — 되돌릴 수 없으니 한 번 묻는다.
           관전은 그냥 화면을 닫는 것이라 묻지 않는다.
@@ -15347,7 +15670,13 @@ const GameTable = memo(function GameTable(props: {
           });
         }}
         title="나가기"
-      >✕</button>
+        aria-label="나가기"
+      >
+        {/* ✕ 대신 글자 — 설정·기록 패널의 닫기 ✕(`settings-x`)가 바로 아래에 붙어 서서
+            «패널 닫기»와 «판 나가기»가 같은 모양이었다(2026-09-25, docs/59 U69).
+            확인 창(askConfirm)은 그대로 한 번 묻는다. */}
+        나가기
+      </button>
       {settingsOpen ? (
         <SettingsPanel
           settings={props.settings}
@@ -15355,7 +15684,6 @@ const GameTable = memo(function GameTable(props: {
           onClose={() => setSettingsOpen(false)}
           hintsOn={props.hintsOn !== false}
           abortVote={props.spectator === true ? null : (props.abortVote ?? null)}
-          iVoted={(props.abortVote?.voters ?? []).includes(view.playerId)}
           onVoteAbort={props.spectator === true ? undefined : props.onVoteAbort}
         />
       ) : null}
@@ -15367,9 +15695,10 @@ const GameTable = memo(function GameTable(props: {
       ) : null}
       {props.spectator !== true && props.abortVote != null && props.abortVote.votes > 0 ? (
         <AbortVoteBanner
+          key={props.abortVoteRound ?? 0}
           abortVote={props.abortVote}
-          iVoted={props.abortVote.voters.includes(view.playerId)}
-          requesterName={playerNameById(view, props.abortVote.voters[0] ?? view.playerId)}
+          myId={view.playerId}
+          nameOf={(id) => playerNameById(view, id)}
           onVote={props.onVoteAbort}
         />
       ) : null}
@@ -15688,7 +16017,8 @@ function useSelection(
     if (armMode === "opp-river") {
       if (ownerId === view.playerId) return undefined;
       return armedOptions.find((o) => {
-        // 날치기는 최근 버림패(snatchId), 무덤 도굴은 바닥 전체(graveId)가 대상이다
+        // 날치기는 각 상대의 최근 3장(snatchId), 무덤 도굴은 화료가 성립하는 과거 버림패
+        // 한 장 한 장(graveId)이 대상이다 — 후보가 패 단위라 누른 패와 곧바로 짝이 맞는다
         const p = o.payload as {
           snatchId?: unknown;
           graveId?: unknown;
@@ -15762,10 +16092,13 @@ function EmoteFeed({ entries }: { entries: EmoteEntry[] }): JSX.Element | null {
     <div className="emote-feed" aria-live="polite">
       {entries.map((e) => {
         const def = EMOTES.find((x) => x.id === e.id);
+        // 모르는 문구(서버 목록이 늘었는데 이 탭이 낡았다)는 `gg` 같은 원문 id 대신
+        // 그 항목을 건너뛴다 (2026-09-25, docs/59 U86 · §2 원칙 3 «원문 노출 금지»).
+        if (def === undefined) return null;
         return (
           <div key={e.key} className="emote-bubble">
             <span className="emote-bubble-name">{e.nickname}</span>
-            <span className="emote-bubble-text">{def?.text ?? e.id}</span>
+            <span className="emote-bubble-text">{def.text}</span>
           </div>
         );
       })}
@@ -16149,7 +16482,6 @@ function SettingsPanel(props: {
    */
   hintsOn?: boolean;
   abortVote?: AbortVoteMessage | null;
-  iVoted?: boolean;
   onVoteAbort?: ((vote: "agree" | "withdraw" | "reject") => void) | undefined;
 }): JSX.Element {
   // 불리언(토글) 설정만 — 숫자 설정(리치 BGM 볼륨)은 아래 슬라이더로 따로 렌더한다.
@@ -16404,12 +16736,20 @@ function SettingsPanel(props: {
                 {needed > 0 ? ` 현재 ${votes}/${needed} 동의.` : ""}
               </span>
             </div>
-            <button
-              className={`abort-btn${props.iVoted === true ? " abort-btn-on" : ""}`}
-              onClick={() => props.onVoteAbort?.(props.iVoted === true ? "withdraw" : "agree")}
-            >
-              {props.iVoted === true ? "동의 취소" : "게임 무효 요청"}
-            </button>
+            {/* 투표가 진행 중이면 여기서는 응답하지 않는다 — 화면 위 배너가 같은 투표의
+                동의·동의 취소·반대를 모두 맡는다(2026-09-25, docs/59 U72). 예전에는 이
+                버튼이 투표 중에도 «게임 무효 요청»이라 적힌 채 agree 를 보냈고, 동의
+                취소는 여기에만 있어 두 곳이 할 수 있는 일이 달랐다. 이 안내는 role=status 를
+                달지 않는다 — 배너가 이미 aria-live 라 같은 집계를 두 번 읽힌다. */}
+            {votes > 0 ? (
+              <span className="abort-voting-note">
+                투표 진행 중 — 화면 위 배너에서 응답하세요 ({votes}/{needed})
+              </span>
+            ) : (
+              <button className="abort-btn" onClick={() => props.onVoteAbort?.("agree")}>
+                게임 무효 요청
+              </button>
+            )}
           </div>
         ) : null}
       </div>
@@ -16421,34 +16761,75 @@ function SettingsPanel(props: {
 /**
  * 게임 무효 투표 배너 — 투표가 진행 중(votes>0)이면 설정과 무관하게 화면 상단에 크게 뜬다.
  * 동의(agree)/반대(reject)를 명확히 노출한다. 반대는 만장일치가 불가능해진 투표를 즉시 취소한다.
+ *
+ * 이 투표에 대한 응답은 **여기 한 곳**에서 다 한다(2026-09-25, docs/59 U72) — 동의 취소가
+ * 설정 패널에만 있어 두 곳이 할 수 있는 일이 달랐다. 버튼은 세 경우로 나뉜다:
+ *   - 요청자: [요청 취소] 하나(= reject). 서버에서 reject 는 투표 전체를 지우므로, 요청자에게
+ *     «반대»는 사실상 요청 취소였다. 요청자에게 withdraw 는 주지 않는다.
+ *   - 동의한 사람: [동의 취소](withdraw) · [반대](reject).
+ *   - 아직 안 누른 사람: [동의] · [반대].
+ * 요청자 문구는 «내가 무효를 요청했습니다» — `playerNameById` 는 나를 «나»로 돌려줘서
+ * «나님이 …»라는 어색한 문장이 나왔다.
+ *
+ * ⚠ 요청자는 **배너가 뜬 순간의 `voters[0]`** 로 기억한다 — 매번 `voters[0]` 을 다시 보면
+ * 안 된다. 요청자가 끊기거나 나가면 서버 retallyAbortVotes 가 그 표를 빼고 다시 보내는데
+ * (서버 Set 삽입 순서라) 다음 동의자가 `voters[0]` 이 된다. 그러면 그 사람 화면에
+ * «내가 무효를 요청했습니다»와 [요청 취소]만 떠서, 사실이 아닌 문장에 동의 취소 길까지
+ * 사라졌다. 기억한 요청자가 voters 에 더는 없으면 요청자 문장 대신 일반 문장을 쓰고,
+ * 버튼은 동의 여부로만 가른다. 다음 투표는 GameTable 이 회차(`abortVoteRound`)를 key 로
+ * 줘서 새로 마운트되어 새 요청자를 기억한다 — «votes 0 이면 배너가 내려간다»에만 기대면
+ * 반대와 다음 동의가 한 렌더에 몰릴 때 배너가 내려가지 않아 옛 요청자가 남았다.
  */
 function AbortVoteBanner(props: {
   abortVote: AbortVoteMessage;
-  iVoted: boolean;
-  requesterName: string;
+  /** 지금 보고 있는 좌석 */
+  myId: string;
+  nameOf: (id: string) => string;
   onVote: ((vote: "agree" | "withdraw" | "reject") => void) | undefined;
 }): JSX.Element {
-  const { votes, needed } = props.abortVote;
+  const { votes, needed, voters } = props.abortVote;
+  const [requesterId] = useState<string | null>(() => props.abortVote.voters[0] ?? null);
+  const requesterIn = requesterId !== null && voters.includes(requesterId);
+  const isRequester = requesterIn && requesterId === props.myId;
+  const iVoted = voters.includes(props.myId);
   // 화면 고정 표면은 전부 body 포털이다 — 이유는 FIXED_SURFACE_NOTE 참고
   return createPortal(
     <div className="abort-banner" role="alertdialog" aria-live="assertive">
       <div className="abort-banner-info">
         <span className="abort-banner-title">게임 무효 투표</span>
         <span className="abort-banner-sub">
-          {props.requesterName}님이 무효를 요청했습니다. 동의 {votes}/{needed}
+          {isRequester
+            ? "내가 무효를 요청했습니다"
+            : requesterIn
+              ? `${props.nameOf(requesterId)}님이 무효를 요청했습니다`
+              : "무효 투표가 진행 중입니다"}
+          . 동의 {votes}/{needed}
         </span>
       </div>
       <div className="abort-banner-actions">
-        <button
-          className={`abort-yes${props.iVoted ? " abort-yes-on" : ""}`}
-          disabled={props.iVoted}
-          onClick={() => props.onVote?.("agree")}
-        >
-          {props.iVoted ? "동의함 ✓" : "동의"}
-        </button>
-        <button className="abort-no" onClick={() => props.onVote?.("reject")}>
-          반대
-        </button>
+        {isRequester ? (
+          <button className="abort-no" onClick={() => props.onVote?.("reject")}>
+            요청 취소
+          </button>
+        ) : iVoted ? (
+          <>
+            <button className="abort-no" onClick={() => props.onVote?.("withdraw")}>
+              동의 취소
+            </button>
+            <button className="abort-no" onClick={() => props.onVote?.("reject")}>
+              반대
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="abort-yes" onClick={() => props.onVote?.("agree")}>
+              동의
+            </button>
+            <button className="abort-no" onClick={() => props.onVote?.("reject")}>
+              반대
+            </button>
+          </>
+        )}
       </div>
     </div>,
     document.body,
@@ -16930,6 +17311,9 @@ const AUG_EVENT_HEADS: ReadonlySet<string> = new Set([
 
 // ─────────────────────────── 증강 정보 로그 ───────────────────────────
 
+/** 📜 기록 폴백에서 이름을 못 찾은 채널 head — 개발 모드 경고를 한 번만 내려고 모아 둔다. */
+const warnedLogHeads = new Set<string>();
+
 /**
  * `PlayerView.augmentView`(증강 정보 채널)를 사람이 읽을 수 있는 줄로 바꾼다.
  *
@@ -16962,7 +17346,22 @@ function augmentLogRows(
     all_or_nothing: "모 아니면 도",
     take_back: "무르기",
   };
-  const nameOf = (h: string): string => HEAD_NAME[h] ?? catalog[h]?.name ?? h;
+  /*
+   * 태그 이름은 **허용 목록**이다 — HEAD_NAME이나 카탈로그에 없는 head는 행을 만들지 않는다.
+   * 예전의 마지막 `?? h`가 `seat`·`cooldownTurns` 같은 채널 이름을 태그에 그대로 찍었다
+   * (docs/59 U64). 새 채널이 이 폴백으로 떨어지면 개발 모드에서만 알린다(2026-09-25).
+   * 지금 content가 내는 head는 전부 카탈로그 id이거나 아래 건너뛰기 목록에 있다
+   * (`packages/client/test/rawIdentifierGuards.test.ts`의 U64 블록이 지킨다).
+   */
+  const nameOf = (h: string): string | null => {
+    const known = HEAD_NAME[h] ?? catalog[h]?.name;
+    if (known !== undefined) return known;
+    if (import.meta.env.DEV && !warnedLogHeads.has(h)) {
+      warnedLogHeads.add(h);
+      console.warn(`[auglog] 이름 없는 채널 ${h} — 제자리를 찾아 주거나 HEAD_NAME에 추가하세요.`);
+    }
+    return null;
+  };
   const tileRow = (k: string, tag: string, note: string, kinds: TileKind[]): JSX.Element => (
     <div key={k} className="auglog-row">
       <span className="auglog-tag">{tag}</span>
@@ -17006,6 +17405,9 @@ function augmentLogRows(
     if (head === "danger_sense") continue;
     // 삼세 예지: 손패 위 '다음 쯔모' 스트립
     if (head === "triple_peek") continue;
+    // 예지로 공개된 패산 앞 장: 증강 조작부의 예지 스트립이 그린다. head가 증강 id가 아니라
+    // 이름이 없는 채널이다 — 줄로 내리지 않는다는 뜻을 여기 적어 둔다(2026-09-25, docs/59 U64).
+    if (head === "foresight_peek") continue;
     // 미래를 보는 자 — 가져온 패는 뱃지 줄(ActiveInfoBadges), 쌓인 판수는 이름표 pill
     if (head === "future_sight") continue;
     // 스파이가 찍은 패: 뱃지 줄
@@ -17031,6 +17433,11 @@ function augmentLogRows(
     if (head === "cooldown") continue;
     // 선발동형이 끝났다는 표식(`spent:{증강id}:{좌석}`)도 그 증강의 pill이 "종료"로 그린다.
     if (head === "spent") continue;
+    // 좌석 공개 사본(`seat:{좌석}:{채널}`, 2026-09-01 pill 값 전원 공개)과 내 턴 단위 쿨다운·
+    // 발동 국 표식(`cooldownTurns:{id}`·`cooldownUsedRound:{id}`)은 전부 pill 소관(seatChannel)이다.
+    // 사본을 더할 때 이 목록을 갱신하지 않아 «seat | 봇1 누적 0»·«cooldownUsedRound | 선언»이
+    // 📜 기록에 쌓였다(2026-09-25, docs/59 U64).
+    if (head === "seat" || head === "cooldownTurns" || head === "cooldownUsedRound") continue;
     // "A가 B를 지목했다"는 관계는 양쪽 이름표 위의 표식(np-rel)이 보여준다.
     // 나에게 걸린 것의 **의미**("5판 미만 화료 불가")는 표식으로 못 쓰므로 뱃지 줄에 남는다.
     if (RELATION_HEADS.has(head)) continue;
@@ -17051,30 +17458,43 @@ function augmentLogRows(
       const ids = Array.isArray(value)
         ? value.filter((x): x is string => typeof x === "string")
         : [];
-      if (ids.length === 0) continue;
-      const names = ids.map((id) => catalog[id]?.name ?? id).join(", ");
-      rows.push(textRow(key, nameOf(head), `${who !== "" ? `${who}에게 ` : ""}${names}`));
-    } else if (PLAYER_VALUE[head] !== undefined) {
+      const tag = nameOf(head);
+      if (ids.length === 0 || tag === null) continue;
+      const names = ids.map((id) => augName(id, catalog)).join(", ");
+      rows.push(textRow(key, tag, `${who !== "" ? `${who}에게 ` : ""}${names}`));
+      continue;
+    }
+    const playerTag = PLAYER_VALUE[head];
+    if (playerTag !== undefined) {
       // 값이 좌석 id인 채널 — 이름으로 푼다.
       if (typeof value !== "string" || value === "") continue;
-      rows.push(textRow(key, PLAYER_VALUE[head] ?? head, `${who} → ${playerNameById(view, value)}`));
-    } else if (typeof value === "boolean") {
+      rows.push(textRow(key, playerTag, `${who} → ${playerNameById(view, value)}`));
+      continue;
+    }
+    // 아래는 값이 줄로 찍히는 모양일 때만 태그 이름을 찾는다 — 값이 객체라 어차피 줄이 안
+    // 생기는 채널까지 «이름 없음» 경고를 내지 않게. 이름이 없으면 줄을 만들지 않는다(nameOf 주석).
+    if (typeof value === "boolean") {
       // 발동 사실만 싣는 채널(진짜 용·개벽·배짱 등) — 예전엔 어떤 분기에도 안 걸려
       // 채널을 쐈는데 **화면에 아무것도 안 떴다**(2026-08-01 감사).
-      if (!value) continue;
-      rows.push(textRow(key, nameOf(head), `${who !== "" ? `${who} ` : ""}발동`));
+      const tag = value ? nameOf(head) : null;
+      if (tag === null) continue;
+      rows.push(textRow(key, tag, `${who !== "" ? `${who} ` : ""}발동`));
     } else if (typeof value === "number") {
-      rows.push(textRow(key, nameOf(head), `${who !== "" ? `${who} ` : ""}누적 ${value}`));
+      const tag = nameOf(head);
+      if (tag === null) continue;
+      rows.push(textRow(key, tag, `${who !== "" ? `${who} ` : ""}누적 ${value}`));
     } else if (typeof value === "string") {
+      const tag = nameOf(head);
+      if (tag === null) continue;
       // 폴백 안전망 — 내부값이 그대로 새어나가지 않게 좌석 id·패 키·roundKey를 먼저 푼다.
       const asKind = parseKindKey(value);
       if (isPlayerId(value)) {
-        rows.push(textRow(key, nameOf(head), `${who !== "" ? `${who} → ` : ""}${playerNameById(view, value)}`));
+        rows.push(textRow(key, tag, `${who !== "" ? `${who} → ` : ""}${playerNameById(view, value)}`));
       } else if (asKind !== null) {
-        rows.push(tileRow(key, nameOf(head), who, [asKind]));
+        rows.push(tileRow(key, tag, who, [asKind]));
       } else {
         const clean = /^\d+-\d+-\d+$/.test(value) ? "선언" : value;
-        rows.push(textRow(key, nameOf(head), `${who !== "" ? `${who} ` : ""}${clean}`));
+        rows.push(textRow(key, tag, `${who !== "" ? `${who} ` : ""}${clean}`));
       }
     }
   }
@@ -18409,11 +18829,36 @@ function OpponentStrip({
       const raw = view.augmentView["full_hand_swap:faster"];
       return Array.isArray(raw) && (raw as unknown[]).includes(player.id);
     })();
+  /*
+   * 무장 태그 — 눈이 대상 쪽에 가 있는 순간 **그 자리에서** 무슨 일이 생기는지 읽히게
+   * `{증강 이름}: {동사}`로 적는다. 예전엔 «여기를 클릭»뿐이라 자리 바꿈·통째로 바꾸기처럼
+   * 되돌릴 수 없는 지목 직전에 확인하려면 화면 아래 안내 줄로 눈을 옮겨야 했다
+   * (2026-09-25, docs/59 U29). 좌우 세로 줄은 폭이 좁아 동사만 둔다(compact).
+   */
+  const armType = sel.armedType;
+  const armVerb = armType !== null ? OPP_ARM_TAG[armType] : undefined;
+  const armAugName = armType !== null ? augActionName(catalog, armType) : "";
+  const armTagText = (compact: boolean): string => {
+    const body =
+      armVerb === undefined ? "여기를 클릭" : compact ? armVerb : `${armAugName}: ${armVerb}`;
+    // 좁은 줄에서는 머리도 줄인다 — «⚡ 나보다 빠름.»을 그대로 두면 160px 말줄임이 정작
+    // 동사(«이 손패 가져오기»)를 잘라 먹는다(2026-09-25, docs/59 U29 리뷰). 전체 문장은
+    // 줄의 aria-label·손패 위 안내 줄에 그대로 있다.
+    if (!swapFaster) return body;
+    return compact ? `⚡ 빠름. ${body}` : `⚡ 나보다 빠름. ${body}`;
+  };
   // 무장 대상 상대에 붙일 공통 속성 (클릭 발동 + data-arm-zone로 빈곳-취소 방지)
   const armProps = oppArmable
     ? {
         "data-arm-zone": "1",
-        ...clickableProps(() => sel.clickOpp(player.id), `${player.nickname} 고르기`),
+        // 화면에 보이는 이름과 같게 읽어 준다 — 봇 서버 닉네임(`Bot_p2`)이 아니라 «봇1»
+        // (2026-09-25, docs/59 U67). 무엇을 하는지도 함께 — «봇1에게 통째로 바꾸기»(U29)
+        ...clickableProps(
+          () => sel.clickOpp(player.id),
+          armType !== null
+            ? `${playerName(view, player)}에게 ${armAugName}`
+            : `${playerName(view, player)} 고르기`,
+        ),
       }
     : {};
   // 선언 간파로 알아낸 이 상대의 화료패 — 발동한 본인에게만 상시 노출
@@ -18542,9 +18987,7 @@ function OpponentStrip({
         {...armProps}
       >
         {oppArmable ? (
-          <div className={`opp-arm-tag${swapFaster ? " opp-arm-fast" : ""}`}>
-            {swapFaster ? "⚡ 나보다 빠름. 여기를 클릭" : "여기를 클릭"}
-          </div>
+          <div className={`opp-arm-tag${swapFaster ? " opp-arm-fast" : ""}`}>{armTagText(false)}</div>
         ) : oppRiichiBlocked ? (
           <div className="opp-arm-tag opp-arm-blocked">리치 중이라 대상으로 고를 수 없습니다</div>
         ) : null}
@@ -18581,9 +19024,7 @@ function OpponentStrip({
       {...armProps}
     >
       {oppArmable ? (
-          <div className={`opp-arm-tag${swapFaster ? " opp-arm-fast" : ""}`}>
-            {swapFaster ? "⚡ 나보다 빠름. 여기를 클릭" : "여기를 클릭"}
-          </div>
+          <div className={`opp-arm-tag${swapFaster ? " opp-arm-fast" : ""}`}>{armTagText(true)}</div>
         ) : oppRiichiBlocked ? (
           <div className="opp-arm-tag opp-arm-blocked">리치 중이라 대상으로 고를 수 없습니다</div>
         ) : null}
@@ -18781,12 +19222,15 @@ const PILL_CUSTOM: Record<string, (raw: unknown) => PillStatus | null> = {
       : null,
   suit_unify: (raw) => {
     if (typeof raw !== "string" || raw === "") return null;
-    const ko = SUIT_KO[raw] ?? raw;
+    // 모르는 값이면 원문 칩을 세우지 않고 칩을 뺀다(2026-09-25, docs/59 U63)
+    const ko = SUIT_KO[raw];
+    if (ko === undefined) return null;
     return { chip: ko, note: `이번 국에는 손패가 ${ko}로 통일됩니다` };
   },
   blood_contract: (raw) => {
     if (typeof raw !== "string" || raw === "") return null;
-    const yaku = YAKU_NAMES[raw] ?? raw;
+    const yaku = YAKU_NAMES[raw];
+    if (yaku === undefined) return null;
     return { chip: yaku, note: `계약한 역은 ${yaku}입니다. 이 역을 포함해 화료하면 점수가 1.5배가 됩니다` };
   },
   all_or_nothing: (raw) => {
@@ -18823,7 +19267,9 @@ const PILL_CUSTOM: Record<string, (raw: unknown) => PillStatus | null> = {
   // 편식 — 통일한 무늬 (발동 뒤). 진행도는 아래 전용 분기가 그린다.
   picky_eater: (raw) => {
     if (typeof raw !== "string" || raw === "") return null;
-    const ko = SUIT_KO[raw] ?? raw;
+    // 모르는 값이면 원문 칩을 세우지 않고 칩을 뺀다(2026-09-25, docs/59 U63)
+    const ko = SUIT_KO[raw];
+    if (ko === undefined) return null;
     return { chip: ko, note: `손패의 수패가 ${ko}로 통일되었습니다` };
   },
   // 천하통일은 문턱이 45000 고정이라 공개 채널이 없다 — 카드 문구가 곧 목표다.
@@ -18860,7 +19306,7 @@ const PILL_CUSTOM: Record<string, (raw: unknown) => PillStatus | null> = {
   red_five_touch: (raw) => {
     if (typeof raw !== "string" || raw === "") return null;
     const rank = /(\d)/.exec(raw)?.[1];
-    if (rank === undefined) return { chip: raw, note: raw };
+    if (rank === undefined) return null;
     return {
       chip: `${rank} 각인`,
       note: `이 사람의 ${rank}만·${rank}통·${rank}삭은 이 사람에게만 적도라입니다. 버린 패를 후로해 가져와도 도라가 되지 않습니다`,
@@ -19268,8 +19714,21 @@ function PlayerAugSheet({
   const reloaded = reloadedAugmentsOf(view, player.id);
   const fromDice = cornucopiaGrantsOf(view, player.id);
   const arch = player.isBot ? archetypeInfo(player.archetype) : null;
-  /** 상세 설명을 펼쳐 둔 증강 — 시트는 자리가 넉넉하지만 기본은 요약 한 줄이다 */
-  const [detailFor, setDetailFor] = useState<string | null>(null);
+  /**
+   * 상세 설명을 펼쳐 둔 증강들 — 시트는 자리가 넉넉하지만 기본은 요약 한 줄이다.
+   *
+   * 하나만 펼치던(문자열 하나) 시절에는 두 번째를 펼치면 첫 번째가 접혀, 상대 증강
+   * 여럿을 읽으려면 차례로 누르며 앞 것이 닫히는 걸 봐야 했다. 여러 행을 함께 펼칠 수
+   * 있게 하고, 머리에 «모두 자세히» 하나를 둔다(2026-09-25, docs/59 U73). 기본 접힘은 유지.
+   */
+  const [detailFor, setDetailFor] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleDetail = (a: string): void =>
+    setDetailFor((cur) => {
+      const next = new Set(cur);
+      if (next.has(a)) next.delete(a);
+      else next.add(a);
+      return next;
+    });
   // Esc — 오버레이의 공통 손잡이
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -19279,6 +19738,7 @@ function PlayerAugSheet({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   const augs = player.augments;
+  const allOpen = augs.length > 0 && augs.every((a) => detailFor.has(a));
   return createPortal(
     // overlay-peekable — '누른 채로 게임판 보기'가 붙는 표면(드래프트 창과 같은 규칙).
     // ⚠ body 직속 포털이어야 한다(FIXED_SURFACE_NOTE).
@@ -19295,6 +19755,18 @@ function PlayerAugSheet({
             <span className="aug-sheet-arch" title={arch.desc}>{arch.label}</span>
           ) : null}
           <span className="aug-sheet-score">{player.score.toLocaleString()}점</span>
+          {/* 둘 이상일 때만 — 하나뿐이면 그 행의 «자세히»와 같은 일이다.
+              이름이 상태에 따라 바뀌므로 aria-pressed 는 달지 않는다 — 둘 다 두면 화면
+              낭독기가 «모두 간단히, 눌림»처럼 이름과 상태가 엇갈리게 읽는다. */}
+          {augs.length > 1 ? (
+            <button
+              type="button"
+              className="aug-sheet-all"
+              onClick={() => setDetailFor(allOpen ? new Set() : new Set(augs))}
+            >
+              {allOpen ? "모두 간단히" : "모두 자세히"}
+            </button>
+          ) : null}
           <button type="button" className="aug-sheet-close" onClick={onClose} aria-label="닫기">
             ✕
           </button>
@@ -19314,7 +19786,7 @@ function PlayerAugSheet({
                 <li className={`aug-sheet-row${locked ? " aug-sheet-row-locked" : ""}`} key={a}>
                   <div className="aug-sheet-row-head">
                     <AugCatIcon id={a} />
-                    <span className="aug-sheet-name">{entry?.name ?? a}</span>
+                    <span className="aug-sheet-name">{augName(a, catalog)}</span>
                     <span className="aug-sheet-cat">{CATEGORY_META[augmentCategory(a)].label}</span>
                   </div>
                   <div className="aug-sheet-chips">
@@ -19342,14 +19814,12 @@ function PlayerAugSheet({
                       id={a}
                       description={entry?.description}
                       detail={entry?.detail}
-                      expanded={detailFor === a}
+                      expanded={detailFor.has(a)}
                       useOverride={spent ? "효과 종료" : undefined}
                     />
                   </div>
-                  <MoreToggle
-                    open={detailFor === a}
-                    onToggle={() => setDetailFor((cur) => (cur === a ? null : a))}
-                  />
+                  {/* Shift 칩은 달지 않는다 — 이 시트는 Shift 를 듣지 않는다(폰 전용 경로). */}
+                  <MoreToggle open={detailFor.has(a)} onToggle={() => toggleDetail(a)} />
                 </li>
               );
             })}
@@ -19624,7 +20094,7 @@ const NamePlate = memo(function NamePlate({
                 {reloaded.has(a) ? "♻ " : ""}
                 {fromDice.has(a) ? <span className="aug-pill-dice-mark" aria-hidden="true">🎲</span> : null}
                 {/* 이름만 별도 span — 무장해제 취소선이 잔량 칩까지 그어지지 않게 */}
-                <span className="aug-pill-name">{entry?.name ?? a}</span>
+                <span className="aug-pill-name">{augName(a, catalog)}</span>
                 {active ? (
                   <span
                     className="aug-pill-chip aug-pill-chip-active"
@@ -19671,7 +20141,7 @@ const NamePlate = memo(function NamePlate({
                 <button
                   type="button"
                   className="aug-pill-sheet-hit"
-                  aria-label={`${entry?.name ?? a} 증강 보기`}
+                  aria-label={`${augName(a, catalog)} 증강 보기`}
                   onClick={(e) => {
                     // 알약의 «고정» 토글까지 함께 터지면 시트 뒤에 툴팁이 남는다
                     e.stopPropagation();
@@ -19683,7 +20153,7 @@ const NamePlate = memo(function NamePlate({
                 <span className={`aug-tip${tipUp === true ? " aug-tip-up" : " aug-tip-down"} aug-tip-a-${tipAlign ?? "center"}`}>
                   <span className="aug-tip-name">
                     <AugCatIcon id={a} />
-                    {entry?.name ?? a}
+                    {augName(a, catalog)}
                   </span>
                   <span className="aug-tip-cat">{CATEGORY_META[augmentCategory(a)].label} 계열</span>
                   {locked ? (
@@ -19730,6 +20200,7 @@ const NamePlate = memo(function NamePlate({
                   <MoreToggle
                     open={shiftHeld || detailFor === a}
                     onToggle={() => setDetailFor((cur) => (cur === a ? null : a))}
+                    showKey
                   />
                   {/* 고정 손잡이 — 툴팁 안에서도 내릴 수 있어야 한다. 툴팁이 pill을
                       덮고 있어 "다시 누르기"가 사실상 툴팁을 누르는 것이 되는데, 툴팁
@@ -19742,10 +20213,12 @@ const NamePlate = memo(function NamePlate({
                       e.stopPropagation();
                       togglePin(a);
                     }}
+                    // 문구는 짧게, 해제 방법은 툴팁·보조기술로 (2026-09-25, docs/59 U73) —
+                    // 긴 문장 버튼이 설명 아래 한 줄을 통째로 먹었다. 해제 수단 자체는 그대로.
+                    title={pinned.has(a) ? "눌러서 고정 해제 · Esc나 바깥 클릭으로도 해제됩니다" : "눌러서 이 설명을 고정합니다"}
+                    aria-label={pinned.has(a) ? "고정 해제 (Esc나 바깥 클릭으로도 해제됩니다)" : "고정 (이 설명을 고정합니다)"}
                   >
-                    {pinned.has(a)
-                      ? "📌 고정됨. 눌러서 해제 (Esc는 전부 해제, 바깥 클릭도 해제)"
-                      : "📌 눌러서 고정하기"}
+                    {pinned.has(a) ? "📌 고정 해제" : "📌 고정"}
                   </button>
                 </span>
                 ) : null}
@@ -20630,6 +21103,16 @@ function OwnArea(props: {
    * 실제로 타는 패가 조용히 갈린다.
    */
   const [doomedHint, setDoomedHint] = useState<ReadonlySet<number> | null>(null);
+  /**
+   * 액티브 증강 버튼에 손이 올라가 있는 동안 **지금 사용 가능한 증강 id들**.
+   *
+   * "액티브 증강 (2)"의 2가 넷 중 어느 둘인지가 화면 어디에도 없었다 — 버튼을 눌러
+   * 메뉴를 열어야 알 수 있었고, 그러면 판을 보면서 확인할 수가 없다(2026-08-15 요청).
+   * 버튼과 이름표 pill은 같은 줄(.own-top-main)에 나란히 서 있으므로, 올려놓는 동안
+   * 그 pill들을 빛내면 둘 사이가 눈으로 이어진다.
+   */
+  // 아래 recallDoomed가 «지금 손이 올라간 증강»을 가르는 데도 쓰므로 여기서 먼저 선언한다.
+  const [usableHint, setUsableHint] = useState<ReadonlySet<string> | null>(null);
   const armedAug = sel.armedType;
   /*
    * 지금 짚어야 할 «사라지는 패» — 버튼/메뉴 hover가 올려 준 목록(doomedHint)이 기본이다.
@@ -20640,8 +21123,32 @@ function OwnArea(props: {
     if (armedAug === "split_tile" && hoverId !== null) {
       return new Set(doomedTileIdsOf(view, "split_tile", hoverId));
     }
+    // 회수 — 무장하는 동안 내내 쯔모패에 ✕를 둔다. 무장 직후 hintNone이 hover 신호를
+    // 걷으므로 여기서 따로 잡지 않으면 확정 전에 무엇을 잃는지 화면에서 사라진다.
+    // 대상이 서버 재료가 아니라 myDrawnTile 그대로라 계산 두 벌 금지 규약과 어긋나지 않는다
+    // (2026-09-25, docs/59 U36).
+    if (armedAug === "recall") return new Set(doomedTileIdsOf(view, "recall"));
     return doomedHint ?? new Set<number>();
   }, [armedAug, hoverId, view, doomedHint]);
+  /*
+   * 짚은 패 가운데 **회수 때문에** 짚힌 것 — 회수의 쯔모패는 사라지지 않고 내 바닥으로
+   * 나가므로 이름을 따로 읽어 준다. 무장 중만 보면 ✦ 메뉴의 회수 줄 hover(무장 전)에서
+   * «발동에 쓰여 사라지는 패»로 잘못 읽힌다(2026-09-25, docs/59 U36 리뷰). hover 신호는
+   * 패 id만 실어 오므로, 같은 손짓에 함께 오는 pill 발광 신호(usableHint — 손이 올라간
+   * 증강 id들)로 가른다: 회수가 그 안에 없으면 회수 때문에 짚힌 패는 없고, 있으면 **함께
+   * 올라간** 태우는 증강(버튼 hover = 전부)의 재료만 뺀다 — 둘이 겹치면 사라지는 쪽이
+   * 더 큰 손실이라 그 말을 남긴다. 태울 재료를 무조건 빼면 회수 줄 하나만 짚었는데도
+   * 분열의 후보 재료와 겹친 쯔모패가 «사라지는 패»로 읽혔다(2026-09-25, docs/59 U36 리뷰 2).
+   */
+  const recallDoomed = useMemo<ReadonlySet<number>>(() => {
+    if (armedAug === "recall") return doomedNow;
+    const hovered = (t: string): boolean => usableHint?.has(ACTION_AUGMENT[t] ?? t) ?? false;
+    if (!hovered("recall")) return new Set<number>();
+    const burn = new Set(
+      ["bluff_pon", "dragons_will", "split_tile"].filter(hovered).flatMap((t) => doomedTileIdsOf(view, t)),
+    );
+    return new Set(doomedTileIdsOf(view, "recall").filter((id) => doomedNow.has(id) && !burn.has(id)));
+  }, [armedAug, view, doomedNow, usableHint]);
   const swapTarget = sel.swapTarget;
   const swapGive = sel.swapGive;
   /*
@@ -20800,7 +21307,14 @@ function OwnArea(props: {
     sel.setSwapGive(next);
   };
 
-  const armName = armedAug !== null ? (ACTION_LABEL[armedAug] ?? armedAug) : "";
+  /*
+   * 무장 안내 줄·드롭존·armSub 제목의 이름 — 방금 누른 버튼과 **같은 증강 이름**이다.
+   * 예전엔 ACTION_LABEL(«불퇴 리치»·«손패 강탈»)이라 «⚡ 물러설 수 없는 선언»을 누르자마자
+   * 안내가 다른 이름으로 불러 «다른 걸 눌렀나?» 하고 손이 멎었다. 한 증강의 두 액션(선언 간파의
+   * 위조·간파)이 같은 이름이 되는 몫은 ARM_PROMPT가 가른다(2026-09-25, docs/59 U18·U19).
+   * 폴백은 augActionName → actionLabel 한 경로(U62).
+   */
+  const armName = armedAug !== null ? augActionName(props.catalog, armedAug) : "";
   const areaRef = useRef<HTMLDivElement>(null);
 
   /*
@@ -21223,15 +21737,6 @@ function OwnArea(props: {
       (o) => o.type === "discard" || o.type === "free_discard" || o.type === "riichi",
     ) ?? false;
 
-  /**
-   * 액티브 증강 버튼에 손이 올라가 있는 동안 **지금 사용 가능한 증강 id들**.
-   *
-   * "액티브 증강 (2)"의 2가 넷 중 어느 둘인지가 화면 어디에도 없었다 — 버튼을 눌러
-   * 메뉴를 열어야 알 수 있었고, 그러면 판을 보면서 확인할 수가 없다(2026-08-15 요청).
-   * 버튼과 이름표 pill은 같은 줄(.own-top-main)에 나란히 서 있으므로, 올려놓는 동안
-   * 그 pill들을 빛내면 둘 사이가 눈으로 이어진다.
-   */
-  const [usableHint, setUsableHint] = useState<ReadonlySet<string> | null>(null);
 
   // 자유 선언으로 고정된 오름패 (있으면 물리 손패와 무관하게 이게 진짜 대기다)
   const frozenWaits = useMemo<TileKind[]>(
@@ -21698,7 +22203,7 @@ function OwnArea(props: {
             props.spectateChoice !== undefined &&
             props.spectateChoice.mixed === true &&
             props.spectateChoice.seat === me.id ? (
-              <SpectateUsableStrip choice={props.spectateChoice} />
+              <SpectateUsableStrip choice={props.spectateChoice} catalog={props.catalog} />
             ) : null}
             <ActiveInfoBadges view={focusView} me={me} spectator={isSpectator} />
           </div>
@@ -21808,13 +22313,22 @@ function OwnArea(props: {
           <div className="rinshan-pick-overlay" data-arm-zone="1">
             <div className="rinshan-pick-panel">
               <PickTimer deadline={props.promptDeadline} />
+              {/* 선언 간파의 위조 — 제목이 증강 이름(«선언 간파»)이 되면서 «간파한 대기패로
+                  위조한다»는 맥락이 사라지므로 제목·부제에 그 몫을 적는다(2026-09-25, docs/59 U15) */}
               <div className="rinshan-pick-title">
-                {armName}: {armSub.options[0]?.type === "split_tile" ? "어떻게 나눌지 선택" : "무엇으로 바꿀지 선택"}
+                {armName}:{" "}
+                {armSub.options[0]?.type === "split_tile"
+                  ? "어떻게 나눌지 선택"
+                  : armSub.options[0]?.type === "peek_forge"
+                    ? "간파한 대기패 중 무엇으로 바꿀까요"
+                    : "무엇으로 바꿀지 선택"}
               </div>
               <div className="rinshan-pick-sub">
                 {armSub.options[0]?.type === "split_tile"
                   ? "고른 패가 어떤 두 장으로 갈라지는지 보고 고르세요. 보라색 패가 새로 만들어지는 패입니다."
-                  : "고른 패가 어떻게 바뀌는지 보고 고르세요. 보라색 패가 새로 만들어지는 패입니다."}
+                  : armSub.options[0]?.type === "peek_forge"
+                    ? "고른 손패가 간파한 상대의 대기패 한 장으로 바뀝니다. 보라색 패가 새로 만들어지는 패입니다."
+                    : "고른 패가 어떻게 바뀌는지 보고 고르세요. 보라색 패가 새로 만들어지는 패입니다."}
               </div>
               <div className="rinshan-pick-tiles">
                 {armSub.options.map((o, i) => {
@@ -21903,6 +22417,7 @@ function OwnArea(props: {
           <SpectateChoicePanel
             choice={props.spectateChoice}
             view={view}
+            catalog={props.catalog}
             focus={props.spectateChoice.seat === me.id}
           />
         ) : null}
@@ -22019,7 +22534,11 @@ function OwnArea(props: {
                   formatTile(view.tiles[id]),
                   isDrawn ? "방금 쯔모" : null,
                   sealed ? "봉인됨" : null,
-                  doomed ? "누르면 이 발동에 쓰여 사라지는 패" : null,
+                  doomed
+                    ? recallDoomed.has(id)
+                      ? "회수하면 대신 내 바닥으로 나가는 패"
+                      : "누르면 이 발동에 쓰여 사라지는 패"
+                    : null,
                   kuikae ? "쿠이카에라 이번 순에는 버릴 수 없음" : null,
                   danger ? "위험패" : null,
                   safe ? "리치한 사람이 이미 버린 현물" : null,
@@ -22916,7 +23435,7 @@ function DockSettings(props: {
               onClick={() => {
                 if (r.code !== props.spectateCode) props.onSwitchTable?.(r.code);
               }}
-              title={`${r.players.map((p) => p.nickname).join(" · ")}${
+              title={`${rosterNames(r.players).join(" · ")}${
                 r.roundLabel !== undefined ? ` · ${r.roundLabel}` : ""
               }${(r.riichiCount ?? 0) > 0 ? ` · 리치 ${r.riichiCount}` : ""}${
                 r.paused === true ? " · 정지 중" : ""
@@ -23817,11 +24336,11 @@ function SeatAugments({
             /* 관전도 판 위다 — 횟수 표기는 그 판의 숫자 하나로(이름표 툴팁과 같은 규약) */
             note={
               catalog[id] === undefined
-                ? id
+                ? augName(id)
                 : forMode(catalog[id].description, view.round.mode)
             }
           >
-            {catalog[id]?.name ?? id}
+            {augName(id, catalog)}
             {left !== null ? (
               <span className="bcast-aug-uses">
                 {left}
@@ -24436,7 +24955,8 @@ const ActiveInfoBadges = memo(function ActiveInfoBadges({
     const holders = view.players.filter((p) => p.augments.includes("dora_conceal"));
     const others = holders.filter((p) => p.id !== me.id);
     if (view.round.doraIndicators.length === 0 && others.length > 0) {
-      const who = others.map((p) => p.nickname).join(" · ");
+      // 판 위 이름으로 — `p.nickname`이면 봇이 «Bot_p2만 볼 수 있습니다»로 떴다(docs/59 U67)
+      const who = others.map((p) => playerName(view, p)).join(" · ");
       textBadge(
         "dora_conceal",
         "🌑 가려진 도라",
@@ -24471,18 +24991,19 @@ const ActiveInfoBadges = memo(function ActiveInfoBadges({
     const m = raw as { target?: string; augmentId?: string } | null;
     if (m === null || typeof m !== "object" || typeof m.target !== "string") continue;
     const by = key.slice("disarm:".length);
-    const augName = augmentDisplayName(m.augmentId ?? "");
+    // 증강 id가 빠진 기록이면 빈 id로 이름을 찾지 않고 «증강»으로 부른다 — 뱃지 자체는 살린다
+    const lockedName = typeof m.augmentId === "string" ? augmentDisplayName(m.augmentId) : "증강";
     if (m.target === me.id) {
       textBadge(
         `disarm_on_me_${by}`,
         "🔒 무장해제당함",
-        `${playerNameById(view, by)}의 무장해제로 이번 국에는 ${augName} 사용이 불가능합니다`,
+        `${playerNameById(view, by)}의 무장해제로 이번 국에는 ${lockedName} 사용이 불가능합니다`,
       );
     } else if (by === me.id) {
       textBadge(
         "disarm_mine",
         "🔒 무장해제",
-        `이번 국에는 ${playerNameById(view, m.target)}의 ${augName} 사용이 불가능합니다`,
+        `이번 국에는 ${playerNameById(view, m.target)}의 ${lockedName} 사용이 불가능합니다`,
       );
     }
   }
@@ -24493,18 +25014,18 @@ const ActiveInfoBadges = memo(function ActiveInfoBadges({
     const m = raw as { target?: string; augmentId?: string } | null;
     if (m === null || typeof m !== "object" || typeof m.target !== "string") continue;
     const by = key.slice("copy:".length);
-    const augName = augmentDisplayName(m.augmentId ?? "");
+    const copiedName = typeof m.augmentId === "string" ? augmentDisplayName(m.augmentId) : "증강";
     if (by === me.id) {
       textBadge(
         "copy_mine",
         "📋 카피",
-        `${playerNameById(view, m.target)}의 ${augName}을(를) 가져왔습니다. 이번 국에 한 번 쓸 수 있습니다`,
+        `${playerNameById(view, m.target)}의 ${copiedName}을(를) 가져왔습니다. 이번 국에 한 번 쓸 수 있습니다`,
       );
     } else if (m.target === me.id) {
       textBadge(
         `copy_on_me_${by}`,
         "📋 카피당함",
-        `${playerNameById(view, by)}가 내 ${augName}을(를) 가져갔습니다. 내 증강은 그대로입니다`,
+        `${playerNameById(view, by)}가 내 ${copiedName}을(를) 가져갔습니다. 내 증강은 그대로입니다`,
       );
     }
   }
@@ -24851,18 +25372,47 @@ function ActiveAugmentControl(props: {
    * ("국의 첫 순에만"·"리치 중 불가"처럼)은 서버가 이유를 실어 주지 않으므로 지어내지
    * 않는다 — 틀린 이유를 대느니 아는 것만 말하는 편이 낫다.
    */
-  const blockedNote = (id: string): string => {
-    const name = props.catalog[id]?.name ?? id;
+  const blockedReason = (id: string): string | null => {
     const rounds = cooldownRoundsLeft(view, me.id, id);
-    if (rounds > 0) return `${name}: 쿨다운 ${rounds}국 남음`;
+    if (rounds > 0) return `쿨다운 ${rounds}국 남음`;
     const turns = cooldownTurnsLeft(view, me.id, id);
-    if (turns > 0) return `${name}: 쿨다운 ${turns}순 남음`;
+    if (turns > 0) return `쿨다운 ${turns}순 남음`;
     const uses = view.augmentView[`uses:${id}`] as { left?: unknown } | undefined;
     if (uses !== undefined && typeof uses.left === "number" && uses.left <= 0) {
-      return `${name}: 남은 횟수 없음`;
+      return "남은 횟수 없음";
     }
-    if (disarmedAugmentsOf(view, me.id).has(id)) return `${name}: 무장해제로 잠김`;
-    return name;
+    if (disarmedAugmentsOf(view, me.id).has(id)) return "무장해제로 잠김";
+    return null;
+  };
+  /*
+   * 못 쓰는 이유 문장 — 토스트(한 줄)와 버튼 title(여러 줄)이 같은 조립을 쓴다.
+   *
+   * 예전엔 사유 있는 것과 이름만 있는 것이 같은 쉼표로 이어져(«예지: 쿨다운 2순 남음, 조커,
+   * 카피») «조커, 카피»가 사유인지 목록인지 읽히지 않았다. 게다가 이 토스트가 가장 자주 뜨는
+   * 때는 **내 차례가 아닐 때**인데, 클라가 확실히 아는 그 이유를 말하지 않았다
+   * (2026-09-25, docs/59 U43). 첫머리는 내 프롬프트가 있는지 하나로 가른다 — 지어낸 사유가
+   * 아니다. 사유를 모르는 나머지는 «지금 발동 조건이 아닙니다»로 묶기만 하고, 구체적 조건은
+   * 여전히 말하지 않는다(위 주석). 내 차례가 아니면 첫머리가 이미 이유라 그 덩어리는 뺀다.
+   */
+  const blockedLines = (): string[] => {
+    const notMyTurn = myPrompt === null;
+    const lines = [notMyTurn ? "지금은 내 차례가 아닙니다" : "지금은 사용할 수 없습니다"];
+    const unexplained: string[] = [];
+    for (const id of activeIds) {
+      const name = augName(id, props.catalog);
+      const why = blockedReason(id);
+      if (why !== null) lines.push(`${name}: ${why}`);
+      else unexplained.push(name);
+    }
+    if (!notMyTurn && unexplained.length > 0) {
+      lines.push(`${unexplained.join(", ")}: 지금 발동 조건이 아닙니다`);
+    }
+    return lines;
+  };
+  /** 토스트는 한 줄이다(.toast에 pre-line이 없다) — 첫머리 뒤 마침표, 나머지는 « · » */
+  const blockedToast = (): string => {
+    const [head, ...rest] = blockedLines();
+    return rest.length > 0 ? `${head}. ${rest.join(" · ")}` : (head ?? "");
   };
 
   // 액션 타입별로 옵션을 묶는다 (타일 선택형은 개별 옵션이 아니라 '패 클릭'으로 발동)
@@ -24969,11 +25519,7 @@ function ActiveAugmentControl(props: {
        * 같은 패턴 — QA 4라운드 mobile-a11y P1).
        */
       haptics.reject();
-      props.onToast?.(
-        activeIds.length > 0
-          ? `지금은 사용할 수 없습니다. ${activeIds.map(blockedNote).join(", ")}`
-          : "지금은 사용할 수 없습니다",
-      );
+      props.onToast?.(blockedToast());
       return;
     }
     // 다시 눌러 선택 모드 취소(같은 타입이면 해제). 증강 리치 무장은 이 버튼 소관이
@@ -25007,23 +25553,9 @@ function ActiveAugmentControl(props: {
   // 모달에 펼치는 내 손패는 **항상 정렬해서** 보여준다 — Zone 순서(뽑은 순)로 두면
   // 게임판의 손패와 배열이 달라 같은 패를 눈으로 못 찾는다.
   const myHandIds = sortTileIds(view.zones[`hand:${me.id}`]?.tileIds ?? [], view.tiles);
-
-  // ── 정적의 손 — 네 바닥을 통째로 펼쳐 주울 버림패 1장을 고른다 ──
-  const silentByOwner = (() => {
-    if (pickModal !== "silent_take") return [];
-    const opts = byType.get("silent_take") ?? [];
-    const byId = new Map<number, ActionOption>();
-    for (const o of opts) {
-      const t = (o.payload as { tileId?: unknown }).tileId;
-      if (typeof t === "number") byId.set(t, o);
-    }
-    return view.players.map((p) => ({
-      player: p,
-      tiles: (view.zones[`discards:${p.id}`]?.tileIds ?? [])
-        .filter((id) => byId.has(id))
-        .map((id) => ({ id, opt: byId.get(id) as ActionOption })),
-    }));
-  })();
+  // (정적의 손 전용 모달은 걷었다 — opp-river 무장이 먼저 가로채 열릴 길이 없었고, 2026-08-20
+  //  «상대 셋의 바닥만» 규칙과 어긋난 «내 바닥» 행이 남아 있었다. 그 모달에만 있던 «이어서
+  //  한 장을 버려야 한다»는 ARM_PROMPT로 옮겼다 — 2026-09-25, docs/59 U11)
 
   // ── 예지 — 공개된 패를 버튼 옆 스트립에 늘어놓고, 재배열 가능할 때만 드래그시킨다 ──
   // (후보 매핑·핸들러; 훅은 위에)
@@ -25198,7 +25730,7 @@ function ActiveAugmentControl(props: {
                       setPickModal(null);
                     }}
                   >
-                    <span className="aug-pick-row-label">{optionDetail(view, o) || suit}</span>
+                    <span className="aug-pick-row-label">{optionDetail(view, o)}</span>
                     <span className="aug-pick-row-tiles">
                       {preview.map((p) => (
                         <TileImg key={p.id} tile={p.tile} size="mini" />
@@ -25300,49 +25832,6 @@ function ActiveAugmentControl(props: {
             </div>
             <button className="rinshan-pick-skip" onClick={closeModal}>
               발동하지 않고 닫기
-            </button>
-          </div>
-        </div>,
-        document.body,
-      ) : null}
-      {/* 정적의 손 — 네 바닥을 통째로 펼쳐 주울 버림패 1장을 고른다 */}
-      {pickModal === "silent_take" ? createPortal(
-        <div className="rinshan-pick-overlay">
-          <div className="rinshan-pick-panel aug-pick-wide">
-            <PickTimer deadline={props.promptDeadline ?? null} />
-            <div className="rinshan-pick-title">🤫 {augNameFor("silent_take")}: 가져올 버림패 선택</div>
-            <div className="rinshan-pick-sub">
-              버림패 중 한 장을 골라 가져옵니다. 지금 쯔모한 패는 패산 맨 밑으로 돌아가고,
-              고른 패가 그 자리를 대신합니다. <b>이어서 한 장을 버려야 하며</b> 그 버림패로
-              상대가 론할 수 있습니다.
-            </div>
-            <div className="aug-pick-rows">
-              {silentByOwner.map(({ player, tiles }) =>
-                tiles.length === 0 ? null : (
-                  <div key={player.id} className="aug-pick-row aug-pick-row-static">
-                    <span className="aug-pick-row-label">
-                      {player.id === me.id ? "내 바닥" : playerNameById(view, player.id)}
-                    </span>
-                    <span className="aug-pick-row-tiles">
-                      {tiles.map(({ id, opt }) => (
-                        <button
-                          key={id}
-                          className="aug-pick-tile"
-                          onClick={() => {
-                            sel.submit(opt);
-                            closeModal();
-                          }}
-                        >
-                          <TileImg tile={view.tiles[id]} size="mini" />
-                        </button>
-                      ))}
-                    </span>
-                  </div>
-                ),
-              )}
-            </div>
-            <button className="rinshan-pick-skip" onClick={closeModal}>
-              가져오지 않고 닫기
             </button>
           </div>
         </div>,
@@ -25674,7 +26163,7 @@ function ActiveAugmentControl(props: {
                 // 단언(`!`)은 두지 않는다 — 그 단언이 «undefined 사용»을 화면까지
                 // 흘려보낸 장본인이다.
                 `${augNameFor(types[0] ?? "")} 사용`
-            : `지금은 사용할 수 없습니다\n${activeIds.map(blockedNote).join("\n")}`
+            : blockedLines().join("\n")
         }
         onClick={click}
         /* 손을 올리면 그 개수가 **어느 증강인지** 이름표 pill이 빛나 알려 준다.
@@ -25988,7 +26477,10 @@ function ActionBar(props: {
               여기서 사라지면 당한 사람은 왜 화료가 안 되는지 알 길이 없다.
               고를 것이 패스뿐이면 스스로 넘어가므로, 남은 시간을 버튼이 직접 보여 준다. */}
           {locked.map((l) => {
-            const label = l.type === "win" ? (isMyTurn ? "쯔모" : "론") : l.type;
+            // core 계약상 지금은 win뿐이지만, 늘어나도 내부 type이 조용히 서지 않게
+            // actionLabel 한 경로로 떨어뜨린다(2026-09-25, docs/59 U62)
+            const label =
+              l.type === "win" ? (isMyTurn ? "쯔모" : "론") : actionLabel(l.type, props.catalog);
             return (
               <button
                 key={`locked-${l.type}-${l.reason}`}
@@ -26134,7 +26626,7 @@ function ActionTiles({ view, option }: { view: PlayerView; option: ActionOption 
       );
     }
   }
-  // 숫자 증감(연금술 등): 바뀐 뒤 숫자(±1)를 '전→후'로 보여준다 (같은 무늬, rank±1)
+  // 숫자 증감(연금술 등): 바뀐 뒤 숫자(±1)를 '전→후'로 보여준다 (같은 무늬, rank±1 — 순환은 shiftedRank)
   if (typeof p.delta === "number" && typeof p.tileId === "number") {
     const src = view.tiles[p.tileId]?.kind;
     if (src !== undefined && typeof src.rank === "number") {
@@ -26143,7 +26635,7 @@ function ActionTiles({ view, option }: { view: PlayerView; option: ActionOption 
           <TileImg tile={view.tiles[p.tileId]} size="mini" />
           <span className="act-tiles-arrow" aria-hidden="true">→</span>
           <TileImg
-            tile={{ kind: { suit: src.suit, rank: src.rank + p.delta }, attrs: { conjured: true } }}
+            tile={{ kind: { suit: src.suit, rank: shiftedRank(src.rank, p.delta) }, attrs: { conjured: true } }}
             size="mini"
           />
         </span>
@@ -26192,6 +26684,20 @@ function ActionTiles({ view, option }: { view: PlayerView; option: ActionOption 
 }
 
 /**
+ * 숫자 증감(연금술 `{tileId, delta}`)의 결과 숫자 — 1~9 밖으로 나가면 **순환**시킨다.
+ *
+ * 서버는 끝없는 윤회(hand.wrapRanks)가 켜져 있을 때만 9의 +1·1의 −1 후보를 내고, 적용할 때
+ * 순환시킨다(content wrapRanks.shiftRank, 9+1=1). 그러니 범위 밖 후보가 왔다는 것 자체가
+ * 순환이 켜졌다는 뜻이다 — 보유 증강 id를 여기서 다시 보지 않는다(봇 alchemist.ts와 같은 논리).
+ * 예전엔 `rank + delta` 그대로라 미리보기에 «10삭»·«0만» 같은 없는 패가 섰다
+ * (2026-09-25, docs/59 U14).
+ */
+function shiftedRank(rank: number, delta: number): number {
+  const r = rank + delta;
+  return r > 9 ? 1 : r < 1 ? 9 : r;
+}
+
+/**
  * 패 변형형 액션(염색 `{tileId,suit}`·연금술 `{tileId,delta}`)의 '바꾼 뒤' 패를 만든다.
  * 전용 선택 모달이 전→후를 큰 패로 보여줄 때 쓴다. 변형형이 아니면 null.
  */
@@ -26207,7 +26713,7 @@ function morphedTile(
     return { kind: { suit: p.suit as TileKind["suit"], rank: src.rank }, attrs: { conjured: true } };
   }
   if (typeof p.delta === "number" && typeof src.rank === "number") {
-    return { kind: { suit: src.suit, rank: src.rank + p.delta }, attrs: { conjured: true } };
+    return { kind: { suit: src.suit, rank: shiftedRank(src.rank, p.delta) }, attrs: { conjured: true } };
   }
   // 종류를 통째로 지정하는 변형 (선언 간파 위조 — payload.kind는 kindKey 문자열)
   if (typeof p.kind === "string") {
@@ -26288,7 +26794,14 @@ function optionDetail(view: PlayerView, option: ActionOption): string {
   // 재장전은 반장전에 두 번뿐인데 무엇을 되살리는지 모른 채 찍어야 했다
   // (2026-08-08 QA §2-9).
   if (typeof p.augmentId === "string") return augmentDisplayName(p.augmentId);
-  if (typeof p.yaku === "string") return YAKU_NAMES[p.yaku] ?? p.yaku;
+  if (typeof p.yaku === "string") {
+    // 역 이름이 빠졌으면 내부 키(`ittsuu`)를 찍지 않고 라벨을 생략한다 — 버튼 본문은
+    // actionLabel이 따로 그린다. 개발 중에는 시끄럽게(2026-09-25, docs/59 U62)
+    const name = YAKU_NAMES[p.yaku];
+    if (name !== undefined) return name;
+    if (import.meta.env.DEV) console.warn(`[ui] 역 "${p.yaku}" 의 한글 이름이 없습니다 — YAKU_NAMES 에 추가하세요.`);
+    return "";
+  }
   // 분열 — 한 패에 후보가 여럿(9 → 1+8·2+7·3+6·4+5)이라 어느 분할인지 라벨로도 적는다
   if (option.type === "split_tile" && typeof p.a === "number" && typeof p.tileId === "number") {
     const src = view.tiles[p.tileId]?.kind;
@@ -26303,8 +26816,27 @@ function optionDetail(view: PlayerView, option: ActionOption): string {
       .filter((k): k is TileKind => k !== null);
     if (kinds.length > 0) return kinds.map((kind) => formatTile({ kind })).join("·");
   }
+  // 선언 간파 위조 — 후보마다 그림만 다르고 글자가 전부 같던(«이렇게 바꾸기») 것을 결과 패
+  // 이름으로 가른다. kind payload를 쓰는 다른 액션이 생겨도 라벨이 바뀌지 않게 type으로 좁힌다
+  // (2026-09-25, docs/59 U15)
+  if (option.type === "peek_forge" && typeof p.kind === "string") {
+    const k = parseKindKey(p.kind);
+    if (k !== null) return `→ ${formatTile({ kind: k })}`;
+  }
   const suitKo: Record<string, string> = { man: "만수", pin: "통수", sou: "삭수" };
-  if (typeof p.suit === "string") return suitKo[p.suit] ?? p.suit;
+  if (typeof p.suit === "string") {
+    const name = suitKo[p.suit];
+    if (name !== undefined) return name;
+    if (import.meta.env.DEV) console.warn(`[ui] 무늬 "${p.suit}" 의 한글 이름이 없습니다.`);
+    return "";
+  }
+  // 연금술 — «+1»만으로는 순환(9→1)인지 알 수 없어 결과 패 이름을 적는다(U14)
+  if (option.type === "alchemy" && typeof p.delta === "number" && typeof p.tileId === "number") {
+    const src = view.tiles[p.tileId]?.kind;
+    if (src !== undefined) {
+      return `→ ${formatTile({ kind: { suit: src.suit, rank: shiftedRank(src.rank, p.delta) } })}`;
+    }
+  }
   if (typeof p.delta === "number") return p.delta > 0 ? "+1" : "-1";
   if (typeof p.index === "number") return `영상패 ${p.index + 1}`;
   if (typeof p.kanKind === "string") {
@@ -27215,14 +27747,34 @@ function RoundResultPanel({
  *
  * 서버(`HanchanController.optionLabel`)는 `"alchemy man3 1"` 처럼 «액션 타입 + 인자»
  * 를 그대로 보낸다. core 에는 패의 한국어 표기가 없기 때문이다(그건 이 파일의 몫이다).
- * 그래서 여기서 첫 토막은 액션 이름표(`ACTION_LABEL`)로, 패 키(`man3`)는 실제 패
+ * 그래서 여기서 첫 토막은 증강 이름(`augActionName`)으로, 패 키(`man3`)는 실제 패
  * 그림으로 갈아 끼운다 — 남는 숫자·문자는 그대로 둔다(방향 ±1 같은 인자다).
+ *
+ * 이름은 대국자 화면의 버튼과 같은 증강 이름이다 — 예전엔 ACTION_LABEL이라 제목
+ * «미래를 보는 자» 아래 «미래 보기»가 붙었다. 제목(= 서버 choiceTitle, 증강 이름)과 같으면
+ * 같은 말을 줄마다 되풀이하지 않게 머리를 생략한다(인자가 없으면 남긴다 — 빈 줄이 되므로)
+ * (2026-09-25, docs/59 U18).
  */
-function ChoiceLabel({ label }: { label: string }): JSX.Element {
+function ChoiceLabel({
+  label,
+  catalog,
+  title,
+}: {
+  label: string;
+  catalog: Record<string, AugmentCatalogEntry>;
+  /** 선택창 제목 — 머리가 이것과 같으면 생략한다 */
+  title?: string;
+}): JSX.Element {
   const [head, ...rest] = label.split(" ");
+  const name = augActionName(catalog, head ?? "");
+  const showHead = rest.length === 0 || name !== title;
+  // 머리를 떼도 패 뒤에 맨 숫자만 남는 줄(연금술 «[3만] 1» — 서버 optionLabel이 payload 값을
+  // 그대로 잇는다)은 그 숫자가 무엇인지 읽을 거리가 사라진다 → 그때는 머리를 남긴다
+  // (2026-09-25, docs/59 U18 리뷰 2).
+  const bareNumber = rest.some((tok) => parseKindKey(tok) === null && /^[+-]?\d+$/.test(tok));
   return (
     <span className="spec-choice-opt-label">
-      <span className="spec-choice-opt-act">{ACTION_LABEL[head ?? ""] ?? head}</span>
+      {showHead || bareNumber ? <span className="spec-choice-opt-act">{name}</span> : null}
       {rest.map((tok, i) => {
         const kind = parseKindKey(tok);
         return kind === null ? (
@@ -27254,11 +27806,14 @@ function ChoiceLabel({ label }: { label: string }): JSX.Element {
 function SpectateChoicePanel({
   choice,
   view,
+  catalog,
   focus = false,
 }: {
   choice: SpectateChoiceShown;
   /** 좌석 이름·자풍을 얻는 곳 (관전 뷰) */
   view: PlayerView;
+  /** 선택지 머리를 증강 이름으로 부르는 곳 (U18) */
+  catalog: Record<string, AugmentCatalogEntry>;
   /**
    * 고르는 좌석이 지금 **아래 자리(초점)** 다 — 그 사람 화면을 같이 보는 셈이므로
    * 중계 카드가 아니라 그 사람에게 뜬 선택창처럼 크게 세운다(2026-09-04).
@@ -27297,7 +27852,7 @@ function SpectateChoicePanel({
                 }`}
                 key={`${i}-${o.label}`}
               >
-                <ChoiceLabel label={o.label} />
+                <ChoiceLabel label={o.label} catalog={catalog} title={choice.title} />
                 {o.detail !== undefined ? (
                   <span className="spec-choice-opt-detail">{o.detail}</span>
                 ) : null}
@@ -27307,7 +27862,7 @@ function SpectateChoicePanel({
         )}
         {picked !== undefined ? (
           <p className="spec-choice-note spec-choice-picked-line">
-            선택한 항목: <ChoiceLabel label={picked} />. 잠시 후 게임에 반영됩니다
+            선택한 항목: <ChoiceLabel label={picked} catalog={catalog} title={choice.title} />. 잠시 후 게임에 반영됩니다
           </p>
         ) : (
           <p className="spec-choice-note">
@@ -27327,29 +27882,42 @@ function SpectateChoicePanel({
  *
  * 그 사람 화면에는 이때 모달이 아니라 액티브 증강 **단추**만 서 있다. 관전 화면이
  * 이걸 선택창으로 그리면 매 순 «증강 사용 중»이 뜨는 거짓말이 되므로, 단추 자리에
- * 같은 것을 읽기 전용 띠로 세운다. 액션 타입별로 하나씩만 적는다(연금술사처럼
+ * 같은 것을 읽기 전용 띠로 세운다. **증강 이름**별로 하나씩만 적는다(연금술사처럼
  * 패마다 후보가 서는 증강은 수십 개다). 고르면(`picked`) 그 증강에 ✓가 붙는다.
+ *
+ * 칩 이름은 그 사람 단추와 같은 증강 이름이고, 그래서 중복도 증강 이름으로 걷는다 —
+ * 선언 간파의 간파·위조가 같은 칩 두 개로 서지 않게(2026-09-25, docs/59 U18).
  */
-function SpectateUsableStrip({ choice }: { choice: SpectateChoiceShown }): JSX.Element | null {
-  const types: string[] = [];
+function SpectateUsableStrip({
+  choice,
+  catalog,
+}: {
+  choice: SpectateChoiceShown;
+  catalog: Record<string, AugmentCatalogEntry>;
+}): JSX.Element | null {
+  const names: string[] = [];
   for (const o of choice.options) {
     const head = o.label.split(" ")[0] ?? "";
-    if (head !== "" && !types.includes(head)) types.push(head);
+    if (head === "") continue;
+    const name = augActionName(catalog, head);
+    if (!names.includes(name)) names.push(name);
   }
-  if (types.length === 0) return null;
+  if (names.length === 0) return null;
   const pickedHead = choice.picked?.split(" ")[0];
+  const pickedName =
+    pickedHead !== undefined && pickedHead !== "" ? augActionName(catalog, pickedHead) : undefined;
   return (
     <div className="spec-usable" title="관전 중인 플레이어의 화면에 표시된 액티브 증강 버튼입니다">
       <span className="spec-usable-tag">사용 가능한 증강</span>
-      {types.map((t) => (
+      {names.map((n) => (
         <span
-          key={t}
+          key={n}
           className={`spec-usable-chip${
-            pickedHead !== undefined ? (t === pickedHead ? " spec-usable-picked" : " spec-usable-dim") : ""
+            pickedName !== undefined ? (n === pickedName ? " spec-usable-picked" : " spec-usable-dim") : ""
           }`}
         >
-          {t === pickedHead ? "✓ " : ""}
-          {ACTION_LABEL[t] ?? t}
+          {n === pickedName ? "✓ " : ""}
+          {n}
         </span>
       ))}
     </div>
@@ -27586,7 +28154,7 @@ function DraftOverlay({
         {locked !== null ? (
           <p className="draft-locked-note">
             튜토리얼에서는{" "}
-            <b>{draft.choices.find((c) => c.id === locked)?.name ?? locked}</b> 하나만
+            <b>{draft.choices.find((c) => c.id === locked)?.name ?? augName(locked, catalog)}</b> 하나만
             고를 수 있습니다. 실제 대국에서는 세 장 중 아무 카드나 고를 수 있습니다.
           </p>
         ) : null}
@@ -27601,10 +28169,10 @@ function DraftOverlay({
                 <InfoNote
                   key={id}
                   className={`draft-owned-pill aug-cat-${augmentCategory(id)}`}
-                  note={entry === undefined ? id : forMode(entry.description, mode)}
+                  note={entry === undefined ? augName(id) : forMode(entry.description, mode)}
                 >
                   <AugCatIcon id={id} />
-                  {entry?.name ?? id}
+                  {augName(id, catalog)}
                 </InfoNote>
               );
             })}
@@ -27635,18 +28203,13 @@ function DraftOverlay({
                   style={{ animationDelay: `${i * 120}ms` }}
                   onClick={lockedOut || picked ? undefined : () => onPick(c.id)}
                   /*
-                   * 잠긴 카드는 `disabled`가 아니라 `aria-disabled`다. `disabled`를 걸면
-                   * 카드 **안**의 «자세히 ▾»까지 함께 죽어(포인터 이벤트가 통째로 꺼진다)
-                   * 바로 앞 강의에서 "자세히를 눌러 보세요"라고 가르친 조작이 석 장 중
-                   * 두 장에서 안 먹는다(2026-08-19 실측). 고를 수 없는 것과 읽을 수 없는
-                   * 것은 다르다 — 고르기만 막는다.
-                   */
-                  /*
-                   * ⚠ `picked`에도 `disabled`를 걸면 안 된다 — 바로 위 주석이 잠긴
-                   * 카드에 대해 말한 것과 **같은 이유**다. 고른 뒤에는 카드 안의
-                   * «자세히 ▾»까지 함께 죽어, 다른 사람을 기다리는 동안(= 시간이
-                   * 가장 남는 구간) 설명을 펼칠 수가 없었다. 고르기는 onClick과
-                   * `.draft-cards-locked`가 막고, 읽기는 열어 둔다.
+                   * 잠긴 카드·고른 뒤의 카드는 `disabled`가 아니라 `aria-disabled`다.
+                   * 예전에는 «자세히 ▾»가 카드 **안**에 있어서 `disabled`를 걸면 그것까지
+                   * 죽었다(2026-08-19 실측 — 강의가 "자세히를 눌러 보세요"라고 한 조작이
+                   * 석 장 중 두 장에서 안 먹었다). 지금 «자세히»는 카드 밖(아래 줄)이라
+                   * 그 이유는 사라졌지만, 고를 수 없는 카드도 포커스·스크린리더로 **읽을
+                   * 수는** 있어야 해서 그대로 둔다. 고르기는 onClick과
+                   * `.draft-cards-locked`가 막는다.
                    */
                   aria-disabled={lockedOut || picked || undefined}
                   title={lockedOut ? "튜토리얼에서는 이 증강을 고를 수 없습니다" : undefined}
@@ -27672,34 +28235,46 @@ function DraftOverlay({
                       expanded={shiftHeld || moreFor === c.id}
                     />
                   </span>
-                  <MoreToggle
-                    open={shiftHeld || moreFor === c.id}
-                    onToggle={() => setMoreFor((cur) => (cur === c.id ? null : c.id))}
-                  />
                   {isActiveAugment(c.id) ? (
                     <span className="draft-active-note">액티브 증강: 내 턴에 직접 사용합니다</span>
                   ) : null}
                 </button>
-                {hasRerollRow ? (
-                  <button
-                    type="button"
-                    className={`draft-reroll${canReroll ? "" : " draft-reroll-spent"}`}
-                    onClick={() => onReroll(i)}
-                    disabled={!canReroll}
-                    title={
-                      canReroll
-                        ? "이 카드를 다른 증강으로 바꿉니다. 한 번만 가능합니다"
-                        : "이미 새로고침한 카드입니다"
-                    }
-                    aria-label={
-                      canReroll
-                        ? `${c.name} 대신 다른 증강 보기 (한 번만 가능합니다)`
-                        : `${c.name}: 새로고침을 이미 사용했습니다`
-                    }
-                  >
-                    <span className="draft-reroll-icon" aria-hidden="true">↻</span>
-                  </button>
-                ) : null}
+                {/*
+                 * «자세히 ▾»는 카드(= 한 번 누르면 되돌릴 수 없이 확정되는 과녁) **밖**,
+                 * 바로 아래 ↻ 새로고침과 같은 줄에 선다(2026-09-25, docs/59 U78). 카드 안에
+                 * 있을 때는 작은 칩을 누르려다 조금만 빗나가도 그 카드가 곧바로 골라졌다
+                 * (버튼 안에 누를 것을 겹친 구조 자체도 접근성 위반이었다). 확인 단계를
+                 * 더하지 않고 과녁만 떼어 한 번 눌러 고르는 흐름은 그대로 둔다.
+                 * ↻ 줄 높이(22~28px) 안에 앉으므로 카드 아래 끝은 거의 안 움직이고,
+                 * 카드 안에서는 칩 한 줄만큼 설명 자리가 는다.
+                 */}
+                <div className="draft-slot-foot">
+                  <MoreToggle
+                    open={shiftHeld || moreFor === c.id}
+                    onToggle={() => setMoreFor((cur) => (cur === c.id ? null : c.id))}
+                    showKey
+                  />
+                  {hasRerollRow ? (
+                    <button
+                      type="button"
+                      className={`draft-reroll${canReroll ? "" : " draft-reroll-spent"}`}
+                      onClick={() => onReroll(i)}
+                      disabled={!canReroll}
+                      title={
+                        canReroll
+                          ? "이 카드를 다른 증강으로 바꿉니다. 한 번만 가능합니다"
+                          : "이미 새로고침한 카드입니다"
+                      }
+                      aria-label={
+                        canReroll
+                          ? `${c.name} 대신 다른 증강 보기 (한 번만 가능합니다)`
+                          : `${c.name}: 새로고침을 이미 사용했습니다`
+                      }
+                    >
+                      <span className="draft-reroll-icon" aria-hidden="true">↻</span>
+                    </button>
+                  ) : null}
+                </div>
               </div>
             );
           })}
@@ -27747,6 +28322,8 @@ function GameOverModal({
   onPracticeAgain,
   onOpenReplay,
   sandbox = false,
+  nameOf,
+  myId,
 }: {
   rankings: RankingEntry[];
   /** 왜 끝났는가 — 헤더 아래 한 줄 */
@@ -27764,8 +28341,17 @@ function GameOverModal({
    */
   onOpenReplay?: () => void;
   sandbox?: boolean;
+  /**
+   * 좌석 id → 판 위 이름(나·봇1·닉네임). 뷰가 없으면(재접속 직후 등) 생략되고,
+   * 그때는 `displayName`의 폴백이 봇을 «봇»으로 부른다 — 서버의 `Bot_p2`는 절대 쓰지 않는다.
+   */
+  nameOf?: (id: string) => string | undefined;
+  /** 내 좌석 id — 순위표에서 내 줄을 강조한다(관전석이면 어느 줄과도 맞지 않는다) */
+  myId?: string;
 }): JSX.Element {
   const [tab, setTab] = useState<"rank" | "stats">("rank");
+  const displayName = (e: { playerId?: string; nickname: string; isBot: boolean }): string =>
+    (e.playerId !== undefined ? nameOf?.(e.playerId) : undefined) ?? (e.isBot ? "봇" : e.nickname);
   const gameStats = stats?.game ?? [];
   const careerByNick = useMemo(() => {
     const m: Record<string, StatsEntry> = {};
@@ -27796,13 +28382,21 @@ function GameOverModal({
         {tab === "rank" || gameStats.length === 0 ? (
           <div className="rank-list">
             {rankings.map((r) => (
-              <div key={r.playerId} className={`rank-row rank-${r.rank}`}>
+              <div
+                key={r.playerId}
+                className={`rank-row rank-${r.rank}${r.playerId === myId ? " rank-me" : ""}`}
+              >
                 <span className="rank-no">{r.rank}위</span>
-                <span className="rank-name">
-                  {r.isBot ? "봇" : r.nickname}
+                {/* «나»로 부를 때도 계정명은 title로 남긴다 */}
+                <span className="rank-name" title={r.isBot ? undefined : r.nickname}>
+                  {displayName(r)}
                   {r.isBot ? <span className="seat-bot">BOT</span> : null}
-                  {/* 어느 성향이 이겼는지 — 순위표에서 그게 읽혀야 다음 판이 달라진다 */}
-                  {r.isBot ? <BotArchetypeChip archetype={r.archetype} /> : null}
+                  {/* 어느 성향이 이겼는지 — 순위표에서 그게 읽혀야 다음 판이 달라진다.
+                      모르는 성향이면 칩 자체를 뺀다 — 칩의 폴백 «봇»이 이름 옆에 또 서면
+                      «봇 BOT 봇»이 됐다(docs/59 U76). 칩 컴포넌트는 대기실도 써서 그대로 둔다. */}
+                  {r.isBot && archetypeInfo(r.archetype) !== null ? (
+                    <BotArchetypeChip archetype={r.archetype} />
+                  ) : null}
                 </span>
                 {/* 원점 → 우마·오카 → 최종. 세 값 모두 서버가 이미 보내 주는데(RankingEntry)
                     예전에는 원점과 최종만 찍어서, 25000점이 왜 -5가 되는지 역산할 수 없었다.
@@ -27854,8 +28448,8 @@ function GameOverModal({
               return (
                 <div key={e.playerId ?? e.nickname} className="stats-player">
                   <div className="stats-head">
-                    <span className="stats-name">
-                      {e.nickname}
+                    <span className="stats-name" title={e.isBot ? undefined : e.nickname}>
+                      {displayName(e)}
                       {e.isBot ? <span className="seat-bot">BOT</span> : null}
                     </span>
                     {career !== null ? (
@@ -27969,7 +28563,12 @@ function ReplayViewer(props: {
   const replay = useMemo<RebuiltReplay | null>(() => {
     if (mod === null) return null;
     try {
-      return mod.rebuildReplay(props.data.lines);
+      const r = mod.rebuildReplay(props.data.lines);
+      // 공유 링크 관전자는 인증 없이 replayGet만 보내 서버 catalog를 못 받는다 — 결과창의
+      // 증강 보너스·점수 줄이 `yakuless_win` 같은 id로 떴다. 리플레이가 들고 온 이름표로
+      // 비어 있는 이름·계열만 채운다(2026-09-25, docs/59 U68).
+      rememberCatalogIfMissing(Object.values(r.catalog));
+      return r;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       return null;

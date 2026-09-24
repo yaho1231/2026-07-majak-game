@@ -369,7 +369,9 @@ export const LESSONS: readonly Lesson[] = [
     todo: "카드 아래 ‘자세히’ 버튼을 누르거나, Shift 키를 누른 채로 보세요.",
     anchor: ".draft-cards",
     // 세 장의 «자세히 ▾»를 전부 비켜선다 — 이 강의가 누르라고 한 것이 바로 그것이다.
-    mustClear: ".draft-card .augdesc-more",
+    // 칩은 카드 밖, 카드 아래 줄(`.draft-slot-foot`)에 선다(2026-09-25, docs/59 U78).
+    // 펼친 본문은 여전히 카드 안이라 done 판정은 그대로다.
+    mustClear: ".draft-slot .augdesc-more",
     when: (c) => c.draftOpen,
     done: (c) => !c.draftOpen || c.hit(".draft-card .augdesc-body-full"),
   },
@@ -821,7 +823,9 @@ export const LESSONS: readonly Lesson[] = [
     chapter: "화면 도구",
     // 종 수를 적지 않는다 — 서버마다 다르고(도감이 직접 세어 보여 준다) 늘 때마다 낡는다.
     title: "📖 증강 도감에는 모든 증강이 있습니다",
-    body: "상대가 방금 공개한 증강이 무엇인지 궁금할 때 게임 중에 바로 열 수 있습니다. 실제 대국에서는 도감을 보는 동안에도 게임이 계속 진행되지만, 튜토리얼에서는 다 볼 때까지 기다려 줍니다.",
+    // 상대 증강 하나가 궁금하면 판을 떠나지 않는 이름표 쪽이 더 직접적이다 — 도감은
+    // 판 전체를 덮는다(2026-09-25, docs/59 U70).
+    body: "상대 증강이 궁금하면 이름표의 증강을 눌러 보거나, 전체 목록은 📖에서 게임 중에 바로 열 수 있습니다. 실제 대국에서는 도감을 보는 동안에도 게임이 계속 진행되지만, 튜토리얼에서는 다 볼 때까지 기다려 줍니다.",
     todo: "오른쪽 위 📖 버튼을 눌러 열어 보세요. 닫으면 게임으로 돌아옵니다.",
     anchor: ".codex-btn",
     when: (c) => !c.draftOpen && handsFree(c),
@@ -830,7 +834,8 @@ export const LESSONS: readonly Lesson[] = [
   {
     id: "help",
     chapter: "화면 도구",
-    title: "📘 규칙 도움말에는 역, 점수, 용어가 있습니다",
+    // 버튼 글리프는 📘 대신 «?» — 📖 도감과 구별되게(2026-09-25, docs/59 U69).
+    title: "? 규칙 도움말에는 역, 점수, 용어가 있습니다",
     /*
      * **용어 이야기는 여기 한 번만.** 예전에는 «증강 읽기» 장에도 "밑줄 그인 말은
      * 눌러 보면 풀이가 나옵니다"가 따로 있어서, 같은 이야기를 두 번 들었다
@@ -838,7 +843,7 @@ export const LESSONS: readonly Lesson[] = [
      * 이 자리가 «용어» 탭을 여는 법과 한 몸이라 설명이 흩어지지 않는다.
      */
     body: "리치마작을 처음 하는 사람에게 필요한 내용만 정리해 두었습니다. 게임 중 밑줄이 그어진 용어(슌쯔, 오름패 등)를 누르면 그 자리에서 짧은 설명이 뜨고, 전체 목록은 이 창의 ‘용어’ 탭에 있습니다.",
-    todo: "오른쪽 위 📘 버튼을 눌러 열어 보세요.",
+    todo: "오른쪽 위 ? 버튼을 눌러 열어 보세요.",
     anchor: ".help-btn",
     when: (c) => !c.draftOpen && handsFree(c),
     done: (c) => c.overlay === "help",

@@ -128,6 +128,16 @@ describe("nagashi_yakuman (유국역만)", () => {
     ).toBe(false);
   });
 
+  it("특수 유국 라벨 구분자는 코어 유국만관과 같은 « — » (컷인 제목이 앞 조각만 쓴다)", () => {
+    // 2026-09-25 docs/59 U79 — «:»였을 때는 문장 통째가 역만 컷인 제목에 들어가 밴드를 넘쳤다.
+    const base = settleDraw(createStandardGameFromState(drawState()));
+    const game = createStandardGameFromState(withAugments(drawState(), "p0", ["nagashi_yakuman"]));
+    installAugment(game.engine, nagashiYakuman, "p0", { yaku: game.yaku });
+    const settled = settleDraw(game);
+    expect(base.drawSpecial?.label.split(" — ")[0]).toBe("유국만관");
+    expect(settled.drawSpecial?.label.split(" — ")[0]).toBe("유국역만");
+  });
+
   it("버림에 요구패가 아닌 패가 섞이면 성립하지 않는다", () => {
     const s = craft({
       hands: { p0: "*", p1: "*", p2: "*", p3: "*" },
