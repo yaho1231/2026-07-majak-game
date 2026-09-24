@@ -52,7 +52,9 @@ describe("증강 선택 모달이 남은 시간을 스스로 보여 준다", () 
      */
     const panels = APP_CODE.match(/className="rinshan-pick-panel/g) ?? [];
     const timers = APP_CODE.match(/<PickTimer deadline=/g) ?? [];
-    expect(panels.length).toBeGreaterThanOrEqual(10);
+    // 모달을 지우는 배치마다 그때의 개수로 내린다 — B04(2026-09-25)가 이면투시·붉은 손길 두 개를
+    // 실물 손패 클릭으로 옮겨 10 → 8 (docs/59 §7 배치 공통 규약)
+    expect(panels.length).toBeGreaterThanOrEqual(8);
     expect(timers.length).toBe(panels.length);
   });
 

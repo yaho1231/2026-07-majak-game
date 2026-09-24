@@ -1070,6 +1070,26 @@ button {
   box-shadow: 0 0 8px rgba(199, 188, 255, 0.75);
   border-radius: 3px;
 }
+/* 이면투시 바꿔치기 무장 중 — 고른 손패가 들어갈 목적지 칸 (2026-09-25, docs/59 U01) */
+.center-ura-peek .dora-slot.ura-swap-target {
+  outline: 2px solid rgba(233, 226, 255, 0.95);
+  outline-offset: 1px;
+  animation: ura-swap-target-pulse 1.1s ease-in-out infinite;
+}
+@keyframes ura-swap-target-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 6px rgba(199, 188, 255, 0.7);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(199, 188, 255, 1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .center-ura-peek .dora-slot.ura-swap-target {
+    animation: none;
+  }
+}
 .ura-peek-tag {
   font-size: 11px;
   font-weight: 800;
@@ -7918,6 +7938,50 @@ button {
   color: #f7f3e8;
   font-size: 13px;
   cursor: pointer;
+}
+.arm-hint-cancel:disabled,
+.arm-sub-cancel:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+/*
+ * 안내 줄의 주 버튼(가지치기·붉은 손길 [확인]) — [취소]와 같은 회색이면 고른 뒤 시선이
+ * 헤매고, 비활성도 고장으로 보였다. 색은 새로 만들지 않고 .aug-modal-confirm의 보라를
+ * 따른다. 누를 수 있게 되면 짧게 맥동한다 (2026-09-25, docs/59 U20).
+ */
+.arm-hint-confirm {
+  padding: 4px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(199, 188, 255, 0.8);
+  background: rgba(165, 145, 255, 0.35);
+  color: #f7f3e8;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.arm-hint-confirm:hover:not(:disabled) {
+  background: rgba(165, 145, 255, 0.5);
+}
+.arm-hint-confirm:not(:disabled) {
+  animation: arm-hint-confirm-pulse 1.4s ease-in-out 3;
+}
+.arm-hint-confirm:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+@keyframes arm-hint-confirm-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 rgba(199, 188, 255, 0);
+  }
+  50% {
+    box-shadow: 0 0 12px rgba(199, 188, 255, 0.85);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .arm-hint-confirm:not(:disabled) {
+    animation: none;
+  }
 }
 .arm-sub {
   display: flex;
