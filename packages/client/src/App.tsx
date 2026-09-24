@@ -911,7 +911,7 @@ const FIRST_TURN_ONLY_TYPES = new Set([
  */
 const CONTRACT_YAKU_NOTE: Record<string, string> = {
   tanyao: "1·9·자패 없이",
-  pinfu: "멘젠 · 슌쯔만",
+  pinfu: "멘젠 · 슌쯔만 · 양면 대기",
   toitoi: "커쯔만 넷",
   honitsu: "한 무늬 + 자패",
   chinitsu: "한 무늬만",
@@ -22009,8 +22009,10 @@ function OwnArea(props: {
     if (armedAug === "recall") return doomedNow;
     const hovered = (t: string): boolean => usableHint?.has(ACTION_AUGMENT[t] ?? t) ?? false;
     if (!hovered("recall")) return new Set<number>();
+    // 무르기도 쯔모패를 손에서 없앤다(패산 밑으로) — 회수와 함께 올라가면 쯔모패가 겹치니
+    // 사라지는 쪽 말을 남긴다(2026-09-25, docs/59 U34·U36 리뷰).
     const burn = new Set(
-      ["bluff_pon", "dragons_will", "split_tile"].filter(hovered).flatMap((t) => doomedTileIdsOf(view, t)),
+      ["bluff_pon", "dragons_will", "split_tile", "take_back"].filter(hovered).flatMap((t) => doomedTileIdsOf(view, t)),
     );
     return new Set(doomedTileIdsOf(view, "recall").filter((id) => doomedNow.has(id) && !burn.has(id)));
   }, [armedAug, view, doomedNow, usableHint]);

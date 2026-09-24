@@ -8635,7 +8635,15 @@ button {
 .aug-menu-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  min-width: 260px;
+  min-width: min(260px, 92cqw);
+  /*
+   * 격자는 목록보다 넓어서 ✦ 버튼 왼쪽 끝에 붙이면(.aug-menu의 left: 0) 버튼이 가운데보다
+   * 오른쪽에 선 폭 — 폰 세로(375px: 버튼 ≈150px 지점 + 260px)나 901~980px(+480px) — 에서
+   * 오른쪽 화면 밖으로 넘친다. min-width는 max-width(92cqw)를 이기므로 폭을 줄이는 것만으로는
+   * 안 된다 — 버튼 위 **가운데**에 세워 양쪽으로 나눠 퍼지게 한다(2026-09-25, docs/59 U39 리뷰).
+   */
+  left: 50%;
+  transform: translateX(-50%);
 }
 .aug-menu-grid .aug-menu-head,
 .aug-menu-grid .aug-menu-back {
@@ -8648,7 +8656,7 @@ button {
 @container ui (min-width: 901px) {
   .aug-menu-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    min-width: 480px;
+    min-width: min(480px, 92cqw);
   }
 }
 
@@ -9959,7 +9967,21 @@ button {
   }
   /* 폰 세로 — ✦ 버튼 부제는 숨기고 이름만(가로 폰 블록과 같은 규칙, docs/59 U37) */
   .aug-btn-sub { display: none; }
-  .aug-btn-name { max-width: 7em; }
+  /*
+   * «첫 순»/«이번 순만» 표는 여기서 금빛 점 하나로 줄인다 — 글자째 두면 nowrap인 버튼의 최소 폭이
+   * ≈190~220px로 굳어 한 줄 이름표 줄의 예산을 넘고, min-width: 0이어도 버튼 자체는 못 줄어
+   * 옆 .active-info 위로 삐져나간다. 금빛 테두리가 같은 신호를 지고 글자는 스크린리더에
+   * 남는다(font-size: 0은 접근성 이름에서 빠지지 않는다). 이름도 5em으로 한 급 더 묶는다
+   * (2026-09-25, docs/59 U37·U40 리뷰).
+   */
+  .aug-btn-name { max-width: 5em; }
+  .aug-first-badge {
+    width: 8px;
+    height: 8px;
+    margin-left: 5px;
+    padding: 0;
+    font-size: 0;
+  }
   .own-hand {
     border-radius: 12px;
   }
@@ -10373,7 +10395,21 @@ button {
   .own-aug { padding: 6px 10px; font-size: 13px; }
   /* ✦ 버튼의 행동 부제는 여기서 숨긴다 — 이름 하나로도 «무엇이 나가는가»는 읽힌다(docs/59 U37) */
   .aug-btn-sub { display: none; }
-  .aug-btn-name { max-width: 7em; }
+  /*
+   * «첫 순»/«이번 순만» 표는 여기서 금빛 점 하나로 줄인다 — 글자째 두면 nowrap인 버튼의 최소 폭이
+   * ≈190px(가로 폰 13px 기준, 예산은 150px)로 굳어 한 줄 이름표 줄의 예산을 넘고, min-width: 0이어도 버튼 자체는 못 줄어
+   * 옆 .active-info 위로 삐져나간다. 금빛 테두리가 같은 신호를 지고 글자는 스크린리더에
+   * 남는다(font-size: 0은 접근성 이름에서 빠지지 않는다). 이름도 5em으로 한 급 더 묶는다
+   * (2026-09-25, docs/59 U37·U40 리뷰).
+   */
+  .aug-btn-name { max-width: 5em; }
+  .aug-first-badge {
+    width: 8px;
+    height: 8px;
+    margin-left: 5px;
+    padding: 0;
+    font-size: 0;
+  }
 
   /*
    * ── 증강 드래프트: 카드 세 장을 «한 화면에» (2026-08-25 QA §2) ──
