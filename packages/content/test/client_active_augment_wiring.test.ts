@@ -229,6 +229,66 @@ describe("클라이언트 액티브 증강 배선", () => {
     expect(contract.filter((y) => !yakuNames.has(y))).toEqual([]);
   });
 
+  /*
+   * 2026-09-25 (docs/59 U41): 위의 «입구» 검사는 ACTIVE_AUGMENT_IDS → 액션 방향만 본다.
+   * 반전(sign_flip)이 2026-09-01 액티브로 바뀌며 액션 쪽 세 레지스트리에는 들어갔는데
+   * ACTIVE_AUGMENT_IDS만 빠져, 첫 순에만 ✦ 버튼이 불쑥 섰고 ✦ 배지·쿨다운 사유가 없었다.
+   * 반대 방향 — 입구가 있는 액션의 증강은 전부 액티브 목록에 있다 — 을 함께 본다.
+   */
+  it("입구(버튼·무장·모달)가 있는 액션의 증강은 전부 ACTIVE_AUGMENT_IDS에 있다", () => {
+    const entries = new Set([
+      ...ids(augmentActionTypes),
+      ...ids(armMode.keys()),
+      ...ids(setLiterals("MODAL_PICK_TYPES")),
+    ]);
+    const missing: string[] = [];
+    for (const t of [...entries].sort()) {
+      const aug = actionAugment.get(t);
+      if (aug === undefined) continue; // 주석 속 따옴표 문자열 등 — 액션이 아니다
+      if (!activeAugmentIds.has(aug)) missing.push(`${t} → ${aug}`);
+    }
+    expect(missing).toEqual([]);
+    expect(activeAugmentIds.has("sign_flip")).toBe(true);
+  });
+
+  it("한 증강이 액션을 둘 이상 내면 전부 행동 부제(ACTION_VERB)를 가진다", () => {
+    // docs/59 U38 — 이름은 증강 이름 하나라 이면투시 확인·바꿔치기, 선언 간파 간파·위조가
+    // 메뉴 줄에서 같은 이름으로 섰다. 동사가 빠지면 두 줄을 구별할 수 없다.
+    const verb = recordLiterals("ACTION_VERB", "string");
+    expect(verb.size).toBeGreaterThan(10);
+    const byAug = new Map<string, string[]>();
+    for (const [t, aug] of actionAugment) byAug.set(aug, [...(byAug.get(aug) ?? []), t]);
+    const missing = [...byAug.values()]
+      .filter((ts) => ts.length > 1)
+      .flat()
+      .filter((t) => !verb.has(t))
+      .sort();
+    expect(missing).toEqual([]);
+    // 동사 표에 레지스트리에 없는 액션(오타)이 남지 않는다
+    expect([...verb.keys()].filter((t) => !actionAugment.has(t))).toEqual([]);
+    expect(verb.get("cancel_riichi")).toBe("리치 취소");
+    expect(verb.get("ura_swap")).toBe("뒷도라 바꿔치기");
+  });
+
+  it("첫 순 한정 표(FIRST_TURN_ONLY_TYPES)는 실제 액티브 액션만 담는다", () => {
+    // docs/59 U40 — 오타가 나면 배지가 조용히 안 붙는다
+    const first = ids(setLiterals("FIRST_TURN_ONLY_TYPES"));
+    expect(first.length).toBeGreaterThanOrEqual(14);
+    expect(first.filter((t) => !actionAugment.has(t))).toEqual([]);
+    expect(first).toContain("sign_flip_use");
+    expect(first).toContain("blood_contract_declare");
+  });
+
+  it("핏빛 계약의 역마다 한 줄 정의가 있다", () => {
+    // docs/59 U39 — 격자 칸에 역 이름만 서지 않게. 역 id는 content CONTRACT_YAKU와 같아야 한다
+    const bc = readFileSync(join(HERE, "../src/augments/blood_contract.ts"), "utf8");
+    const m = /const CONTRACT_YAKU = \[([\s\S]*?)\] as const;/.exec(bc);
+    if (m === null) throw new Error("CONTRACT_YAKU 선언을 못 찾았다 (형태가 바뀌었는가?)");
+    const contract = [...m[1]!.matchAll(/"([^"]+)"/g)].map((x) => x[1]!).sort();
+    const note = recordLiterals("CONTRACT_YAKU_NOTE", "string");
+    expect([...note.keys()].sort()).toEqual(contract);
+  });
+
   it("폐기된 도박사의 손 배선이 남아 있지 않다", () => {
     for (const s of [augmentActionTypes, activeAugmentIds, setLiterals("MODAL_PICK_TYPES")]) {
       expect(s.has("take_rinshan")).toBe(false);

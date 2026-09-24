@@ -795,6 +795,12 @@ function doomedTileIdsOf(
     // 그대로라 위의 «계산 두 벌 금지» 규약과 어긋나지 않는다(2026-09-25, docs/59 U36).
     return view.round.myDrawnTile !== null ? [view.round.myDrawnTile] : [];
   }
+  if (actionType === "take_back") {
+    // 무르기 — 쯔모패를 패산 맨 밑으로 되돌려 손에서 사라진다(content take_back.ts). 회수와
+    // 같이 대상이 서버가 고르는 재료가 아니라 myDrawnTile 그대로다. 쯔모패가 내 손에 없으면
+    // (후로 직후 등) null이라 아무것도 안 짚는다(2026-09-25, docs/59 U34).
+    return view.round.myDrawnTile !== null ? [view.round.myDrawnTile] : [];
+  }
   return [];
 }
 
@@ -812,6 +818,112 @@ function augActionName(
   const augId = ACTION_AUGMENT[type];
   return (augId !== undefined ? catalog[augId]?.name : undefined) ?? actionLabel(type, catalog);
 }
+
+/**
+ * 액티브 액션이 **무엇을 하는지** 짧은 동사구 — ✦ 메뉴 줄과 단일 ✦ 버튼의 부제.
+ *
+ * 이름은 증강 이름 하나라(augActionName, docs/59 §2 원칙 6) 메뉴 줄에 «승부수»·«찬탈자»만
+ * 서면 누르면 리치가 취소되는지 오야를 빼앗는지 보이지 않았다. 한 증강이 액션을 둘 낼 때는
+ * 더하다 — 이면투시의 확인·바꿔치기, 선언 간파의 간파·위조가 같은 이름으로 섰다
+ * (2026-09-25, docs/59 U38). ACTION_LABEL을 그대로 붙이면 «카르마 · 카르마 업보 청산»처럼
+ * 이름이 겹쳐서 따로 둔다. **증강 이름과 행동이 다른 것만** 적는다 — 무르기·날치기처럼
+ * 이름이 곧 행동이면 비워 둔다. 한 증강이 액션을 둘 이상 내면 전부 적어야 한다
+ * (client_active_augment_wiring.test.ts가 지킨다).
+ */
+const ACTION_VERB: Record<string, string> = {
+  cancel_riichi: "리치 취소",
+  claim_dealer: "오야 빼앗기",
+  // 이면투시 — 확인한 뒤에도 같은 이름 줄이 다시 떠 «또 확인»으로 읽혔다
+  ura_peek_reveal: "뒷도라 확인",
+  ura_swap: "뒷도라 바꿔치기",
+  // 선언 간파 — 간파한 순에 이어 뜨는 위조 줄이 간파를 또 하는 것처럼 읽혔다
+  peek_waits: "대기 간파",
+  peek_forge: "대기패 위조",
+  foresight_reveal: "패산 공개",
+  foresight_order: "패산 재배열",
+  future_arm: "미래 보기",
+  future_exchange: "버릴 패 고르기",
+  swap3: "상대 지정",
+  swap3_give: "넘길 3장 고르기",
+  swap3_take: "가져올 3장 고르기",
+  table_flip_do: "배패 다시 받기",
+  genesis_flip: "자패·수패 뒤집기",
+  bottom_deal: "밑장에서 뽑기",
+  declare_big_hand: "만관 보장 선언",
+  jackpot_roll: "룰렛 돌리기",
+  karma_burn: "업보 청산",
+  declare_fog: "바닥 가리기",
+  declare_brief_fog: "바닥 가리기",
+  even_world_flip: "홀수를 짝수로",
+  call_seal_use: "상대 후로 봉인",
+  tenpai_scan_use: "텐파이 감지",
+  triple_peek_use: "다음 쯔모 3장 보기",
+  xray_reveal: "상대 손패 보기",
+  honor_recall: "자패 회수",
+  dragons_will: "삼원 커쯔 채우기",
+  north_pull: "북 빼기",
+  dora_recall: "지난 도라 되살리기",
+  sign_flip_use: "점수 부호 뒤집기",
+  blood_contract_declare: "역 계약",
+  take_back: "쯔모패 되돌리기",
+  greed_use: "같은 패 다시 쯔모",
+  time_stop_use: "한 순 더",
+  seal_hands: "상대 패 잠그기",
+  yggdrasil_call: "자패를 발로",
+  disarm_lock: "상대 증강 잠그기",
+  reload_use: "내 증강 복구",
+  dissolve_meld: "후로 해체",
+};
+
+/**
+ * **국의 첫 순에만** 후보가 뜨는 액티브·선언 — 한 장 버리면 그 국의 기회가 조용히 사라진다.
+ *
+ * ✦ 버튼은 쓸 수 있으면 언제나 같은 빛으로 켜져서 «이번 순이 마지막 기회»가 평소와
+ * 구별되지 않았다(2026-09-25, docs/59 U40 — 증강 리치가 메뉴 안에만 있어 모르고 지나갔던
+ * 2026-08-08 보고와 같은 문제). 클라가 첫 순을 따로 판정하지 않는다: 이 후보가 프롬프트에
+ * 있다는 것 자체가 지금이 첫 순이라는 뜻이다. 첫 순 한정 규칙은 content가 정한다
+ * (table_flip·jackpot·dead_wall_master·blood_contract·big_hand·sign_flip·shapeDeclare·
+ * full_hand_swap·seat_swap·rank_gate·suit_unify·discard_lock) — 거기 새 첫 순 액티브가
+ * 생기면 여기에도 적는다.
+ */
+const FIRST_TURN_ONLY_TYPES = new Set([
+  "table_flip_do",
+  "jackpot_roll",
+  "dw_swap",
+  "blood_contract_declare",
+  "declare_big_hand",
+  "sign_flip_use",
+  "declare_mixed_triplet",
+  "declare_broken_border",
+  "declare_async_chiitoi",
+  "hand_swap",
+  "seat_swap",
+  "rank_gate_mark",
+  "mono_world",
+  "seal_hands",
+]);
+
+/**
+ * 핏빛 계약 2단계 격자의 역 한 줄 조건 — **역의 정의만** 적는다(무엇이 유리한지 같은 전략
+ * 코칭은 하지 않는다). 첫 순의 짧은 시간에 역 이름만 보고 고르던 것을 덜어 준다
+ * (2026-09-25, docs/59 U39). 긴 풀이는 용어 사전(glossary.ts)이 단일 진실이라 칸의
+ * `title`로 그쪽을 빌려 쓴다 — 키가 content의 역 id와 다른 둘은 CONTRACT_YAKU_TERM이 잇는다.
+ */
+const CONTRACT_YAKU_NOTE: Record<string, string> = {
+  tanyao: "1·9·자패 없이",
+  pinfu: "멘젠 · 슌쯔만",
+  toitoi: "커쯔만 넷",
+  honitsu: "한 무늬 + 자패",
+  chinitsu: "한 무늬만",
+  sanshoku: "세 무늬 같은 슌쯔",
+  ittsuu: "한 무늬 123·456·789",
+  chiitoitsu: "서로 다른 짝 7개",
+};
+/** content 역 id → glossary.ts 키 (같으면 생략) */
+const CONTRACT_YAKU_TERM: Record<string, string> = {
+  ittsuu: "ittsu",
+  chiitoitsu: "chiitoi",
+};
 
 /** 플레이어가 버튼으로 발동하는 액티브 증강 액션 타입 (타일 클릭 액션은 제외). */
 const AUGMENT_ACTION_TYPES = new Set([
@@ -979,6 +1091,10 @@ const ACTIVE_AUGMENT_IDS = new Set([
   "three_dragons_will",
   "palm_flip",
   "north_trader",
+  // 반전 — 2026-09-01 선발동형에서 «3국에 1회 · 자기 첫 순» 액티브로 바뀌었는데 이 목록만
+  // 갱신이 빠져, 첫 순에만 ✦ 버튼이 불쑥 섰다 사라지고 ✦ 액티브 배지·쿨다운 사유도 없었다
+  // (2026-09-25, docs/59 U41)
+  "sign_flip",
   // 2026-08-04 (6차) 신규 — 액티브 발동이 있는 것만 (나머지 5종은 패시브·자동 발동)
   "dora_afterimage",
   "soul_strike",
@@ -8599,7 +8715,7 @@ function coachBlockHint(lock: LessonLock): string {
     ? lock.kind === DRAWN_TILE
       ? "튜토리얼: 오른쪽 끝의 방금 가져온 패를 버려야 합니다"
       : "튜토리얼: 지금은 빛나는 패만 버릴 수 있습니다"
-    : "튜토리얼: 먼저 '✦ 액티브 증강' 버튼을 누른 뒤 그 패를 고르세요";
+    : "튜토리얼: 먼저 증강 이름이 적힌 ✦ 버튼을 누른 뒤 그 패를 고르세요";
 }
 
 /**
@@ -26759,6 +26875,47 @@ function ActiveAugmentControl(props: {
         return "손패 클릭으로 선택";
     }
   };
+  // 단일 ✦ 버튼의 부제용 짧은 꼴 — 이름표 줄은 한 줄 폭 예산(styles.css .own-aug 가로 블록)이라
+  // armHint 전체(«상대 클릭으로 선택»)를 못 싣는다.
+  const armShort = (t: string): string => {
+    switch (armModeOf(t)) {
+      case "opp":
+        return "상대 고르기";
+      case "own-river":
+        return "내 버림패 고르기";
+      case "opp-river":
+        return "버림패 고르기";
+      case "hand3":
+        return "손패 3장 고르기";
+      case "opp-aug":
+        return "상대 증강 고르기";
+      case "own-aug":
+        return "내 증강 고르기";
+      case "own-meld":
+        return "후로 고르기";
+      default:
+        return "손패 고르기";
+    }
+  };
+  /*
+   * 단일 ✦ 버튼의 부제 — 누르면 **무엇이 일어나는지**. 동사(ACTION_VERB)가 있으면 그것이 먼저다:
+   * 이면투시 바꿔치기처럼 무장형이어도 «손패 고르기»보다 «뒷도라 바꿔치기»가 결과를 말한다.
+   * 없으면 조작 방식(무장·모달·후보 여럿)을 말한다. 이름과 같으면 두 번 쓰지 않는다
+   * (2026-09-25, docs/59 U37).
+   */
+  const actionSub = (t: string): string => {
+    const opts = byType.get(t) ?? [];
+    const sub =
+      ACTION_VERB[t] ??
+      (armType(t)
+        ? armShort(t)
+        : MODAL_PICK_TYPES.has(t)
+          ? "패 보고 고르기"
+          : opts.length > 1
+            ? `${opts.length}가지 중 고르기`
+            : "");
+    return sub === augNameFor(t) ? "" : sub;
+  };
 
   // 이 타입 발동 — 클릭형이면 무장, 모달형이면 전용 모달, 옵션 1개면 즉시 제출,
   // 여럿이면 그 증강의 후보 목록(2단계)으로 파고든다.
@@ -26794,6 +26951,20 @@ function ActiveAugmentControl(props: {
   // 예전엔 후보 옵션 수를 셌다 — 회수(버림패마다 후보 1개)·연금술(패×방향)처럼 후보가
   // 패 수만큼 나오는 증강이 "액티브 증강 (17)"처럼 떠 패 개수로 읽혔다(2026-08-01 보고).
   const displayCount = usableAugIds.length;
+  /*
+   * **누르면 곧바로 그 하나가 발동하는가** — click()의 `types.length === 1` 분기와 같은 기준.
+   *
+   * 버튼 글자는 언제나 «✦ 액티브 증강 (1)»이라, 쓸 수 있는 것이 하나일 때 무엇이 나가는지는
+   * title 툴팁과 hover 발광에만 있었다. 터치에는 둘 다 없어 «이게 뭐지» 하고 한 번 누르는
+   * 순간 귀환·밥상 뒤엎기·리치 취소 같은 되돌릴 수 없는 선언이 나갔다. 단계(확인창)는 늘리지
+   * 않는다 — 후보 1개면 즉시 제출·개수 = 쓸 수 있는 증강 수(2026-08-01)는 그대로 두고,
+   * 버튼에 증강 이름과 행동을 적는다(2026-09-25, docs/59 U37). 개수 «(n)»은 메뉴가 열릴
+   * 때(둘 이상)만 붙는다.
+   */
+  const single = usable && types.length === 1 ? (types[0] ?? null) : null;
+  const singleSub = single !== null ? actionSub(single) : "";
+  // 첫 순 한정 액티브가 지금 후보에 있다 — 한 장 버리면 사라지는 기회라 평소 켜짐과 구별한다(U40)
+  const firstTurnNow = usable && types.some((t) => FIRST_TURN_ONLY_TYPES.has(t));
 
   const click = (): void => {
     // 강제 선택 중 — 다른 증강으로 새면 교환 없이 넘어가거나 무장이 바뀐다. 이유는 말한다(U26)
@@ -27277,15 +27448,33 @@ function ActiveAugmentControl(props: {
         menuType !== null ? (
           // 2단계 — 고른 증강의 후보들. 이름은 머리글에 한 번만 쓰고 후보만 나열한다.
           // 이 층은 통째로 한 증강의 이야기라, 열려 있는 동안 그 pill을 계속 빛낸다.
-          <div className="aug-menu" onMouseEnter={() => hintOne(menuType)} onMouseLeave={hintNone}>
+          // 후보가 6개 이상이면(핏빛 계약의 역 8개) 세로 목록 대신 격자로 편다 — 폰 가로에서
+          // 60cqh 상자에 4~5줄만 보여 스크롤하며 고르던 것을 한눈에 담는다. 버튼 수는 그대로다:
+          // 역처럼 대상이 추상적인 선택은 버튼이 맞다(docs/59 §2 원칙 4, 2026-09-25 U39).
+          <div
+            className={`aug-menu${(byType.get(menuType)?.length ?? 0) >= 6 ? " aug-menu-grid" : ""}`}
+            onMouseEnter={() => hintOne(menuType)}
+            onMouseLeave={hintNone}
+          >
             <div className="aug-menu-head">{augNameFor(menuType)}</div>
             {warnBlankMenuDetails(view, menuType, byType.get(menuType) ?? [])}
             {(byType.get(menuType) ?? []).map((o, i) => {
               const detail = optionDetail(view, o);
+              // 핏빛 계약 — 역 이름 밑에 정의 한 줄, 긴 풀이는 용어 사전에서(U39)
+              const yaku =
+                o.type === "blood_contract_declare"
+                  ? (o.payload as { yaku?: unknown }).yaku
+                  : undefined;
+              const yakuNote = typeof yaku === "string" ? CONTRACT_YAKU_NOTE[yaku] : undefined;
               return (
                 <button
                   key={`${menuType}-${i}`}
                   className="aug-menu-item"
+                  title={
+                    typeof yaku === "string"
+                      ? glossaryTitle(CONTRACT_YAKU_TERM[yaku] ?? yaku) || undefined
+                      : undefined
+                  }
                   onClick={() => {
                     sel.submit(o);
                     setOpen(false);
@@ -27296,6 +27485,7 @@ function ActiveAugmentControl(props: {
                   <strong className="aug-menu-name">
                     {detail !== "" ? detail : augNameFor(menuType)}
                   </strong>
+                  {yakuNote !== undefined ? <span className="act-target">{yakuNote}</span> : null}
                   <ActionTiles view={view} option={o} />
                 </button>
               );
@@ -27320,13 +27510,16 @@ function ActiveAugmentControl(props: {
             <div className="aug-menu-head">사용할 증강 선택</div>
             {types.map((type) => {
               const opts = byType.get(type) ?? [];
-              const hint = armType(type)
+              const how = armType(type)
                 ? armHint(type)
                 : MODAL_PICK_TYPES.has(type)
                   ? "패를 보고 고르기"
                   : opts.length > 1
                     ? `${opts.length}가지 중 고르기`
                     : optionDetail(view, opts[0] as ActionOption);
+              // 이름 뒤에 **무엇을 하는지**(ACTION_VERB)를 먼저, 조작 방식은 그 뒤에 — {} 선언형은
+              // 조작 방식이 비어 «승부수»만 섰다(2026-09-25, docs/59 U38)
+              const hint = [ACTION_VERB[type] ?? "", how].filter((x) => x !== "").join(" · ");
               return (
                 <button
                   key={type}
@@ -27339,7 +27532,13 @@ function ActiveAugmentControl(props: {
                   onFocus={() => hintOne(type)}
                   onBlur={hintAll}
                 >
-                  <strong className="aug-menu-name">{augNameFor(type)}</strong>
+                  <strong className="aug-menu-name">
+                    {augNameFor(type)}
+                    {/* 첫 순 한정 — 한 장 버리면 이 국의 기회가 사라진다(docs/59 U40) */}
+                    {FIRST_TURN_ONLY_TYPES.has(type) ? (
+                      <span className="aug-first-badge">이번 순만</span>
+                    ) : null}
+                  </strong>
                   {hint !== "" ? <span className="act-target">{hint}</span> : null}
                   {!armType(type) && !MODAL_PICK_TYPES.has(type) && opts.length === 1 ? (
                     <ActionTiles view={view} option={opts[0] as ActionOption} />
@@ -27352,7 +27551,7 @@ function ActiveAugmentControl(props: {
       ) : null}
       <button
         /* 증강 리치로 무장한 것은 액션 바의 몫이라 여기선 켜진 것처럼 보이지 않게 한다 */
-        className={`aug-btn${usable ? " aug-btn-on" : ""}${
+        className={`aug-btn${usable ? " aug-btn-on" : ""}${firstTurnNow ? " aug-btn-first" : ""}${
           // 강제 무장(미래를 보는 자)은 ✦ 로 건 것도 풀 수 있는 것도 아니다 — 버튼은 잠겨
           // (aria-disabled) 있으니 켜진 것처럼 보이면 신호가 엇갈린다(2026-09-25, docs/59 U03 리뷰)
           sel.armedType !== null && !DRAG_DISCARD_ARM_TYPES.has(sel.armedType) && props.forcedPick !== true
@@ -27381,7 +27580,15 @@ function ActiveAugmentControl(props: {
         onFocus={hintAll}
         onBlur={hintNone}
       >
-        ✦ 액티브 증강{usable ? ` (${displayCount})` : ""}
+        ✦{" "}
+        <span className="aug-btn-name">{single !== null ? augNameFor(single) : "액티브 증강"}</span>
+        {single !== null && singleSub !== "" ? (
+          <span className="aug-btn-sub">· {singleSub}</span>
+        ) : null}
+        {usable && single === null ? ` (${displayCount})` : ""}
+        {firstTurnNow ? (
+          <span className="aug-first-badge">{single !== null ? "이번 순만" : "첫 순"}</span>
+        ) : null}
       </button>
       {/*
         예지 — 공개된 패산 앞장을 **액티브 증강 버튼 옆에 상시로** 늘어놓는다.
@@ -27829,6 +28036,32 @@ function ActionHotkeys({
 
 function ActionTiles({ view, option }: { view: PlayerView; option: ActionOption }): JSX.Element | null {
   const p = (option.payload ?? {}) as Record<string, unknown>;
+  /*
+   * 무르기·욕심 — payload가 `{}`라 여태 줄에 이름만 섰다. 둘 다 대상은 손패 오른쪽 끝의
+   * **방금 쯔모한 패**다: 무르기는 그 패가 사라지고, 욕심은 다음 순에 같은 패가 한 장 더
+   * 온다(그래서 «패 → 같은 패» 전→후). 버튼을 늘리지 않고 기존 줄에 대상을 그린다
+   * (2026-09-25, docs/59 U34). 쯔모패가 손에 없으면(null) 예전처럼 아무것도 안 그린다.
+   */
+  if (
+    (option.type === "take_back" || option.type === "greed_use") &&
+    view.round.myDrawnTile !== null
+  ) {
+    const drawn = view.tiles[view.round.myDrawnTile];
+    if (option.type === "take_back" || drawn === undefined) {
+      return (
+        <span className="act-tiles">
+          <TileImg tile={drawn} size="mini" />
+        </span>
+      );
+    }
+    return (
+      <span className="act-tiles">
+        <TileImg tile={drawn} size="mini" />
+        <span className="act-tiles-arrow" aria-hidden="true">→</span>
+        <TileImg tile={{ kind: drawn.kind, attrs: { conjured: true } }} size="mini" />
+      </span>
+    );
+  }
   // 무늬 변환(염색 등): '바꾸기 전'이 아니라 '바꾼 뒤'가 헷갈리지 않게 전→후로 보여준다
   if (typeof p.suit === "string" && typeof p.tileId === "number") {
     const src = view.tiles[p.tileId]?.kind;

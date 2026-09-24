@@ -8004,6 +8004,51 @@ button {
   transform: scale(1.05);
 }
 
+/*
+ * 쓸 수 있는 액티브가 하나면 버튼 글자가 «✦ {증강 이름} · {행동}»이다(2026-09-25, docs/59 U37).
+ * 이름표 줄은 한 줄을 지켜야 해서(아래 가로 블록 «한 줄 ≈600px») 이름·부제 모두 길이를 묶고
+ * 넘치면 말줄임한다. 좁은 화면에서는 부제를 숨긴다 — 행동은 메뉴 줄과 title에도 있다.
+ */
+.aug-btn { white-space: nowrap; }
+.aug-btn-name,
+.aug-btn-sub {
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.aug-btn-name { max-width: 9em; }
+.aug-btn-sub {
+  max-width: 10em;
+  margin-left: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  opacity: 0.85;
+}
+
+/*
+ * 국의 첫 순에만 뜨는 액티브가 지금 후보에 있다 — 평소 켜짐(보랏빛 맥동)과 구별되게 금빛
+ * 테두리와 «첫 순»/«이번 순만» 표를 단다. 한 장 버리면 그 국의 기회가 조용히 사라진다
+ * (2026-09-25, docs/59 U40). 맥동은 새로 두지 않는다 — 기존 turn-pulse 하나로 충분하다.
+ */
+.aug-btn-first {
+  border-color: rgba(240, 200, 110, 0.95);
+}
+.aug-first-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(240, 200, 110, 0.92);
+  color: #2a1d05;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  vertical-align: middle;
+}
+
 .aug-menu {
   position: absolute;
   bottom: calc(100% + 8px);
@@ -8018,6 +8063,8 @@ button {
   border: 1px solid rgba(199, 188, 255, 0.5);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
   min-width: 170px;
+  /* 줄마다 행동 부제가 붙어 넓어졌다 — 폰 가로에서 오른쪽으로 넘치지 않게 묶는다(docs/59 U38) */
+  max-width: 92cqw;
   /* 선택지가 많아도(염색 등) 화면을 넘지 않게 — 넘치면 스크롤 */
   max-height: min(60cqh, 420px);
   overflow-y: auto;
@@ -8564,6 +8611,10 @@ button {
 .aug-menu-item .act-target {
   font-size: 12px;
   opacity: 0.85;
+  /* 행동 부제(«리치 취소 · …»)가 붙어 줄이 길어졌다 — 메뉴가 화면 밖으로 넘치지 않게 말줄임(docs/59 U38) */
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .aug-menu-item:hover {
@@ -8574,6 +8625,31 @@ button {
 .aug-menu-back {
   background: linear-gradient(180deg, #4b4363, #2f2a41);
   opacity: 0.9;
+}
+
+/*
+ * 후보 6개 이상인 2단계(핏빛 계약의 역 8개) — 세로 목록 대신 격자. 폰 가로에서 60cqh 상자에
+ * 4~5줄만 보여 스크롤하며 골랐다(2026-09-25, docs/59 U39). 머리글·«← 다시 고르기»는 한 줄을
+ * 다 쓴다. 넓은 화면은 4열, 좁으면 2열.
+ */
+.aug-menu-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 260px;
+}
+.aug-menu-grid .aug-menu-head,
+.aug-menu-grid .aug-menu-back {
+  grid-column: 1 / -1;
+}
+.aug-menu-grid .aug-menu-item {
+  padding: 6px 10px;
+  white-space: normal;
+}
+@container ui (min-width: 901px) {
+  .aug-menu-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    min-width: 480px;
+  }
 }
 
 /* ─────────────── 리치 대기패 툴팁 ─────────────── */
@@ -9881,6 +9957,9 @@ button {
   .own-top-main {
     gap: 7px;
   }
+  /* 폰 세로 — ✦ 버튼 부제는 숨기고 이름만(가로 폰 블록과 같은 규칙, docs/59 U37) */
+  .aug-btn-sub { display: none; }
+  .aug-btn-name { max-width: 7em; }
   .own-hand {
     border-radius: 12px;
   }
@@ -10292,6 +10371,9 @@ button {
   .own-top-main > * { min-width: 0; }
   /* 액티브 증강 단추를 한 급 줄여 줄 폭 예산을 벌어 준다 */
   .own-aug { padding: 6px 10px; font-size: 13px; }
+  /* ✦ 버튼의 행동 부제는 여기서 숨긴다 — 이름 하나로도 «무엇이 나가는가»는 읽힌다(docs/59 U37) */
+  .aug-btn-sub { display: none; }
+  .aug-btn-name { max-width: 7em; }
 
   /*
    * ── 증강 드래프트: 카드 세 장을 «한 화면에» (2026-08-25 QA §2) ──

@@ -544,7 +544,9 @@ export const LESSONS: readonly Lesson[] = [
     id: "aug-script",
     urgent: true,
     chapter: "증강 읽기",
-    title: "증강을 사용해 봅니다. 먼저 액티브 증강 버튼을 누르세요",
+    // 쓸 수 있는 액티브가 하나면 ✦ 버튼 글자가 그 증강 이름이다(«✦ 연금술사 · 손패 고르기») —
+    // 화면에 없는 «액티브 증강 버튼»으로 부르지 않는다(2026-09-25, docs/59 U37)
+    title: "증강을 사용해 봅니다. 먼저 ✦ 연금술사 버튼을 누르세요",
     body: `내 증강 연금술사는 손패 한 장의 숫자를 1 올리거나 내립니다. 1삭을 ${SCRIPT_ALCHEMY_TO}으로 바꾸면 2삭이 세 장이 되어, 한 장만 더 맞으면 완성되는 손패가 됩니다.`,
     /*
      * 한때 "목록이 뜨면 «연금술사»를 고릅니다"가 붙어 있었다 — 시작 증강과 이번 국에
@@ -553,7 +555,7 @@ export const LESSONS: readonly Lesson[] = [
      * 않는다 — 버튼을 누르면 곧바로 손패를 고르는 상태가 된다. 안 뜨는 화면을
      * 설명하는 것도 틀린 안내다.
      */
-    todo: "빛나는 액티브 증강 버튼을 누르세요.",
+    todo: "빛나는 ✦ 연금술사 버튼을 누르세요.",
     /*
      * 목록이 떠 있으면 **목록을** 비춘다. 버튼만 가리키면 정작 다음에 눌러야 할 줄이
      * 어두운 쪽에 남는다. `rectOf`는 문서 순서로 첫 번째 것을 집는데, 메뉴가 버튼보다
@@ -754,8 +756,8 @@ export const LESSONS: readonly Lesson[] = [
     id: "aug-btn",
     chapter: "증강 읽기",
     title: "액티브 증강은 직접 눌러야 발동합니다",
-    body: "저절로 발동하지 않습니다. 사용할 수 있게 되면 액티브 증강 버튼이 켜지고, 그 버튼에 마우스를 올리면 지금 사용할 수 있는 증강이 이름표에서 함께 빛납니다.",
-    todo: "액티브 증강 버튼에 마우스를 올려 보세요.",
+    body: "저절로 발동하지 않습니다. 사용할 수 있게 되면 이름표 옆 ✦ 버튼이 켜지고 그 증강의 이름이 적힙니다. 그 버튼에 마우스를 올리면 지금 사용할 수 있는 증강이 이름표에서 함께 빛납니다.",
+    todo: "✦ 버튼에 마우스를 올려 보세요.",
     anchor: ".own-top-main .aug-btn",
     when: (c) => c.augmentReady && c.hit(".own-top-main .aug-btn"),
     done: (c) => c.hit(".aug-pill-usable"),
@@ -770,7 +772,7 @@ export const LESSONS: readonly Lesson[] = [
     chapter: "증강 읽기",
     title: "실제로 한 번 사용해 봅니다",
     body: "연금술사는 손패의 수패 한 장을 숫자 1 위나 아래로 바꿉니다. 한 게임에 5번 사용할 수 있으니 지금 사용해도 넉넉합니다.",
-    todo: "액티브 증강 버튼을 누른 뒤 바꿀 손패를 누르세요.",
+    todo: "✦ 연금술사 버튼을 누른 뒤 바꿀 손패를 누르세요.",
     anchor: ".own-top-main .aug-btn",
     when: (c) => c.augmentReady && c.hit(".own-top-main .aug-btn") && !c.hit(".tile-conjured"),
     done: (c) => c.hit(".tile-conjured"),
