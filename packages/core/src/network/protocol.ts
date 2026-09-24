@@ -1590,6 +1590,15 @@ export interface ServerInfoMessage {
    * 메시지를 거절하므로 클라이언트 판단이 틀려도 뚫리지 않는다.
    */
   maintenance?: MaintenanceState;
+  /**
+   * 이 서버가 지금 서빙하는 클라이언트 빌드 — 진입 번들 파일명(`index-DBQqZbdu.js`).
+   * 정적 빌드가 없는 서버(개발·테스트)에서는 필드가 붙지 않는다.
+   *
+   * 배포로 서버가 갈리면 열린 탭은 **새로고침 없이** 재접속한다. 옛 번들은 새 증강의
+   * 액션 이름을 몰라 `yggdrasil_call` 같은 내부 id 를 버튼에 찍었다(2026-09-24).
+   * 클라이언트는 자기 번들과 이 값이 다르면 새로고침한다(`client/src/buildId.ts`).
+   */
+  clientBuild?: string;
 }
 
 /** 점검 모드 상태 — `serverInfo.maintenance`에 실린다. 존재 = 켜짐. */
