@@ -15584,6 +15584,15 @@ const GameTable = memo(function GameTable(props: {
     const onDown = (e: PointerEvent): void => {
       const t = e.target as HTMLElement | null;
       if (t !== null && t.closest("[data-arm-zone]") !== null) return;
+      /*
+       * 강제 무장(미래를 보는 자)은 arm(null)이 가드에 막혀 풀리지 않는다 — 판을 눌렀는데 아무
+       * 말이 없으면 안내 줄이 왜 안 사라지는지 알 수 없다(§2 원칙 7). 판 안을 누른 경우만
+       * 이유를 말한다 — 채팅·설정 같은 판 밖 조작까지 토스트로 덮지 않게(2026-09-25, docs/59 U03).
+       */
+      if (selection.armedType !== null && FORCED_ARM_TYPES.has(selection.armedType)) {
+        if (t !== null && tableRef.current?.contains(t) === true) props.onToast?.(FORCED_PICK_HINT);
+        return;
+      }
       selection.arm(null);
     };
     document.addEventListener("pointerdown", onDown);
@@ -22062,6 +22071,12 @@ function OwnArea(props: {
    * 타패·드래그·액션 바·✦ 메뉴를 막는 것으로 지킨다(forcedPick).
    */
   const swapGiveInHand = !isSpectator && swap3Pick.stage === "give" && !swapTakeDismissed;
+  /*
+   * 타패·드래그를 막는 기준은 로컬 상태가 아니라 **프롬프트**다. [이 3장 넘기기]를 눌렀는데 소켓이
+   * 닫혀 있어 전송이 안 되면 swapTakeDismissed만 켜지고 프롬프트(swap3_give + 타패)는 그대로
+   * 남는다 — swapGiveInHand로만 막으면 다음 손패 클릭이 평범한 타패로 샌다(2026-09-25, docs/59 U07).
+   */
+  const swapGivePending = !isSpectator && swap3Pick.stage === "give";
   /** 강제 선택 중 — 액션 바(쯔모 화료만 남긴다)와 ✦ 메뉴를 잠근다(FORCED_PICK_TYPES) */
   const forcedPick = !isSpectator && isForcedPickPrompt(myPrompt);
   /** 고른 3장에 딱 맞는 서버 후보 — 3장이 차고 조합이 후보에 있을 때만 [확정]이 켜진다(U10) */
@@ -22297,7 +22312,7 @@ function OwnArea(props: {
      */
     if (coachBlocksDiscard(coachLock, view.tiles[id]?.kind, id === drawnId)) return undefined;
     // 등가교환 넘길 3장을 고르는 중 — 평범한 타패는 곧 «안 하고 나가기»다(docs/59 U07)
-    if (swapGiveInHand) return undefined;
+    if (swapGivePending) return undefined;
     // 오픈 리치·스텔스 리치 등으로 무장한 동안에는 그 액션이 곧 '이 패를 버리는' 수단이다.
     // 미래를 보는 자도 고른 패가 바닥으로 나가므로 끌어 놓아 낸다 — DRAG_DISCARD_ARM_TYPES에
     // 넣지 않는 이유: 그 집합이 곧 증강 리치 목록(RIICHI_AUG_IDS)이라 ✦ 버튼에서 이 증강이
@@ -22369,7 +22384,7 @@ function OwnArea(props: {
     // 무장 중에는 드래그를 막는다 — 단, 버리면서 발동하는 리치 계열과 미래를 보는 자만 예외로 연다.
     if (isSpectator) return;
     // 등가교환 넘길 3장 — 끌어 버리기가 강제 선택을 건너뛰는 길이 된다(docs/59 U07)
-    if (swapGiveInHand) return;
+    if (swapGivePending) return;
     if (armedAug !== null && !DRAG_DISCARD_ARM_TYPES.has(armedAug) && armedAug !== "future_exchange") return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
     const container = handRef.current;
@@ -23208,7 +23223,9 @@ function OwnArea(props: {
                    * 평범한 타패·두 번 누르기 게이트로 새지 않게 무장 분기들보다 먼저 가로챈다
                    * (2026-09-25, docs/59 U07·U10).
                    */
-                  if (swapGiveInHand) {
+                  if (swapGivePending) {
+                    // 제출은 눌렀는데 아직 다음 프롬프트가 안 왔다 — 타패로 새지 않게 여기서 멈춘다
+                    if (!swapGiveInHand) return;
                     if (!swap3Pick.pool.includes(id)) {
                       haptics.reject();
                       props.onToast?.(`이 패는 ${augActionName(props.catalog, "swap3_give")} 대상이 아닙니다`);
@@ -25899,9 +25916,16 @@ function ActiveAugmentControl(props: {
       ? (raw as string[]).map(parseKindKey).filter((k): k is TileKind => k !== null)
       : [];
   }, [view.augmentView]);
+  /*
+   * 강제 선택(미래를 보는 자·등가교환 넘길 3장) 중에는 재배열을 열지 않는다 — 같은 프롬프트에
+   * foresight_order가 실려 오면 [순서 바꾸기] 버튼과 탭 자동 열기가 «다른 수는 막는다»의
+   * 빈틈이 된다. 예전엔 전면 모달이 그 버튼을 덮고 있었다(2026-09-25, docs/59 U03·U07).
+   * 강제 선택이 끝나고 후보가 남아 있으면 다시 열린다.
+   */
   const foresightReorderable =
     (myPrompt?.options ?? []).some((o) => o.type === "foresight_order") &&
-    foresightPeek.length === 4;
+    foresightPeek.length === 4 &&
+    props.forcedPick !== true;
   /**
    * 공개된 패들이 각각 **누구의 쯔모가 되는지** — 렌더 시점의 차례·진행 방향에서 계산한다.
    * 고정 배열(["하가","대면","상가","나"])이던 시절에는 역행(turn.direction = −1)에서

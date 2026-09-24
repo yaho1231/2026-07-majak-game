@@ -116,8 +116,11 @@ describe("U07 등가교환 넘길 3장 — 판의 손패에서", () => {
   });
 
   it("손패 클릭은 선택 토글로 가로챈다 — 코치 잠금 뒤, 다른 무장·타패 분기보다 앞", () => {
-    const click = OWN.indexOf("if (swapGiveInHand) {\n                    if (!swap3Pick.pool.includes(id)) {");
+    // 막는 기준은 프롬프트(swapGivePending)다 — 제출했는데 전송이 안 돼 로컬 상태만 내려간 틈에도
+    // 손패 클릭이 평범한 타패로 새지 않는다(B07 리뷰 라운드 2)
+    const click = OWN.indexOf("if (swapGivePending) {");
     expect(click).toBeGreaterThan(0);
+    expect(OWN.slice(click, click + 200)).toContain("if (!swapGiveInHand) return;");
     expect(OWN.indexOf("if (coachLocked && coachLock !== null) {")).toBeLessThan(click);
     expect(click).toBeLessThan(OWN.indexOf("if (hand3Picking) {\n                    toggleHandPick(id);"));
     expect(click).toBeLessThan(OWN.indexOf("if (clickable && active !== undefined) {"));
@@ -126,9 +129,10 @@ describe("U07 등가교환 넘길 3장 — 판의 손패에서", () => {
 
   it("끌어 버리기·드롭존으로도 새지 않는다", () => {
     const bd = OWN.slice(OWN.indexOf("function beginDrag("), OWN.indexOf("const container = handRef.current;"));
-    expect(bd).toContain("if (swapGiveInHand) return;");
+    expect(OWN).toContain('const swapGivePending = !isSpectator && swap3Pick.stage === "give";');
+    expect(bd).toContain("if (swapGivePending) return;");
     const at = OWN.indexOf("function discardOptionFor(");
-    expect(OWN.slice(at, OWN.indexOf("\n  }\n", at))).toContain("if (swapGiveInHand) return undefined;");
+    expect(OWN.slice(at, OWN.indexOf("\n  }\n", at))).toContain("if (swapGivePending) return undefined;");
   });
 
   it("안내 줄에 대상 이름·[선택 초기화]·[이 3장 넘기기]가 있고 [취소]가 없다", () => {
@@ -235,5 +239,22 @@ describe("B07 리뷰 라운드 1 — 봉쇄의 나머지 조각과 신호 일치
     const label = OWN.slice(at, OWN.indexOf("</span>", at));
     expect(label).toContain('armedAug === "future_exchange"\n              ? "🀫 여기에 놓으면 이 패를 버리고 교환"');
     expect(label.indexOf('armedAug === "future_exchange"')).toBeLessThan(label.indexOf("발동"));
+  });
+});
+
+describe("B07 리뷰 라운드 2 — 예지 재배열·판 바깥 클릭", () => {
+  it("강제 선택 중에는 예지 재배열이 열리지 않는다 — [순서 바꾸기]·탭 자동 열기 둘 다 이 값을 본다", () => {
+    const ctl = fnBody("ActiveAugmentControl");
+    const at = ctl.indexOf("const foresightReorderable =");
+    expect(at).toBeGreaterThan(0);
+    expect(ctl.slice(at, ctl.indexOf(";", at))).toContain("props.forcedPick !== true");
+  });
+
+  it("강제 무장 중 판을 누르면 조용히 무시하지 않고 이유를 말한다(§2 원칙 7)", () => {
+    const at = APP_CODE.indexOf('if (t !== null && t.closest("[data-arm-zone]") !== null) return;');
+    expect(at).toBeGreaterThan(0);
+    const body = APP_CODE.slice(at, APP_CODE.indexOf("selection.arm(null);", at));
+    expect(body).toContain("FORCED_ARM_TYPES.has(selection.armedType)");
+    expect(body).toContain("props.onToast?.(FORCED_PICK_HINT)");
   });
 });
