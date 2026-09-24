@@ -3724,6 +3724,15 @@ export function App(): JSX.Element {
   /** 종국 뒤에도 방이 살아 있어 같은 멤버로 한 판 더 갈 수 있는가 (결과 화면의 "이어하기") */
   const [canContinue, setCanContinue] = useState(false);
   const [abortVote, setAbortVote] = useState<AbortVoteMessage | null>(null);
+  /**
+   * 무효 투표 **회차** — 투표가 새로 시작될 때(표 0 → 1 이상)마다 1 오른다. GameTable 이
+   * AbortVoteBanner 의 key 로 써서 회차마다 새로 마운트시킨다(2026-09-25, docs/59 U72).
+   * 배너는 요청자를 마운트 순간의 `voters[0]` 으로 기억하는데, 반대(votes 0)와 다음 동의가
+   * 한 렌더 안에 몰려 오면 배너가 내려갔다 다시 뜨지 않아 **지난 투표의 요청자**가 남았다 —
+   * 새 요청자 화면에 [동의 취소]가 떴다. 메시지는 하나씩 처리되므로 ref 로 직전 상태를 본다.
+   */
+  const [abortVoteRound, setAbortVoteRound] = useState(0);
+  const abortVoteLive = useRef(false);
   const [riichiMode, setRiichiMode] = useState(false);
   const [intro, setIntro] = useState(false);
   const [scoreFx, setScoreFx] = useState<Record<string, number>>({});
@@ -4635,6 +4644,7 @@ export function App(): JSX.Element {
     setCanContinue(false);
     setRoundResult(null);
     setAbortVote(null);
+    abortVoteLive.current = false;
     setSpectating(null);
     /*
      * 중계 오버레이도 관전석에 두고 나온다 (위 `overlayMode` 주석).
@@ -5505,6 +5515,7 @@ export function App(): JSX.Element {
       pendingResult.current = null;
       setRankings(null);
       setAbortVote(null);
+      abortVoteLive.current = false;
       setRiichiMode(false);
       clearProductions();
       setScoreFx({});
@@ -5867,6 +5878,7 @@ export function App(): JSX.Element {
       setDraft(null);
       setDraftPicked(false);
       setAbortVote(null);
+      abortVoteLive.current = false;
       // 방이 남아 있으면(이어하기 가능) 재입장 대상도 그대로 둔다 —
       // 새로고침·재연결로 돌아와도 같은 대기실에 다시 앉는다.
       if (msg.canContinue !== true) {
@@ -5894,6 +5906,8 @@ export function App(): JSX.Element {
       // docs/59 U71). 그 토스트는 «투표 현황이 설정 패널 맨 아래에만 있던» 시절의 것인데,
       // 지금은 같은 순간 GameTable 이 화면 위에 AbortVoteBanner(aria-live=assertive)를
       // 띄운다 — 눈앞에 응답 버튼이 있는데 ⚙ → 맨 아래로 가라고 안내하고 있었다.
+      if (msg.votes > 0 && !abortVoteLive.current) setAbortVoteRound((n) => n + 1);
+      abortVoteLive.current = msg.votes > 0;
       setAbortVote(msg);
       return;
     }
@@ -7461,6 +7475,7 @@ export function App(): JSX.Element {
           botDifficulty={isSpectator ? null : (lobby?.botDifficulty ?? null)}
           pastRounds={roundHistory}
           abortVote={abortVote}
+          abortVoteRound={abortVoteRound}
           onVoteAbort={cbVoteAbort}
           sandbox={sandbox}
           controlling={controlling}
@@ -15076,6 +15091,8 @@ const GameTable = memo(function GameTable(props: {
   spectateCode?: string | null;
   /** 게임 무효 투표 현황 (없으면 아직 투표 없음) */
   abortVote?: AbortVoteMessage | null;
+  /** 무효 투표 회차 — AbortVoteBanner 의 key (App 의 abortVoteRound 주석) */
+  abortVoteRound?: number;
   onVoteAbort?: (vote: "agree" | "withdraw" | "reject") => void;
   /** 증강 테스트 게임이면 그 상태 (관리자 전용). null이면 일반 게임. */
   sandbox?: SandboxMessage | null;
@@ -15462,12 +15479,16 @@ const GameTable = memo(function GameTable(props: {
           {/* 공지한 사람 — 서버가 싣는 `by` 는 «튜토리얼»·«관리자» 같은 역할 이름일 때도,
               관리자 계정명일 때도 있다. 계정명만 알약에 덩그러니 두면 무슨 값인지 알 수
               없어 «— 관리자»로 적는다(2026-09-25, docs/59 U83 · docs/36 C4 «운영의 신원은
-              판에 필요 없다»). 계정명은 title 로만 남긴다. */}
+              판에 필요 없다»). 계정명은 관전석(= 관리자)에게만 title 로 보인다 — 대국자
+              에게까지 hover 로 내주면 문구에서 지운 의미가 없다(PauseOverlay 와 같은 선). */}
           {props.roomNotice.by !== undefined ? (
             props.roomNotice.by === "튜토리얼" || props.roomNotice.by === "관리자" ? (
               <span className="room-notice-by">{props.roomNotice.by}</span>
             ) : (
-              <span className="room-notice-by" title={`공지한 사람: ${props.roomNotice.by}`}>
+              <span
+                className="room-notice-by"
+                title={props.spectator === true ? `공지한 사람: ${props.roomNotice.by}` : "공지한 사람: 관리자"}
+              >
                 — 관리자
               </span>
             )
@@ -15603,6 +15624,7 @@ const GameTable = memo(function GameTable(props: {
       ) : null}
       {props.spectator !== true && props.abortVote != null && props.abortVote.votes > 0 ? (
         <AbortVoteBanner
+          key={props.abortVoteRound ?? 0}
           abortVote={props.abortVote}
           myId={view.playerId}
           nameOf={(id) => playerNameById(view, id)}
@@ -16645,9 +16667,10 @@ function SettingsPanel(props: {
             {/* 투표가 진행 중이면 여기서는 응답하지 않는다 — 화면 위 배너가 같은 투표의
                 동의·동의 취소·반대를 모두 맡는다(2026-09-25, docs/59 U72). 예전에는 이
                 버튼이 투표 중에도 «게임 무효 요청»이라 적힌 채 agree 를 보냈고, 동의
-                취소는 여기에만 있어 두 곳이 할 수 있는 일이 달랐다. */}
+                취소는 여기에만 있어 두 곳이 할 수 있는 일이 달랐다. 이 안내는 role=status 를
+                달지 않는다 — 배너가 이미 aria-live 라 같은 집계를 두 번 읽힌다. */}
             {votes > 0 ? (
-              <span className="abort-voting-note" role="status">
+              <span className="abort-voting-note">
                 투표 진행 중 — 화면 위 배너에서 응답하세요 ({votes}/{needed})
               </span>
             ) : (
@@ -16681,8 +16704,9 @@ function SettingsPanel(props: {
  * (서버 Set 삽입 순서라) 다음 동의자가 `voters[0]` 이 된다. 그러면 그 사람 화면에
  * «내가 무효를 요청했습니다»와 [요청 취소]만 떠서, 사실이 아닌 문장에 동의 취소 길까지
  * 사라졌다. 기억한 요청자가 voters 에 더는 없으면 요청자 문장 대신 일반 문장을 쓰고,
- * 버튼은 동의 여부로만 가른다. 투표가 끝나면(votes 0) 배너가 내려가므로 다음 투표는 새로
- * 마운트되어 새 요청자를 기억한다.
+ * 버튼은 동의 여부로만 가른다. 다음 투표는 GameTable 이 회차(`abortVoteRound`)를 key 로
+ * 줘서 새로 마운트되어 새 요청자를 기억한다 — «votes 0 이면 배너가 내려간다»에만 기대면
+ * 반대와 다음 동의가 한 렌더에 몰릴 때 배너가 내려가지 않아 옛 요청자가 남았다.
  */
 function AbortVoteBanner(props: {
   abortVote: AbortVoteMessage;
@@ -19640,12 +19664,13 @@ function PlayerAugSheet({
             <span className="aug-sheet-arch" title={arch.desc}>{arch.label}</span>
           ) : null}
           <span className="aug-sheet-score">{player.score.toLocaleString()}점</span>
-          {/* 둘 이상일 때만 — 하나뿐이면 그 행의 «자세히»와 같은 일이다. */}
+          {/* 둘 이상일 때만 — 하나뿐이면 그 행의 «자세히»와 같은 일이다.
+              이름이 상태에 따라 바뀌므로 aria-pressed 는 달지 않는다 — 둘 다 두면 화면
+              낭독기가 «모두 간단히, 눌림»처럼 이름과 상태가 엇갈리게 읽는다. */}
           {augs.length > 1 ? (
             <button
               type="button"
               className="aug-sheet-all"
-              aria-pressed={allOpen}
               onClick={() => setDetailFor(allOpen ? new Set() : new Set(augs))}
             >
               {allOpen ? "모두 간단히" : "모두 자세히"}

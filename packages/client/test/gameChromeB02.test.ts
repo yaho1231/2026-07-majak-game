@@ -129,6 +129,13 @@ describe("U71·U72 무효 투표는 화면 위 배너 한 곳에서", () => {
     expect(APP_CODE).not.toContain("isRequester={props.abortVote.voters[0]");
   });
 
+  it("투표 회차마다 배너를 새로 마운트한다 — 반대와 다음 동의가 한 렌더에 몰려도 옛 요청자가 남지 않는다", () => {
+    // 리뷰 라운드 2: votes 0 → 1 이 한 배치로 처리되면 배너가 내려가지 않아 useState 가
+    // 지난 투표의 요청자를 들고 있었다.
+    expect(APP_CODE).toContain("if (msg.votes > 0 && !abortVoteLive.current) setAbortVoteRound((n) => n + 1);");
+    expect(APP_CODE).toMatch(/<AbortVoteBanner\s+key=\{props\.abortVoteRound \?\? 0\}/);
+  });
+
   it("설정 패널은 투표 중이면 버튼 대신 배너로 안내한다", () => {
     const panel = fnBody("SettingsPanel");
     expect(panel).toMatch(/votes > 0 \? \(\s*<span className="abort-voting-note"/);
@@ -161,12 +168,25 @@ describe("U74 봇 난이도 배지도 터치에서 열린다", () => {
   });
 
   it("폰 세로에서는 전처럼 보이고, 가로 폰에서는 전처럼 접힌다", () => {
-    expect(CSS_CODE).toContain(".game-root .info-note.mode-badge.bot-diff-badge { display: flex; }");
-    expect(CSS_CODE).toContain(".game-root .info-note.mode-badge.bot-diff-badge { display: none; }");
-    // 접는 규칙이 되살리는 규칙보다 파일 뒤에 있어야 같은 특정도로 이긴다
-    expect(CSS_CODE.lastIndexOf("bot-diff-badge { display: none; }")).toBeGreaterThan(
-      CSS_CODE.indexOf("bot-diff-badge { display: flex; }"),
+    const show = ".game-root .info-note.mode-badge.bot-diff-badge { display: flex; top: 8px; }";
+    const fold = ".game-root .info-note.mode-badge.bot-diff-badge { display: none; }";
+    expect(CSS_CODE).toContain(show);
+    expect(CSS_CODE).toContain(fold);
+    // 가로 폰의 접기는 폰 세로의 되살리기보다 파일 뒤, 481~700 의 접기는 그 앞이어야
+    // 같은 특정도에서 각자 이긴다(폰 세로는 되살리고, 가로 폰은 접는다).
+    expect(CSS_CODE.lastIndexOf(fold)).toBeGreaterThan(CSS_CODE.indexOf(show));
+    expect(CSS_CODE.indexOf(fold)).toBeLessThan(CSS_CODE.indexOf(show));
+  });
+
+  it("두 배지가 포개지지 않는다 — 모드 뱃지 ⓘ 는 첫 줄, 좁은 판에서 칩은 아래 단", () => {
+    // 리뷰 라운드 2 실측: 1280×800 에서 모드 뱃지의 셋째 줄 ⓘ 가 칩 윗단을 덮었고,
+    // 태블릿 세로에서는 `.mode-badge{top:8px}` 가 칩의 60px 을 이겨 둘이 같은 자리였다.
+    expect(CSS_CODE).toMatch(
+      /\.mode-badge\.info-note:where\(:not\(\.bot-diff-badge\)\) \{[^}]*display: grid;[^}]*"name mark" "drafts drafts"/,
     );
+    const narrow = CSS_CODE.indexOf("@container ui (max-width: 900px) {\n  .mode-badge {");
+    expect(narrow).toBeGreaterThan(-1);
+    expect(CSS_CODE.slice(narrow, narrow + 200)).toContain(".mode-badge.bot-diff-badge { top: 54px; }");
   });
 
   it("난이도 변경 토스트도 원문 키로 떨어지지 않는다", () => {
@@ -222,7 +242,13 @@ describe("U83 관리자 계정명을 설명 없이 붙이지 않는다", () => {
 
   it("탁자 공지 — 역할 이름이 아니면 «— 관리자»로 적는다", () => {
     expect(APP_CODE).toMatch(/props\.roomNotice\.by === "튜토리얼" \|\| props\.roomNotice\.by === "관리자"/);
-    expect(APP_CODE).toMatch(/title=\{`공지한 사람: \$\{props\.roomNotice\.by\}`\}>\s*— 관리자/);
+    expect(APP_CODE).toMatch(/className="room-notice-by"\s*title=\{[^}]*\}[^>]*>\s*— 관리자/s);
+  });
+
+  it("탁자 공지 — 계정명은 관전석 title 에만, 대국자는 «관리자»", () => {
+    expect(APP_CODE).toContain(
+      'title={props.spectator === true ? `공지한 사람: ${props.roomNotice.by}` : "공지한 사람: 관리자"}',
+    );
   });
 });
 
@@ -232,7 +258,8 @@ describe("U86 정형구 — 2열 격자, 모르는 id 는 생략", () => {
     expect(at).toBeGreaterThan(-1);
     const body = CSS_CODE.slice(at, CSS_CODE.indexOf("}", at));
     expect(body).toContain("display: grid");
-    expect(body).toContain("grid-template-columns: repeat(2, max-content)");
+    expect(body).toContain("grid-template-columns: repeat(2, minmax(0, max-content))");
+    expect(body).toContain("overflow-x: hidden");
     expect(body).toContain("overflow-y: auto");
     const wr = CSS_CODE.indexOf(".wr-head .emote-list {");
     expect(CSS_CODE.slice(wr, CSS_CODE.indexOf("}", wr))).not.toContain("grid");

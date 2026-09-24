@@ -757,6 +757,13 @@ button {
     left: 8px;
     padding: 4px 9px;
   }
+  /* 봇 난이도 칩은 여기서도 모드 뱃지 **아래 단**이다 — 바로 위 `.mode-badge{top:8px}` 가
+     파일 뒤라 `.bot-diff-badge{top:60px}` 를 같은 특정도로 이겨서, 태블릿 세로(768×1024
+     실측, 2026-09-25 docs/59 U74)에서 두 칩이 같은 자리(y 8)에 포개져 있었다. 모드 뱃지
+     아래끝(~51) + 3px. 터치 세로에서는 그 아래(~87)에 접힌 ⟳ 가로 안내가 서므로 칩
+     (터치 30px)이 그 사이에 들어가게 더 내리지 않는다. 모드 뱃지를 걷는 폰 세로 블록은
+     다시 8px 로 올린다. */
+  .mode-badge.bot-diff-badge { top: 54px; }
   .mode-badge-name {
     font-size: 12px;
   }
@@ -771,6 +778,13 @@ button {
   .sbx-observe-bar ~ .mode-badge .mode-badge-drafts {
     display: none;
   }
+  /* 봇 난이도 칩은 여기서 접는다 (2026-09-25, docs/59 U74 실측 600×900). 이 폭에서는
+     모드 뱃지 바로 밑(48px)에 상대 이름 줄이 올라와서, 칩을 뱃지 아래 단(54px)에 두면
+     왼쪽 상대의 이름·점수를 덮고, 뱃지와 같은 자리(8px)에 두면 모드 뱃지를 덮는다 —
+     예전에는 후자라 서든데스 규칙(이 뱃지에만 있다)이 칩 밑에 깔려 있었다. 봇 난이도는
+     대국 중에 바뀌지 않고 대기실에 적혀 있어, 가로 폰 블록과 같은 이유로 접는다.
+     모드 뱃지를 걷는 폰 세로(≤480) 블록은 파일 뒤에서 칩을 되살린다. */
+  .game-root .info-note.mode-badge.bot-diff-badge { display: none; }
 }
 
 /* ─────────────── 인게임 빠른 토글 (좌하단) ─────────────── */
@@ -16989,8 +17003,9 @@ body.peeking .overlay-peekable > * {
   .game-root .info-note.mode-badge { display: none; }
   /* 봇 난이도 칩도 InfoNote가 되면서(2026-09-25, docs/59 U74) 바로 위 줄에 함께
      걸린다 — 전에는 맨 div라 폰 세로에서도 남아 있었다. 조작만 바꾸고 보이는 자리는
-     그대로 두려고 되돌린다(가로 폰은 아래 landscape 블록이 따로 접는다). */
-  .game-root .info-note.mode-badge.bot-diff-badge { display: flex; }
+     그대로 두려고 되돌린다(가로 폰은 아래 landscape 블록이 따로 접는다). 자리도 모드
+     뱃지가 빠진 맨 위(8px)로 — ≤900 블록이 아래 단(54px)으로 내려 둔 것을 되돌린다. */
+  .game-root .info-note.mode-badge.bot-diff-badge { display: flex; top: 8px; }
   .np-arch { display: none; }
   .auglog,
   .settings-panel {
@@ -17447,14 +17462,22 @@ body.peeking .overlay-peekable > * {
  * 스크롤한다(토글 44 + 간격 8 + 위아래 숨통을 뺀 높이).
  * ⚠ `.table >` 로 대국판만 짚는다 — 대기실 머리줄(`.wr-head .emote-list`)은 같은 클래스를
  *   쓰지만 자리가 넉넉하고 드롭다운 모양이 따로 잡혀 있다.
+ * ⚠ 열은 `minmax(0, max-content)` + 칸 안 줄바꿈 허용이다. 그냥 `max-content` 는 줄지 않고,
+ *   overflow-y:auto 가 overflow-x 까지 auto 로 만들어서 두 열이 max-width 보다 넓은 아주
+ *   좁은 화면에서는 문구가 접히는 대신 **가로 스크롤바**가 생겼다. 평소 너비에서는
+ *   max-content 그대로라 모양이 같다.
  */
 .table > .emote-bar .emote-list {
   display: grid;
-  grid-template-columns: repeat(2, max-content);
+  grid-template-columns: repeat(2, minmax(0, max-content));
   max-width: calc(100cqw - 16px);
   max-height: calc(100cqh - 76px);
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+.table > .emote-bar .emote-list .emote-btn {
+  white-space: normal;
 }
 .emote-btn {
   display: flex;
@@ -19347,6 +19370,22 @@ body:has(.prod-skip) .toast-stack {
   align-items: center;
   gap: 4px;
 }
+/* 모드 뱃지(두 줄)도 ⓘ 를 첫 줄 이름 옆으로 올린다 (2026-09-25, docs/59 U74 실측) —
+   세로 배치를 그대로 받으면 ⓘ 가 셋째 줄이 되어 뱃지 아래끝이 ~14px 내려오고, 그 아래
+   60px 에 선 봇 난이도 칩의 윗단을 덮었다(1280×800 에서 10px 겹침). `:where()` 로 특정도를
+   0 으로 두는 것은 폰 세로·가로 폰 블록의 `.game-root .info-note.mode-badge{display:none}`
+   (특정도 3)를 이 `display: grid` 가 이기지 않게 하려는 것이다. */
+.mode-badge.info-note:where(:not(.bot-diff-badge)) {
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-areas: "name mark" "drafts drafts";
+  justify-content: start;
+  align-items: center;
+  column-gap: 4px;
+}
+.mode-badge.info-note > .mode-badge-name { grid-area: name; }
+.mode-badge.info-note > .info-note-mark { grid-area: mark; }
+.mode-badge.info-note > .mode-badge-drafts { grid-area: drafts; }
 .info-note-mark {
   font-size: 0.82em;
   opacity: 0.55;
