@@ -8017,6 +8017,12 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* «⚡ 빠름.» 머리가 붙는 통째로 바꾸기 표식은 그만큼 폭을 더 준다 — 160px이면 동사
+   끝이 말줄임에 잘린다(2026-09-25, docs/59 U29 리뷰). 바깥 모서리에 붙어 있어 안쪽으로만 늘어난다. */
+.opp-strip-left > .opp-arm-tag.opp-arm-fast,
+.opp-strip-right > .opp-arm-tag.opp-arm-fast {
+  max-width: 210px;
+}
 /* 리치라서 대상이 될 수 없는 상대 — 강조 대신 '왜 못 고르는지'만 적는다 */
 .opp-arm-tag.opp-arm-blocked {
   border-color: rgba(255, 150, 150, 0.75);

@@ -18841,7 +18841,11 @@ function OpponentStrip({
   const armTagText = (compact: boolean): string => {
     const body =
       armVerb === undefined ? "여기를 클릭" : compact ? armVerb : `${armAugName}: ${armVerb}`;
-    return swapFaster ? `⚡ 나보다 빠름. ${body}` : body;
+    // 좁은 줄에서는 머리도 줄인다 — «⚡ 나보다 빠름.»을 그대로 두면 160px 말줄임이 정작
+    // 동사(«이 손패 가져오기»)를 잘라 먹는다(2026-09-25, docs/59 U29 리뷰). 전체 문장은
+    // 줄의 aria-label·손패 위 안내 줄에 그대로 있다.
+    if (!swapFaster) return body;
+    return compact ? `⚡ 빠름. ${body}` : `⚡ 나보다 빠름. ${body}`;
   };
   // 무장 대상 상대에 붙일 공통 속성 (클릭 발동 + data-arm-zone로 빈곳-취소 방지)
   const armProps = oppArmable
@@ -21116,6 +21120,20 @@ function OwnArea(props: {
     if (armedAug === "recall") return new Set(doomedTileIdsOf(view, "recall"));
     return doomedHint ?? new Set<number>();
   }, [armedAug, hoverId, view, doomedHint]);
+  /*
+   * 짚은 패 가운데 **회수 때문에** 짚힌 것 — 회수의 쯔모패는 사라지지 않고 내 바닥으로
+   * 나가므로 이름을 따로 읽어 준다. 무장 중만 보면 ✦ 메뉴의 회수 줄 hover(무장 전)에서
+   * «발동에 쓰여 사라지는 패»로 잘못 읽힌다(2026-09-25, docs/59 U36 리뷰). hover 신호는
+   * 패 id만 실어 오므로 «쯔모패인데 다른 증강의 태울 재료는 아니다»로 가른다 — 둘이 겹치면
+   * 사라지는 쪽이 더 큰 손실이라 그 말을 남긴다.
+   */
+  const recallDoomed = useMemo<ReadonlySet<number>>(() => {
+    if (armedAug === "recall") return doomedNow;
+    const burn = new Set(
+      ["bluff_pon", "dragons_will", "split_tile"].flatMap((t) => doomedTileIdsOf(view, t)),
+    );
+    return new Set(doomedTileIdsOf(view, "recall").filter((id) => doomedNow.has(id) && !burn.has(id)));
+  }, [armedAug, view, doomedNow]);
   const swapTarget = sel.swapTarget;
   const swapGive = sel.swapGive;
   /*
@@ -22511,7 +22529,7 @@ function OwnArea(props: {
                   isDrawn ? "방금 쯔모" : null,
                   sealed ? "봉인됨" : null,
                   doomed
-                    ? armedAug === "recall"
+                    ? recallDoomed.has(id)
                       ? "회수하면 대신 내 바닥으로 나가는 패"
                       : "누르면 이 발동에 쓰여 사라지는 패"
                     : null,

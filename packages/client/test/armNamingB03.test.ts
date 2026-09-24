@@ -136,7 +136,7 @@ describe("U29 상대 줄 태그에 무엇이 일어나는지 적는다", () => {
     expect(APP_CODE).toContain(
       'armVerb === undefined ? "여기를 클릭" : compact ? armVerb : `${armAugName}: ${armVerb}`;',
     );
-    expect(APP_CODE).toContain("return swapFaster ? `⚡ 나보다 빠름. ${body}` : body;");
+    expect(APP_CODE).toContain("return compact ? `⚡ 빠름. ${body}` : `⚡ 나보다 빠름. ${body}`;");
     // 위 줄은 이름까지, 좌우 세로 줄은 동사만
     expect(APP_CODE).toContain("{armTagText(false)}");
     expect(APP_CODE).toContain("{armTagText(true)}");
@@ -180,6 +180,11 @@ describe("U36 회수 — 대가로 나가는 쯔모패를 확정 전에 짚는�
     );
     expect(APP_CODE).toContain('if (armedAug === "recall") return new Set(doomedTileIdsOf(view, "recall"));');
     expect(APP_CODE).toContain('"회수하면 대신 내 바닥으로 나가는 패"');
+  });
+  it("무장 전 ✦ 메뉴 hover로 짚힌 회수 쯔모패도 «내 바닥으로 나가는 패»로 읽는다", () => {
+    expect(APP_CODE).toContain('if (armedAug === "recall") return doomedNow;');
+    expect(APP_CODE).toMatch(/doomedTileIdsOf\(view, "recall"\)\.filter\(\(id\) => doomedNow\.has\(id\) && !burn\.has\(id\)\)/);
+    expect(APP_CODE).toMatch(/doomed\s*\?\s*recallDoomed\.has\(id\)/);
   });
 });
 
