@@ -577,8 +577,14 @@ export const LESSONS: readonly Lesson[] = [
     urgent: true,
     chapter: "증강 읽기",
     title: "이제 빛나는 1삭을 누르세요",
-    body: "누르면 바로 2삭으로 바뀝니다. 1삭은 바꿀 수 있는 방향이 하나뿐이어서, 방향을 고르는 창 없이 바로 발동합니다.",
-    todo: "손패에서 빛나는 1삭을 누르세요.",
+    /*
+     * 폰·태블릿에서는 한 번 눌러도 바로 안 바뀐다 — 되돌릴 수 없는 손패 무장도 «두 번 눌러
+     * 버리기»처럼 첫 탭은 패를 들어 올리고 바뀔 모양(2삭)을 패 위 풍선에 띄운 뒤, 한 번 더
+     * 눌러야 발동한다(2026-09-25, docs/59 U16). «누르면 바로 바뀝니다»만 적어 두면 첫 탭 뒤
+     * "눌렀는데 안 바뀐다"가 된다 — 9삭 대본(`discard-script`)과 같은 이유로 두 경로를 다 적는다.
+     */
+    body: "1삭은 바꿀 수 있는 방향이 하나뿐이어서, 방향을 고르는 창 없이 2삭으로 바뀝니다. 바뀔 모양은 패 위에 미리 뜹니다.",
+    todo: "손패에서 빛나는 1삭을 누르세요. 폰·태블릿에서는 한 번 눌러 패를 들어 올린 뒤(위에 2삭이 뜹니다) 한 번 더 눌러야 바뀝니다.",
     anchor: handTile(SCRIPT_ALCHEMY),
     lock: { kind: SCRIPT_ALCHEMY, how: "augment" },
     when: (c) => c.hit(ARMED_AUG) && c.handKinds.has(SCRIPT_ALCHEMY) && !c.riichiDeclared,

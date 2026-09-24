@@ -21565,6 +21565,10 @@ function OwnArea(props: {
       if (t !== null && armSubRef.current?.contains(t) === true) return;
       // 다른 후보 패를 누르면 그 패의 click이 팝오버를 옮긴다(여기서 먼저 닫으면 깜빡인다)
       if (t?.closest(".hand-armable") != null) return;
+      // 대상이 아닌 손패도 여기서 닫지 않는다 — 손패 무장의 빗나감은 무장·팝오버를 그대로 두고
+      // 토스트만 띄운다(click 쪽 «이 패는 … 대상이 아닙니다»). 여기서 먼저 닫으면 고르던 창이
+      // 빗나감 한 번에 사라진다(2026-09-25, docs/59 U26 리뷰). 끌기 시작하면 handDragMoved가 닫는다.
+      if (t?.closest(".hand-tile") != null) return;
       close();
     };
     const onScroll = (e: Event): void => {
@@ -23219,8 +23223,12 @@ function OwnArea(props: {
                  */}
                 {armedTileId === id ? (
                   <span className="hand-armed-badge" aria-hidden="true">
-                    {/* 무장 중 둘째 탭은 버리기가 아니라 발동이다 — 결과는 위 풍선(armTip)이 그린다(U16) */}
-                    {armedAug !== null && !DRAG_DISCARD_ARM_TYPES.has(armedAug) ? "한 번 더: 발동" : "한 번 더"}
+                    {/*
+                     * 무장 중 둘째 탭은 버리기가 아니라 발동인데, «발동»은 위 풍선(armTip)이 말한다.
+                     * 뱃지까지 «한 번 더: 발동»으로 늘리면 26px 패 밑으로 옆 패까지 번진다
+                     * (2026-09-25, docs/59 U16 리뷰).
+                     */}
+                    한 번 더
                   </span>
                 ) : armedAug === "frame_discard" && sel.frameTile === id ? (
                   <span className="hand-armed-badge" aria-hidden="true">
@@ -23231,8 +23239,14 @@ function OwnArea(props: {
                   <span className="arm-result-tip" aria-hidden="true">
                     <span className="arm-result-tip-label">{armTip.label}</span>
                     <span className="arm-result-tip-tiles">
+                      {/*
+                       * 종류만 넘긴다 — conjured attrs를 넘기면 `.tile-conjured`가 붙는데, 튜토리얼
+                       * 코치는 그 클래스가 화면에 뜬 것으로 «생성패를 만들었다»를 판정한다(tutorial.ts
+                       * aug-script-pick·conjured). 아직 안 바뀐 미리보기가 대본을 끝내 버린다
+                       * (2026-09-25, docs/59 U16 리뷰).
+                       */}
                       {armTip.tiles.map((t, i) => (
-                        <TileImg key={i} tile={t} size="mini" />
+                        <TileImg key={i} tile={{ kind: t.kind }} size="mini" />
                       ))}
                     </span>
                     <span className="arm-result-tip-confirm">{armTip.confirm}</span>

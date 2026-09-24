@@ -83,9 +83,18 @@ describe("U16 되돌릴 수 없는 손패 무장 — 두 번 눌러 확정과 �
     expect(CSS_CODE).toMatch(/\.arm-result-tip \{[^}]*pointer-events: none;/);
   });
 
-  it("무장 중 둘째 탭은 «발동» — 뱃지와 aria가 «버림»이라 하지 않는다", () => {
-    expect(APP_CODE).toContain('"한 번 더: 발동" : "한 번 더"');
+  it("무장 중 둘째 탭은 «발동» — aria가 «버림»이라 하지 않고, 뱃지는 짧게 둔다(«발동»은 풍선이 말한다)", () => {
     expect(APP_CODE).toContain('"선택됨. 한 번 더 누르면 발동"');
+    // 26px 패 밑에서 옆 패까지 번지지 않게 — «한 번 더: 발동»으로 늘리지 않는다
+    expect(APP_CODE).not.toContain("한 번 더: 발동");
+  });
+
+  it("풍선의 미니 패에는 conjured attrs를 넘기지 않는다 — 튜토리얼 코치가 .tile-conjured로 완료를 판정한다", () => {
+    const at = APP_CODE.indexOf('<span className="arm-result-tip-tiles">');
+    expect(at).toBeGreaterThan(0);
+    const block = APP_CODE.slice(at, APP_CODE.indexOf("</span>", at));
+    expect(block).toContain('<TileImg key={i} tile={{ kind: t.kind }} size="mini" />');
+    expect(block).not.toContain("tile={t}");
   });
 
   it("분열 재료 ✕는 들어 올린 패 기준으로도 고정된다", () => {
@@ -165,6 +174,16 @@ describe("U26 빗나감 규칙 — 손패가 대상이면 무시하고 알린다
     const rest = b.slice(b.indexOf("} else {", at));
     expect(rest).toContain("sel.arm(null);");
     expect(rest).toContain("props.onToast?.(`${armName} 선택을 취소했습니다`);");
+  });
+
+  it("빗나감에 팝오버도 남는다 — 바깥 누르기 닫기가 손패(.hand-tile)는 click에 맡긴다", () => {
+    const at = APP_CODE.indexOf("const armSubRef = useRef<HTMLDivElement | null>(null);");
+    expect(at).toBeGreaterThan(-1);
+    const block = APP_CODE.slice(at, APP_CODE.indexOf("}, [armSub !== null]);", at));
+    const onDown = block.slice(block.indexOf("const onDown = (e: PointerEvent): void => {"));
+    const skip = onDown.indexOf('if (t?.closest(".hand-tile") != null) return;');
+    expect(skip).toBeGreaterThan(0);
+    expect(skip).toBeLessThan(onDown.indexOf("close();"));
   });
 
   it("가지치기 풀 밖의 패도 같은 말로 알린다", () => {

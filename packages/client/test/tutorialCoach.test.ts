@@ -319,6 +319,12 @@ describe("대본 강의 (`SCRIPT_NOTE`)", () => {
     expect(after.lock).toEqual({ kind: "sou1", how: "augment" });
   });
 
+  it("1삭 대본은 터치의 «두 번 눌러 발동»까지 말한다 — 첫 탭은 들어 올리기만 한다(docs/59 U16)", () => {
+    const l = lesson("aug-script-pick");
+    expect(`${l.body} ${l.todo ?? ""}`).not.toContain("바로 발동");
+    expect(l.todo).toContain("한 번 더 눌러야");
+  });
+
   it("1삭이 바뀌면(또는 없으면) 연금술 대본은 끝난 것으로 본다", () => {
     const l = lesson("aug-script");
     expect(l.done?.(scripted())).toBe(false);
