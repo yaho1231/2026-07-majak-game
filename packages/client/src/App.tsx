@@ -17867,10 +17867,10 @@ function augmentLogRows(
     if (head === "waits" || head === "open_riichi_reveal" || head === "free_declare_waits") continue;
     // 위험패: 내 손패 위 ⚠ (hand-danger)
     if (head === "danger_sense") continue;
-    // 삼세 예지: 손패 위 '다음 쯔모' 스트립
+    // 삼세 예지: 손패 위 «패산 정보» 줄(OwnArea의 WallPeekRow)의 삼세 예지 섹션
     if (head === "triple_peek") continue;
-    // 예지로 공개된 패산 앞 장: 증강 조작부의 예지 스트립이 그린다. head가 증강 id가 아니라
-    // 이름이 없는 채널이다 — 줄로 내리지 않는다는 뜻을 여기 적어 둔다(2026-09-25, docs/59 U64).
+    // 예지로 공개된 패산 앞 장: 같은 «패산 정보» 줄(WallPeekRow)의 예지 섹션이 그린다. head가 증강
+    // id가 아니라 이름이 없는 채널이다 — 줄로 내리지 않는다는 뜻을 여기 적어 둔다(2026-09-25, docs/59 U64·U50).
     if (head === "foresight_peek") continue;
     // 미래를 보는 자 — 가져온 패는 손패 🔮 표식·상대 줄 옆(FutureGotBadge), 쌓인 판수는 이름표 pill
     if (head === "future_sight") continue;
@@ -21836,7 +21836,10 @@ function WallPeekRow(props: {
                     title={`${pos + 1}번째 쯔모: ${shown}`}
                   >
                     <TileImg tile={{ kind }} size="mini" />
-                    {pos === 0 ? nextBadge : null}
+                    {/* «다음»은 **내** 다음 쯔모일 때만 — 남의 쯔모 칸에 달면 삼세 예지의 «다음»(내 쯔모)과
+                        다른 패에 같은 뱃지가 둘 붙는다(밑장 «밑»과 같은 이유, 2026-09-25 docs/59 U50 리뷰).
+                        맨 앞 칸은 wall-peek-next 테두리와 아래 자리 이름으로 읽힌다. */}
+                    {pos === 0 && isMine ? nextBadge : null}
                     <span className="wall-peek-label">
                       {shown}
                       {isMine ? " ★" : ""}
@@ -21900,7 +21903,8 @@ function WallPeekRow(props: {
           ) : (
             <span className="wall-peek-tag">
               <span className="wall-peek-icon" aria-hidden="true">🃏</span>
-              <span className="wall-peek-name">밑장빼기 (밑에서)</span>
+              {/* 괄호를 둘 잇지 않는다 — 예약 뒤엔 «(예약됨)»만, 전엔 «(밑에서)»만(docs/59 U50 리뷰) */}
+              <span className="wall-peek-name">밑장빼기{bottom.armed ? "" : " (밑에서)"}</span>
               {bottom.armed ? <span className="wall-peek-armed-note"> (예약됨)</span> : null}
             </span>
           )}
@@ -22913,8 +22917,9 @@ function OwnArea(props: {
    */
   const foresightPeek = useMemo<TileKind[]>(() => foresightPeekOf(focusAv), [focusAv]);
   /*
-   * ActiveAugmentControl의 같은 이름 값과 **같은 식**이다(재배열 탭은 거기 남는다) — 강제 선택 중엔
-   * 열지 않는다(docs/59 U03·U07). [순서 바꾸기] 버튼과 탭 자동 열기는 이 값을 본다.
+   * 재배열을 열 수 있는가의 **단일 출처** — [순서 바꾸기] 버튼·탭 자동 열기가 보고, 탭(모달)을 그리는
+   * ActiveAugmentControl에도 prop으로 내려 준다. 두 곳에 같은 식을 따로 두면 어긋나는 순간 누르면
+   * 아무것도 안 뜨는 버튼이 된다(2026-09-25, docs/59 U50 리뷰). 강제 선택 중엔 열지 않는다(U03·U07).
    */
   const foresightReorderable =
     (myPrompt?.options ?? []).some((o) => o.type === "foresight_order") &&
@@ -23570,6 +23575,7 @@ function OwnArea(props: {
                 catalog={props.catalog}
                 promptDeadline={props.promptDeadline}
                 forcedPick={forcedPick}
+                foresightReorderable={foresightReorderable}
                 foresightTabOpen={foresightTab}
                 onForesightTab={setForesightTab}
                 {...(props.onToast !== undefined ? { onToast: props.onToast } : {})}
@@ -26764,6 +26770,11 @@ function ActiveAugmentControl(props: {
    */
   foresightTabOpen?: boolean;
   onForesightTab?: (open: boolean) => void;
+  /**
+   * 예지 재배열을 열 수 있는가 — OwnArea가 한 번 계산해 내려 준다(강제 선택 중 false 포함).
+   * 여기서 따로 계산하면 줄의 [순서 바꾸기]와 이 탭이 어긋날 수 있다(2026-09-25, docs/59 U50 리뷰).
+   */
+  foresightReorderable?: boolean;
   /** 못 쓰는 이유처럼 터치에서 `title=` 로는 못 읽는 안내를 띄운다. */
   onToast?: (text: string) => void;
   /**
@@ -26878,15 +26889,13 @@ function ActiveAugmentControl(props: {
     [view.augmentView],
   );
   /*
-   * 강제 선택(미래를 보는 자·등가교환 넘길 3장) 중에는 재배열을 열지 않는다 — 같은 프롬프트에
-   * foresight_order가 실려 오면 [순서 바꾸기] 버튼과 탭 자동 열기가 «다른 수는 막는다»의
-   * 빈틈이 된다. OwnArea의 같은 이름 값과 **같은 식**이다 — 버튼·자동 열기는 거기서, 탭은 여기서 본다. 예전엔 전면 모달이 그 버튼을 덮고 있었다(2026-09-25, docs/59 U03·U07).
-   * 강제 선택이 끝나고 후보가 남아 있으면 다시 열린다.
+   * 재배열을 열 수 있는가 — OwnArea가 계산한 값을 그대로 쓴다(foresight_order 후보·공개 4장·
+   * 강제 선택 아님). 강제 선택(미래를 보는 자·등가교환 넘길 3장) 중에 열리면 «다른 수는 막는다»의
+   * 빈틈이 된다(docs/59 U03·U07). 식을 여기 따로 두던 때는 줄의 [순서 바꾸기]와 어긋날 수 있었다
+   * (2026-09-25, docs/59 U50 리뷰). 길이 검사는 드래그 순서가 foresightPeek을 [0..3]으로 짚기 때문에
+   * 남긴다 — 이 컨트롤은 관전 화면에 없어 OwnArea의 focusAv와 같은 view.augmentView를 본다.
    */
-  const foresightReorderable =
-    (myPrompt?.options ?? []).some((o) => o.type === "foresight_order") &&
-    foresightPeek.length === 4 &&
-    props.forcedPick !== true;
+  const foresightReorderable = props.foresightReorderable === true && foresightPeek.length === 4;
   /**
    * 공개된 패들이 각각 **누구의 쯔모가 되는지** — 렌더 시점의 차례·진행 방향에서 계산한다.
    * 고정 배열(["하가","대면","상가","나"])이던 시절에는 역행(turn.direction = −1)에서

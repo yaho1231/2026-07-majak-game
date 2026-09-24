@@ -246,10 +246,14 @@ describe("B07 리뷰 라운드 1 — 봉쇄의 나머지 조각과 신호 일치
 
 describe("B07 리뷰 라운드 2 — 예지 재배열·판 바깥 클릭", () => {
   it("강제 선택 중에는 예지 재배열이 열리지 않는다 — [순서 바꾸기]·탭 자동 열기 둘 다 이 값을 본다", () => {
-    const ctl = fnBody("ActiveAugmentControl");
-    const at = ctl.indexOf("const foresightReorderable =");
+    // B12 라운드 2: 식은 OwnArea 한 곳으로 모였다 — 컨트롤은 그 값을 prop으로 받는다
+    const own = fnBody("OwnArea");
+    const at = own.indexOf("const foresightReorderable =");
     expect(at).toBeGreaterThan(0);
-    expect(ctl.slice(at, ctl.indexOf(";", at))).toContain("props.forcedPick !== true");
+    expect(own.slice(at, own.indexOf(";", at))).toContain("!forcedPick");
+    expect(own).toContain("foresightReorderable={foresightReorderable}");
+    const ctl = fnBody("ActiveAugmentControl");
+    expect(ctl).toContain("const foresightReorderable = props.foresightReorderable === true");
   });
 
   it("강제 무장 중 판을 누르면 조용히 무시하지 않고 이유를 말한다(§2 원칙 7)", () => {

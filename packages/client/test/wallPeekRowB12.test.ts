@@ -150,6 +150,24 @@ describe("B12 U35 — 밑장 칸을 눌러 예약", () => {
     expect(row.slice(sec)).not.toContain("? nextBadge");
   });
 
+  it("예지 맨 앞 칸의 «다음»은 내 쯔모일 때만 — 남의 쯔모에 달면 삼세 예지의 «다음»과 둘이 된다(라운드 2 리뷰)", () => {
+    expect(row).toContain("{pos === 0 && isMine ? nextBadge : null}");
+    expect(row).not.toContain("{pos === 0 ? nextBadge : null}");
+  });
+
+  it("밑장 태그는 괄호를 둘 잇지 않는다 — 예약 뒤엔 «(밑에서)»를 뗀다(라운드 2 리뷰)", () => {
+    expect(row).toContain('밑장빼기{bottom.armed ? "" : " (밑에서)"}');
+    expect(row).not.toContain("밑장빼기 (밑에서)</span>");
+  });
+
+  it("재배열 가능 여부는 OwnArea 한 곳에서 계산해 컨트롤에 prop으로 내린다(라운드 2 리뷰)", () => {
+    const ctl = fnBody("ActiveAugmentControl");
+    expect(own).toContain("foresightReorderable={foresightReorderable}");
+    expect(ctl).toContain("const foresightReorderable = props.foresightReorderable === true && foresightPeek.length === 4;");
+    // 컨트롤에는 foresight_order 후보 검사 식이 더는 없다
+    expect(ctl).not.toContain('.some((o) => o.type === "foresight_order")');
+  });
+
   it("예약 태그 버튼은 좁은 화면에서도 접근 가능한 이름이 있다(리뷰)", () => {
     expect(row).toContain('aria-label="밑장빼기 — 다음 쯔모를 패산 맨 밑장으로 예약"');
     expect(row).not.toContain('className="wall-peek-cta-short" aria-hidden');
