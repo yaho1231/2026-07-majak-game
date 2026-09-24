@@ -99,9 +99,16 @@ npm run serve                                 # 클라 빌드 → 서버 시작 
 ```bash
 npm run serve:status    # 실행 상태·포트
 npm run serve:logs      # 서버 로그 (관리자 코드·가입 게이트 상태도 여기)
-npm run serve:restart
+npm run serve:restart-idle  # ★ 배포는 이걸로 — 진행 중인 판이 0개가 되는 순간에만 교체
+npm run serve:restart       # 판이 있어도 즉시 교체 (긴급할 때만)
 npm run serve:stop
 ```
+
+**배포는 진행 중인 판이 0개일 때만 한다** (2026-09-24 운영 규칙). `restart-idle`은 빌드를 먼저
+끝내 둔 뒤 `/healthz`의 `playing`·`waiting`을 `IDLE_POLL_SEC`(기본 15초)마다 보고, 둘 다 0이 되는
+순간에만 서버를 교체한다(판과 판 사이 몇 초는 `playing`만 0이다) — 빌드 도중 새 판이 시작되는 틈이 없다. 서버가 응답하지 않으면(꺼져 있음)
+지킬 판이 없으므로 바로 교체한다. 재시작해도 진행 중인 판은 되살아나 자동으로 이어지지만(§7),
+몇 초는 끊기고 되살리기가 실패하면 그 판은 사라진다.
 
 > 설정 파일 없이 즉석 실행하려면 환경변수를 직접 줘도 된다:
 > `PORT=3011 SIGNUP_CODE=코드 npm start` (= `scripts/majak.sh`, 순수 실행/로컬용).

@@ -8,6 +8,7 @@
 #   bash deploy/serve.sh            # = start (클라 빌드 후 서버 시작)
 #   bash deploy/serve.sh stop
 #   bash deploy/serve.sh restart
+#   bash deploy/serve.sh restart-idle   # ★ 배포는 이걸로 — 진행 중인 판이 0개일 때만 교체
 #   bash deploy/serve.sh status
 #   bash deploy/serve.sh logs       # 실시간 로그(관리자 코드도 여기)
 #   bash deploy/serve.sh health     # 상태 점검(JSON — 연결·방·진행 중 게임 수)
@@ -56,6 +57,31 @@ fi
 # libuv 스레드풀 크기 — scrypt 로그인·ws deflate·리플레이 쓰기가 공유한다. majak.sh 의
 # node 실행 줄과 같은 기본값(16). majak.env 에 UV_THREADPOOL_SIZE=… 를 적으면 그 값이 이긴다.
 export UV_THREADPOOL_SIZE="${UV_THREADPOOL_SIZE:-16}"
+
+# ── 판이 0개일 때만 배포 (2026-09-24 사용자 지시) ──
+#
+# 재시작은 진행 중인 판을 되살리지만(§2-10), 그래도 몇 초는 끊기고 되살리기가 실패하면
+# 그 판은 사라진다. 그래서 배포는 **아무도 대국 중이 아닐 때만** 한다.
+# 빌드를 먼저 끝내 둔다 — 빌드(수십 초) 도중 새 판이 시작되는 틈을 없애고, 판이 0이 된
+# 순간 곧바로 교체만 하려고. 서버가 응답하지 않으면(꺼져 있음) 지킬 판이 없으므로 바로 간다.
+if [ "$CMD" = "restart-idle" ]; then
+  IDLE_POLL_SEC="${IDLE_POLL_SEC:-15}"
+  bash "$ROOT/scripts/majak.sh" build || { echo "✗ 빌드가 실패해 배포를 중단합니다 — 돌고 있던 서버는 그대로 둡니다."; exit 1; }
+  is_idle() {
+    local h
+    h="$(curl -fsS --max-time 5 "http://127.0.0.1:${PORT_SHOW}/healthz" 2>/dev/null)" || return 0
+    # 대기실도 0이어야 한다 — 같은 사람들이 판을 연달아 둘 때 판과 판 사이 몇 초는
+    # playing 이 0이다. 그 틈에 교체하면 대기실의 사람들이 홈으로 튕긴다(2026-09-24 실측).
+    printf '%s' "$h" | grep -q '"playing":0[,}]' && printf '%s' "$h" | grep -q '"waiting":0[,}]'
+  }
+  if ! is_idle; then
+    echo "⏳ 진행 중인 판이나 대기실이 있습니다 — 0개가 될 때까지 ${IDLE_POLL_SEC}초마다 확인합니다 (Ctrl-C로 중단)"
+  fi
+  until is_idle; do sleep "$IDLE_POLL_SEC"; done
+  echo "✔ 진행 중인 판·대기실 0개 ($(date '+%H:%M:%S')) — 서버를 교체합니다"
+  MAJAK_SKIP_BUILD=1 bash "$ROOT/scripts/majak.sh" restart
+  exit $?
+fi
 
 # 실제 실행은 기존 majak.sh에 위임 (env는 서브프로세스가 상속받는다)
 bash "$ROOT/scripts/majak.sh" "$CMD"

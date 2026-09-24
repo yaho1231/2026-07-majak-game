@@ -111,8 +111,6 @@ describe("저장소 접근이 부팅을 깨뜨리지 않는다", () => {
     used.delete("majak.uiScale");
     used.delete("majak.__probe");
     used.delete("majak.__test");
-    // 배포 뒤 새로고침 표식은 sessionStorage(탭 수명)라 localStorage 전체 지우기 대상이 아니다
-    used.delete("majak.staleReloadFor");
     const known = new Set<string>(STORAGE_KEYS);
     const missing = [...used].filter((k) => !known.has(k));
     expect(missing, `STORAGE_KEYS에 빠진 키: ${missing.join(", ")}`).toEqual([]);

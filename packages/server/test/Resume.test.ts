@@ -309,6 +309,51 @@ describe("서버를 다시 켜면 그 판이 그대로 선다", () => {
     expect(after.slice(0, before.length)).toEqual(before); // 앞부분이 그대로다
   }, 120_000);
 
+  it("되살린 판이 끝난 뒤 같은 방의 다음 판은 새 리플레이 파일에 쓴다", async () => {
+    // 2026-09-24: 되살린 방은 `resumePath`를 내려놓지 않아, 그 뒤 판들이 전부 옛 파일
+    // 뒤에 이어 붙었다 — 리플레이 목록의 여러 판이 한 파일을 가리켰고, 그 방이 또 끊기자
+    // 이어하기가 두 번째 `__init__`에서 던져 판을 잃었다.
+    const m = await newMachine();
+    const sock = await startGame(m.rm, "Again");
+    const code = sock.last("roomCreated").code as string;
+    const db = dbs[dbs.length - 1]!;
+    const firstPath = db.listLiveGames()[0]!.replayPath;
+
+    await m.rm.shutdown("재시작");
+    m.rm.stop();
+    managers.length = 0;
+    sock.close();
+
+    const revived = await newManager(m.dir, m.dbPath);
+    await revived.restoreLiveGames();
+    const back = new FakeSocket();
+    back.autoRespond = true;
+    revived.handleConnection(back.asWs());
+    back.clientSend({ type: "login", username: "Again", password: "pw123456" });
+    await back.waitFor((msg) => msg.type === "authOk");
+    back.clientSend({ type: "joinRoom", code });
+    await back.waitFor((msg) => msg.type === "gameOver");
+    // 정산이 끝나 대기실로 돌아올 때까지(= gameOver 뒤 첫 lobby) 기다린 뒤 다음 판을 연다.
+    const overAt = back.sent.findIndex((msg) => msg.type === "gameOver");
+    for (let i = 0; i < 500 && !back.sent.slice(overAt).some((msg) => msg.type === "lobby"); i++) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    back.clientSend({ type: "startGame" });
+    for (let i = 0; i < 300 && db.listLiveGames().length === 0; i++) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+
+    const rows = db.listLiveGames();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.replayPath).not.toBe(firstPath);
+    // 옛 파일에는 `__init__`이 하나뿐이다 — 다음 판이 뒤에 붙지 않았다.
+    await new Promise((r) => setTimeout(r, 300));
+    const inits = (await readFile(firstPath, "utf8"))
+      .split("\n")
+      .filter((l) => l.includes('"__init__"'));
+    expect(inits).toHaveLength(1);
+  }, 180_000);
+
   it("아무도 안 돌아오면 판이 저 혼자 진행되지 않는다 (판을 세워 둔다)", async () => {
     const m = await newMachine();
     const sock = await startGame(m.rm, "NoShow");
