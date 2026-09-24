@@ -268,6 +268,25 @@ describe("서버를 다시 켜면 그 판이 그대로 선다", () => {
     expect(back.last("catalog")).toBeDefined();
   }, 120_000);
 
+  it("재시작 직전 사람에게 «끝났다»(gameAborted)가 아니라 «이어진다»(serverRestarting)를 보낸다", async () => {
+    // 2026-09-24 X8L7ZM: 서버는 판을 되살려 3분을 기다렸는데, 클라이언트가
+    // gameAborted를 받고 방 기억을 지운 채 홈으로 나가 있어 자동으로 돌아오지
+    // 않았다 — 판은 보유 시한이 지나 무효로 접혔다.
+    const m = await newMachine();
+    const sock = await startGame(m.rm, "Stayer");
+    const code = sock.last("roomCreated").code as string;
+
+    await m.rm.shutdown("재시작");
+    m.rm.stop();
+    managers.length = 0;
+
+    expect(sock.all("gameAborted")).toEqual([]);
+    expect(sock.last("serverRestarting")).toMatchObject({ type: "serverRestarting", code });
+    // 되살릴 근거는 그대로 남는다.
+    expect(dbs[dbs.length - 1]!.listLiveGames().map((r) => r.code)).toEqual([code]);
+    sock.close();
+  }, 120_000);
+
   it("되살린 판은 같은 리플레이 파일을 이어 쓴다 (반쪽 파일을 만들지 않는다)", async () => {
     const m = await newMachine();
     const sock = await startGame(m.rm, "Appender");

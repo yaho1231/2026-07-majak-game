@@ -1609,6 +1609,37 @@ export class RoomManager {
       this.sweepTimer = null;
     }
     for (const room of [...this.rooms.values()]) {
+      /*
+       * **다음 부팅이 되살릴 판에는 «끝났다»고 말하지 않는다.**
+       *
+       * 예전에는 진행 중인 판이면 무조건 `gameAborted`를 보냈다. 클라이언트는 그걸
+       * «판이 끝났다»로 받아 방 기억을 지우고 홈으로 나갔고, 그래서 서버가 판을
+       * 되살려 3분 동안 기다려 줘도 **홈의 재접속 버튼을 누른 사람만** 돌아왔다 —
+       * 못 본 사람의 판은 보유 시한이 지나 무효로 접혔다(2026-09-24 X8L7ZM).
+       * 되살아날 판에는 `serverRestarting`을 보내 방 기억을 지키게 한다. 그러면
+       * 클라이언트의 평소 재연결(재로그인 → 자동 `joinRoom`)이 그대로 판에 되돌려 놓는다.
+       */
+      if (this.willResume(room)) {
+        const restarting: ServerMessage = {
+          type: "serverRestarting",
+          code: room.code,
+          message: "서버가 잠시 재시작됩니다. 곧 자동으로 이어집니다.",
+        };
+        for (const a of room.agents) {
+          if (a instanceof HumanAgent) a.notify(restarting);
+        }
+        // 관전자도 끝내지 않는다 — 방 기억이 남아 있으면 재연결 뒤 다시 관전으로 붙는다.
+        for (const conn of [...room.spectators]) {
+          this.releaseSpectator(conn, room);
+          this.send(conn.ws, restarting);
+        }
+        room.spectators.clear();
+        room.controller?.requestAbort();
+        if (room.writer !== null) flushing.push(room.writer.close());
+        this.detachRoomConns(room);
+        this.rooms.delete(room.code);
+        continue;
+      }
       const msg: ServerMessage =
         room.phase === "playing"
           ? { type: "gameAborted", reason }
@@ -1628,6 +1659,20 @@ export class RoomManager {
     }
     this.log(null, "종료 알림 전송 완료 — 모든 방을 정리했다");
     return Promise.all(flushing).then(() => undefined);
+  }
+
+  /**
+   * 이 방이 **다음 부팅에 되살아나는가** — `rememberLiveGame`이 `live_games`에 적어 두는
+   * 조건과 같다. 둘이 어긋나면 «되살아난다»고 말해 놓고 아무 것도 서지 않는다.
+   */
+  private willResume(room: Room): boolean {
+    return (
+      this.db !== undefined &&
+      room.phase === "playing" &&
+      room.writer !== null &&
+      recordsGame(room) &&
+      !room.finished
+    );
   }
 
   /** 청소 타이머만 멈춘다 (테스트 정리용). */
