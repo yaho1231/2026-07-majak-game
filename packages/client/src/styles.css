@@ -2676,6 +2676,30 @@ button {
   pointer-events: none;
 }
 
+/* 리치 소프트 자동 쯔모기리 게이지 — 쯔모패 위끝의 가는 놋쇠 막대가 오른쪽에서 왼쪽으로 줄어든다
+   (2026-09-25, docs/59 U52). 봉인(오른쪽 위)·지뢰(왼쪽 위) 뱃지 사이 가운데 위라 겹치지 않는다.
+   길이는 App.tsx가 --soft-auto-ms(= RIICHI_SOFT_AUTO_MS)로 넘긴다. 손이 닿으면 요소째 사라진다.
+   남은 시간을 나르는 한 번짜리 게이지라 제한시간 게이지(.prompt-timer-fill)처럼 reduce에서도 끄지 않는다
+   (맥동이 아니다 — a11yPerfGuards «정보를 나르는 애니메이션»). */
+.hand-soft-auto {
+  position: absolute;
+  top: -7px;
+  left: 14%;
+  right: 14%;
+  z-index: 3;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--brass-bright);
+  box-shadow: 0 0 6px rgba(240, 200, 106, 0.7);
+  transform-origin: left center;
+  animation: soft-auto-drain var(--soft-auto-ms, 2000ms) linear forwards;
+  pointer-events: none;
+}
+@keyframes soft-auto-drain {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
 
 /* ── 재료로 사라질 패 (허장성세 퐁 · 분열 · 삼원의 의지 · 회수의 쯔모패) ──
    발동 버튼 위에 손이 올라가 있는 **동안에만** 뜬다 — 누르기 전에 "무엇을 잃는가"를

@@ -1,0 +1,151 @@
+/**
+ * B16 — 리치 중 소프트 자동 쯔모기리 (2026-09-25, docs/59 U52).
+ *
+ * 서버는 리치 중 후보가 쯔모기리 하나뿐일 때만 대신 버린다(FlowController `auto`). 승부수처럼
+ * 리치 내내 서는 선택형 액티브가 끼면 그 자동이 꺼져 매 순 직접 눌러야 했다. 클라가 잠시 뒤
+ * 쯔모기리를 대신 보내되, 사람이 손을 대면 걷는다.
+ *
+ * AutoRespondBeat 와 같은 정적 소스 스캔 — 소켓·타이머·React 상태가 얽힌 배관이다.
+ */
+
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const read = (p: string): string => readFileSync(join(HERE, p), "utf8");
+const APP = read("../src/App.tsx");
+const CSS = read("../src/styles.css");
+
+/** 주석을 걷어낸 코드만 — 주석에 적힌 말이 검사에 걸리지 않게 한다 */
+function code(src: string): string {
+  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+}
+const APP_CODE = code(APP);
+
+function between(src: string, start: string, end: string): string {
+  const a = src.indexOf(start);
+  expect(a, `${start} 가 없다`).toBeGreaterThanOrEqual(0);
+  const b = src.indexOf(end, a + start.length);
+  expect(b, `${end} 가 없다`).toBeGreaterThan(a);
+  return src.slice(a, b);
+}
+
+describe("B16 소프트 자동 조건 (riichiSoftAutoOption)", () => {
+  const fn = between(APP_CODE, "function riichiSoftAutoOption(", "\n}\n");
+
+  it("내 프롬프트이고 내가 리치 중일 때만", () => {
+    expect(fn).toContain("p.player !== view.playerId");
+    expect(fn).toMatch(/view\.round\.byPlayer\[view\.playerId\]\?\.riichiDeclared !== true\) return null/);
+  });
+
+  it("버림 후보는 쯔모패 한 장뿐이어야 한다", () => {
+    expect(fn).toContain("view.round.myDrawnTile");
+    expect(fn).toMatch(/if \(discard !== null \|\| \(o\.payload as \{ tileId\?: unknown \}\)\?\.tileId !== drawn\) return null;/);
+  });
+
+  it("나머지는 전부 액티브 증강 — 버릴 패를 바꾸는 증강(DRAG)·화료·깡·구종구패는 멈춘다", () => {
+    expect(fn).toMatch(/!AUGMENT_ACTION_TYPES\.has\(o\.type\) \|\| DRAG_DISCARD_ARM_TYPES\.has\(o\.type\)\) return null/);
+    // 화료·깡·구종구패가 액티브 증강 집합에 섞여 들어오면 위 판정이 그걸 자동으로 흘려보낸다
+    const set = between(APP_CODE, "const AUGMENT_ACTION_TYPES = new Set([", "]);");
+    for (const t of ["win", "ankan", "shouminkan", "kyushuKyuhai", "discard"]) {
+      expect(set).not.toContain(`"${t}"`);
+    }
+    // 손바닥 뒤집기는 쯔모패가 대기를 바꿀 때만 뜨는 의미 있는 결정이다
+    expect(between(APP_CODE, "const DRAG_DISCARD_ARM_TYPES = new Set([", "]);")).toContain('"flip_riichi"');
+  });
+
+  it("자물쇠(격에 막힌 화료)·강제 선택이 있으면 걸지 않는다", () => {
+    expect(fn).toMatch(/\(p\.locked\?\.length \?\? 0\) > 0 \|\| isForcedPickPrompt\(p\)\) return null/);
+  });
+
+  it("증강 후보가 없으면(서버 auto 몫) 걸지 않는다", () => {
+    expect(fn).toContain("return augs > 0 ? discard : null;");
+  });
+});
+
+describe("B16 예약 — 자동응답과 같은 타이머 맵을 쓰고 프롬프트는 띄워 둔다", () => {
+  const fn = between(APP_CODE, "function tryRiichiSoftAuto(", "function tryAutoRespond(");
+
+  it("튜토리얼·증강 테스트·관전에서는 걸지 않는다", () => {
+    expect(fn).toMatch(/if \(coachOnRef\.current \|\| sandboxRef\.current !== null \|\| spectatingRef\.current\) return;/);
+  });
+
+  it("scheduleAutoRespond 로 RIICHI_SOFT_AUTO_MS 뒤에 보낸다 (cancelAutoRespond 공유)", () => {
+    expect(fn).toContain("scheduleAutoRespond(");
+    expect(fn).toContain("RIICHI_SOFT_AUTO_MS,");
+    expect(APP_CODE).toMatch(/const scheduleAutoRespond = \(seat: string, fire: \(\) => void, ms: number = AUTO_RESPOND_MS\): void/);
+    const ms = /const RIICHI_SOFT_AUTO_MS = ([\d_]+);/.exec(APP);
+    expect(ms).not.toBeNull();
+    const n = Number((ms?.[1] ?? "0").replace(/_/g, ""));
+    // 1.5~2초 — 자동응답 한 박자(1초)보다 길고, 초읽기 유예(10초) 안이라 은행이 깎이지 않는다
+    expect(n).toBeGreaterThanOrEqual(1500);
+    expect(n).toBeLessThanOrEqual(2000);
+  });
+
+  it("예약 시점에는 프롬프트를 접지 않는다 — 전송에 성공했을 때만 접는다", () => {
+    expect(fn).not.toMatch(/^\s*dropPrompt\(/m);
+    expect(fn).toContain("if (send({ type: \"action\", actionType: disc.type, payload: disc.payload, seat })) dropPrompt(seat);");
+  });
+
+  it("프롬프트 수신부가 새 프롬프트마다 낡은 것을 걷고, 그린 뒤에 건다", () => {
+    const at = APP_CODE.indexOf('if (msg.type === "prompt") {');
+    const end = APP_CODE.indexOf('if (msg.type === "promptCancel") {', at);
+    const body = APP_CODE.slice(at, end);
+    const cancel = body.indexOf("cancelRiichiSoftAuto(msg.prompt.player);");
+    const auto = body.indexOf("if (tryAutoRespond(msg.prompt, settingsRef.current))");
+    const shown = body.indexOf("setPrompts((prev) => ({ ...prev, [msg.prompt.player]: msg.prompt }));");
+    const soft = body.indexOf("tryRiichiSoftAuto(msg.prompt);");
+    expect(cancel).toBeGreaterThan(0);
+    expect(auto).toBeGreaterThan(cancel);
+    // 자동버림이 먼저 받아 가면(return) 소프트 자동은 걸리지 않는다 — 중복 예약 없음
+    expect(soft).toBeGreaterThan(shown);
+    expect(soft).toBeGreaterThan(auto);
+  });
+});
+
+describe("B16 취소 — 손이 닿으면 소프트 자동만 걷는다", () => {
+  it("cancelRiichiSoftAuto 는 자기 타이머일 때만 cancelAutoRespond 를 부른다", () => {
+    const fn = between(APP_CODE, "const cancelRiichiSoftAuto = (seat?: string): void => {", "\n  };");
+    expect(fn).toContain("if (autoRespondTimers.current.get(soft.seat) === soft.timer) cancelAutoRespond(soft.seat);");
+  });
+
+  it("cancelAutoRespond(promptCancel·방 나가기)가 소프트 자동 표시도 함께 걷는다", () => {
+    const fn = between(APP_CODE, "const cancelAutoRespond = (seat?: string): void => {", "\n  };");
+    expect(fn).toContain("riichiSoftAutoRef.current = null;");
+    expect(fn).toContain("setRiichiSoftAutoAt(null);");
+  });
+
+  it("사람이 직접 고르면(submitOption) 걷는다", () => {
+    const fn = between(APP_CODE, "function submitOption(option: ActionOption): boolean", "const sent = send(");
+    expect(fn).toContain("cancelRiichiSoftAuto(seat);");
+  });
+
+  it("누르기·키·✦/액션 바 hover 를 문서 전체에서 캡처로 본다", () => {
+    const fx = between(APP_CODE, "if (riichiSoftAutoAt === null) return;", "}, [riichiSoftAutoAt]);");
+    expect(fx).toContain('document.addEventListener("pointerdown", stop, true);');
+    expect(fx).toContain('document.addEventListener("keydown", onKey, true);');
+    expect(fx).toContain('document.addEventListener("pointerover", onOver, true);');
+    expect(fx).toContain('t.closest(".aug-btn, .aug-menu, .action-bar")');
+    expect(fx).toContain("RIICHI_SOFT_AUTO_HOVER_GRACE_MS");
+    // 정리도 셋 다
+    expect(fx.match(/document\.removeEventListener\(/g)?.length).toBe(3);
+  });
+});
+
+describe("B16 표시 — 쯔모패 위 게이지", () => {
+  it("App → GameTable → OwnArea 로 걸린 시각을 넘기고 쯔모패에만 그린다", () => {
+    expect(APP_CODE).toContain("riichiSoftAutoAt={riichiSoftAutoAt}");
+    expect(APP_CODE).toContain("riichiSoftAutoAt={props.riichiSoftAutoAt ?? null}");
+    expect(APP_CODE).toMatch(
+      /isDrawn && myPrompt !== null && !isSpectator && props\.riichiSoftAutoAt != null \? \(\s*<span\s*key=\{props\.riichiSoftAutoAt\}\s*className="hand-soft-auto"/,
+    );
+    expect(APP_CODE).toContain('"--soft-auto-ms": `${RIICHI_SOFT_AUTO_MS}ms`');
+  });
+
+  it("게이지는 --soft-auto-ms 동안 한 번 줄어든다", () => {
+    expect(CSS).toMatch(/\.hand-soft-auto \{[^}]*animation: soft-auto-drain var\(--soft-auto-ms, 2000ms\) linear forwards;/);
+    expect(CSS).toMatch(/@keyframes soft-auto-drain \{\s*from \{ transform: scaleX\(1\); \}\s*to \{ transform: scaleX\(0\); \}/);
+  });
+});

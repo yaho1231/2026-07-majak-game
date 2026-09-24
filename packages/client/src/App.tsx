@@ -146,6 +146,19 @@ import { LOCK_NOTICE_MS, isLockNoticeOnly } from "./lockNotice.js";
  * (`AUTO_MOVE_MS`)·봇의 생각 시간(`BOT_THINK_MS`)과 **같은 값**이다.
  */
 const AUTO_RESPOND_MS = 1000;
+/**
+ * **리치 중 소프트 자동 쯔모기리**를 기다리는 시간(ms) — 2026-09-25, docs/59 U52.
+ *
+ * 서버는 리치 중 후보가 쯔모기리 하나뿐일 때만 대신 버린다(FlowController `auto`). 승부수처럼
+ * 리치 내내 서는 선택형 액티브가 하나라도 끼면 그 자동이 꺼져, 매 순 같은 패를 직접 눌러야
+ * 했다 — «강제 수는 에이전트에게 묻지 않는다»(HanchanController)는 결정이 깨진다.
+ * 서버는 사람이 ✦ 메뉴를 열려는 중인지 모르므로 클라가 이만큼 기다렸다 쯔모기리하고,
+ * 그 사이 손이 닿으면 걷는다. 자동응답의 한 박자(1초)보다 길게 — ✦까지 손을 옮길 틈이다.
+ * 초읽기 유예(매 순 10초) 안이라 은행도 깎이지 않는다.
+ */
+const RIICHI_SOFT_AUTO_MS = 2000;
+/** 위 대기를 건 직후 hover(pointerover)를 흘려 보내는 틈 — 가만히 있는 포인터 밑에 버튼이 뜰 때도 over가 난다 */
+const RIICHI_SOFT_AUTO_HOVER_GRACE_MS = 300;
 import { dueForResend, enqueueSend, isResendable } from "./resendPolicy.js";
 import type { QueuedSend } from "./resendPolicy.js";
 import type { RebuiltReplay } from "./replayRebuild.js";
@@ -1425,6 +1438,42 @@ const DRAG_DISCARD_ARM_TYPES = new Set([
   // 손바닥 뒤집기 — 리치를 **거는** 것은 아니지만 "무장 → 버릴 패를 끌어 놓기"가 같다
   "flip_riichi",
 ]);
+
+/**
+ * 리치 중 **소프트 자동 쯔모기리**를 걸어도 되는 프롬프트면 그 쯔모기리 후보를, 아니면 null
+ * (2026-09-25, docs/59 U52 — 대기 시간과 이유는 `RIICHI_SOFT_AUTO_MS`).
+ *
+ * 서버의 강제 쯔모기리(FlowController `auto`)와 같은 판정에서 **선택형 증강 후보만** 너그럽게 본다:
+ * - 내가 리치 중이고, 버림 후보가 쯔모패 한 장뿐이다.
+ * - 나머지가 전부 액티브 증강(`AUGMENT_ACTION_TYPES`)이다 — 쯔모·안깡·가깡·구종구패는
+ *   거기 없으므로 저절로 멈춘다(화료·깡은 사람이 정할 순간이다).
+ * - 손바닥 뒤집기처럼 버릴 패를 바꾸는 증강(`DRAG_DISCARD_ARM_TYPES`)은 뜬 순 자체가 결정이라 멈춘다.
+ * - 자물쇠(격에 막힌 화료)가 있으면 서버처럼 멈춘다 — 그 순이 바로 알아야 하는 순간이다.
+ * - 강제 선택(미래를 보는 자·등가교환)에는 버림이 함께 실려도 걸지 않는다(§2-2).
+ */
+function riichiSoftAutoOption(
+  p: PromptMessage["prompt"],
+  view: PlayerView | null,
+): ActionOption | null {
+  if (view === null || p.player !== view.playerId) return null;
+  if (view.round.byPlayer[view.playerId]?.riichiDeclared !== true) return null;
+  if ((p.locked?.length ?? 0) > 0 || isForcedPickPrompt(p)) return null;
+  const drawn = view.round.myDrawnTile;
+  if (drawn === null) return null;
+  let discard: ActionOption | null = null;
+  let augs = 0;
+  for (const o of p.options) {
+    if (o.type === "discard") {
+      if (discard !== null || (o.payload as { tileId?: unknown })?.tileId !== drawn) return null;
+      discard = o;
+      continue;
+    }
+    if (!AUGMENT_ACTION_TYPES.has(o.type) || DRAG_DISCARD_ARM_TYPES.has(o.type)) return null;
+    augs += 1;
+  }
+  // 증강이 하나도 없으면 서버가 이미 대신 버렸다(auto) — 여기 올 일이 없지만 겹쳐 걸지 않는다
+  return augs > 0 ? discard : null;
+}
 
 /**
  * 위 액션들을 내는 증강 id — 액션 바가 전담하므로 "✦ 액티브 증강" 쪽에서는
@@ -4171,9 +4220,23 @@ export function App(): JSX.Element {
    * 이미 접힌 프롬프트에 답을 쏘게 된다. 방을 떠날 때도 같이 걷는다.
    */
   const autoRespondTimers = useRef<Map<string, number>>(new Map());
+  /**
+   * 위 타이머 가운데 **리치 소프트 자동 쯔모기리**(docs/59 U52)인 것 — 좌석과 그 타이머 id.
+   * 자동응답과 같은 맵을 쓰므로 promptCancel·방 나가기·다른 자동응답이 함께 걷는다.
+   * 따로 기억하는 까닭은 하나다: 손이 닿아 걷을 때 **이것만** 걷어야 한다 — 자동버림이 걸어 둔
+   * 타이머는 프롬프트를 이미 접었으므로, 그걸 걷으면 그 순이 시간 초과까지 멈춘다.
+   */
+  const riichiSoftAutoRef = useRef<{ seat: string; timer: number } | null>(null);
+  /** 손패의 쯔모패 위 게이지를 그리는 값 — 걸린 시각(게이지를 새로 시작시키는 key로도 쓴다) */
+  const [riichiSoftAutoAt, setRiichiSoftAutoAt] = useState<number | null>(null);
   /** 이 좌석에 걸린 자동응답 대기를 걷는다 (없으면 아무 일도 없다). */
   const cancelAutoRespond = (seat?: string): void => {
     const timers = autoRespondTimers.current;
+    const soft = riichiSoftAutoRef.current;
+    if (soft !== null && (seat === undefined || soft.seat === seat)) {
+      riichiSoftAutoRef.current = null;
+      setRiichiSoftAutoAt(null);
+    }
     if (seat === undefined) {
       for (const t of timers.values()) window.clearTimeout(t);
       timers.clear();
@@ -4186,15 +4249,27 @@ export function App(): JSX.Element {
     }
   };
   /**
+   * 리치 소프트 자동 쯔모기리만 걷는다 — 사람이 손을 댔다(docs/59 U52). 같은 좌석에 걸린 것이
+   * 다른 자동응답이면 건드리지 않는다(위 `riichiSoftAutoRef` 주석).
+   */
+  const cancelRiichiSoftAuto = (seat?: string): void => {
+    const soft = riichiSoftAutoRef.current;
+    if (soft === null || (seat !== undefined && soft.seat !== seat)) return;
+    if (autoRespondTimers.current.get(soft.seat) === soft.timer) cancelAutoRespond(soft.seat);
+    riichiSoftAutoRef.current = null;
+    setRiichiSoftAutoAt(null);
+  };
+  /**
    * 자동응답을 **한 박자 뒤에** 보낸다. 프롬프트는 (호출부에서) 즉시 접히므로
    * 화면에 버튼이 깜빡이지 않고, 패는 사람이 둔 것과 같은 속도로 내려간다.
+   * (리치 소프트 자동만 더 긴 `RIICHI_SOFT_AUTO_MS`를 넘기고 프롬프트를 띄워 둔다.)
    */
-  const scheduleAutoRespond = (seat: string, fire: () => void): void => {
+  const scheduleAutoRespond = (seat: string, fire: () => void, ms: number = AUTO_RESPOND_MS): void => {
     cancelAutoRespond(seat); // 같은 좌석에 두 개가 겹치지 않게
     const t = window.setTimeout(() => {
       autoRespondTimers.current.delete(seat);
       fire();
-    }, AUTO_RESPOND_MS);
+    }, ms);
     autoRespondTimers.current.set(seat, t);
   };
   const [catalog, setCatalog] = useState<Record<string, AugmentCatalogEntry>>({});
@@ -4811,6 +4886,38 @@ export function App(): JSX.Element {
   }
 
   /**
+   * **리치 중 소프트 자동 쯔모기리**를 건다(2026-09-25, docs/59 U52 — 조건은 `riichiSoftAutoOption`).
+   *
+   * 자동응답과 달리 프롬프트를 **접지 않는다** — ✦ 액티브와 [리치 취소]는 그대로 눌린다.
+   * `RIICHI_SOFT_AUTO_MS` 안에 손이 닿으면(아래 effect) 걷히고 예전처럼 직접 둔다.
+   * 타이머는 자동응답과 같은 맵(`scheduleAutoRespond`)이라 promptCancel·방 나가기가 함께 걷는다.
+   * 튜토리얼·증강 테스트·관전에서는 걸지 않는다 — 앞 둘은 직접 둬 보려고 들어온 자리다(tryAutoRespond 주석).
+   */
+  function tryRiichiSoftAuto(p: PromptMessage["prompt"]): void {
+    if (coachOnRef.current || sandboxRef.current !== null || spectatingRef.current) return;
+    const disc = riichiSoftAutoOption(p, prevViewRef.current);
+    if (disc === null) return;
+    const seat = p.player;
+    scheduleAutoRespond(
+      seat,
+      () => {
+        riichiSoftAutoRef.current = null;
+        setRiichiSoftAutoAt(null);
+        sfx.discard();
+        haptics.discard();
+        rememberOwnDiscard(disc.payload);
+        // 전송이 실패하면 프롬프트를 남긴다 — 다시 붙은 뒤 직접 누를 수 있게(submitOption과 같은 규칙)
+        if (send({ type: "action", actionType: disc.type, payload: disc.payload, seat })) dropPrompt(seat);
+      },
+      RIICHI_SOFT_AUTO_MS,
+    );
+    const timer = autoRespondTimers.current.get(seat);
+    if (timer === undefined) return;
+    riichiSoftAutoRef.current = { seat, timer };
+    setRiichiSoftAutoAt(Date.now());
+  }
+
+  /**
    * 자동화료·후로없음·자동버림 설정에 맞으면 프롬프트를 자동 처리한다(처리했으면 true).
    * 프롬프트 '도착' 시(handleServerMessage)와 설정 '토글' 시(아래 useEffect) 양쪽에서
    * 쓴다 — 론/후로 버튼이 이미 뜬 뒤 설정을 켜도 즉시 반영되도록.
@@ -5086,6 +5193,44 @@ export function App(): JSX.Element {
     if (prompt !== null && tryAutoRespond(prompt, settings)) dropPrompt(prompt.player);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings, prompt]);
+
+  /*
+   * **리치 소프트 자동 쯔모기리는 손이 닿으면 걷힌다** (2026-09-25, docs/59 U52).
+   *
+   * 위험은 하나다 — ✦ 메뉴를 열려는 순간 타이머가 먼저 터져 쓰려던 증강의 순을 잃는 것.
+   * 그래서 감지를 넓게 잡는다:
+   * - 어디든 누르기(pointerdown, 캡처) — ✦ 열기·[리치 취소]·쯔모패 들어 올리기·무장(sel.arm)은
+   *   전부 누르기로 시작하고, 판 밖을 눌러도 «지금 손을 쓰는 중»이다.
+   * - 아무 키(수식키만 빼고) — 키보드 무장·Tab 이동도 같다. 초점(focusin)은 보지 않는다:
+   *   화면이 스스로 옮기는 초점까지 사람의 손으로 읽게 된다.
+   * - ✦ 버튼·메뉴와 액션 바 위로 올라가기(pointerover) — 누르기 직전에 걷어야 클릭과 만료가
+   *   엇갈리지 않는다. 손패 위 hover는 보지 않는다: 리치 중 손은 대개 방금 버린 자리(손패)에
+   *   머물러 있어, 조금만 흔들려도 매 순 걷히면 자동이 없는 것과 같다. 걸린 직후 짧은 틈도
+   *   흘려 보낸다 — 버튼이 제자리에 가만히 있는 포인터 밑으로 나타날 때도 over가 난다.
+   */
+  useEffect(() => {
+    if (riichiSoftAutoAt === null) return;
+    const since = performance.now();
+    const stop = (): void => cancelRiichiSoftAuto();
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Shift" || e.key === "Control" || e.key === "Alt" || e.key === "Meta") return;
+      stop();
+    };
+    const onOver = (e: PointerEvent): void => {
+      if (performance.now() - since < RIICHI_SOFT_AUTO_HOVER_GRACE_MS) return;
+      const t = e.target;
+      if (t instanceof Element && t.closest(".aug-btn, .aug-menu, .action-bar") !== null) stop();
+    };
+    document.addEventListener("pointerdown", stop, true);
+    document.addEventListener("keydown", onKey, true);
+    document.addEventListener("pointerover", onOver, true);
+    return () => {
+      document.removeEventListener("pointerdown", stop, true);
+      document.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("pointerover", onOver, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [riichiSoftAutoAt]);
 
   /*
    * 잠금 통보 프롬프트 — 잠깐 보여 준 뒤 스스로 패스한다.
@@ -6204,6 +6349,8 @@ export function App(): JSX.Element {
       ) {
         setIntro(false);
       }
+      // 같은 좌석의 새 프롬프트다 — 앞 프롬프트에 걸어 둔 리치 소프트 자동은 낡았다(docs/59 U52)
+      cancelRiichiSoftAuto(msg.prompt.player);
       // 자동 화료·후로없음·자동버림 — 설정에 맞으면 프롬프트를 그리지 않고 즉시 처리한다.
       if (tryAutoRespond(msg.prompt, settingsRef.current)) {
         dropPrompt(msg.prompt.player);
@@ -6255,6 +6402,8 @@ export function App(): JSX.Element {
       setDraft(null);
       setDraftPicked(false);
       setRiichiMode(false);
+      // 리치 중인데 선택형 액티브 때문에 서버 자동이 꺼진 순 — 띄운 채로 잠시 뒤 쯔모기리(U52)
+      tryRiichiSoftAuto(msg.prompt);
       return;
     }
     if (msg.type === "promptCancel") {
@@ -7338,6 +7487,9 @@ export function App(): JSX.Element {
     }
     // 어느 좌석의 결정인가 — 봇 좌석을 조종 중이면 그 좌석(view.playerId)으로 답한다.
     const seat = view?.playerId;
+    // 사람이 직접 골랐다 — 걸어 둔 리치 소프트 자동 쯔모기리가 뒤따라 나가지 않게 걷는다.
+    // 증강을 쓴 뒤 같은 순의 새 프롬프트에 낡은 쯔모기리가 떨어지면 안 된다(docs/59 U52)
+    cancelRiichiSoftAuto(seat);
     // 전송에 실패했으면(소켓이 닫혀 있었으면) **프롬프트를 그대로 둔다** — action은
     // VOLATILE이라 큐에 담기지 않고 버려진다(resendPolicy ①). 여기서 프롬프트를 내리면
     // 액티브 증강 발동이나 론/치·펑이 아무 흔적 없이 사라지고 다시 누를 수도 없다.
@@ -7915,6 +8067,7 @@ export function App(): JSX.Element {
           prompt={prompt}
           promptSeq={promptSeq}
           promptDeadline={promptDeadline}
+          riichiSoftAutoAt={riichiSoftAutoAt}
           riichiMode={riichiMode}
           catalog={catalog}
           scoreFx={scoreFx}
@@ -15581,6 +15734,8 @@ const GameTable = memo(function GameTable(props: {
   promptSeq: number;
   /** 초읽기(time_pressure)가 걸린 국의 결정 마감 시각(epoch ms). 평소에는 null */
   promptDeadline?: number | null;
+  /** 리치 소프트 자동 쯔모기리가 걸린 시각 — 쯔모패 위 게이지(docs/59 U52). 없으면 null */
+  riichiSoftAutoAt?: number | null;
   riichiMode: boolean;
   catalog: Record<string, AugmentCatalogEntry>;
   scoreFx: Record<string, number>;
@@ -16318,6 +16473,7 @@ const GameTable = memo(function GameTable(props: {
         prompt={prompt}
         promptSeq={props.promptSeq}
         promptDeadline={props.promptDeadline ?? null}
+        riichiSoftAutoAt={props.riichiSoftAutoAt ?? null}
         riichiMode={props.riichiMode}
         catalog={catalog}
         autoSort={props.settings.autoSort}
@@ -22517,6 +22673,8 @@ function OwnArea(props: {
   promptSeq: number;
   /** 초읽기가 걸린 국의 결정 마감 시각(epoch ms). 평소에는 null */
   promptDeadline: number | null;
+  /** 리치 소프트 자동 쯔모기리가 걸린 시각(App `tryRiichiSoftAuto`) — 쯔모패 위 게이지를 그린다 */
+  riichiSoftAutoAt?: number | null;
   riichiMode: boolean;
   catalog: Record<string, AugmentCatalogEntry>;
   autoSort: boolean;
@@ -24712,6 +24870,10 @@ function OwnArea(props: {
                   armTip?.id === id ? `${armTip.label} ${armTip.tiles.map((t) => formatTile(t)).join(", ")}` : null,
                   armSub?.tileId === id ? "바꿀 모양을 고르는 중. 위에 뜬 후보에서 고르기" : null,
                   redPreviewIds.has(id) ? "붉은 손길 미리보기: 적도라가 될 패" : null,
+                  // 게이지(.hand-soft-auto)는 aria-hidden이라 같은 말을 여기서 읽어 준다(docs/59 U52)
+                  isDrawn && myPrompt !== null && !isSpectator && props.riichiSoftAutoAt != null
+                    ? "잠시 뒤 자동으로 버림. 키를 누르거나 화면을 누르면 멈춤"
+                    : null,
                   coachLocked ? "튜토리얼 진행 중이라 지금은 누를 수 없음" : null,
                   !clickable && !coachLocked ? "지금 버릴 수 없음" : null,
                 ]
@@ -25004,6 +25166,19 @@ function OwnArea(props: {
                   >
                     ⚠
                   </span>
+                ) : null}
+                {/*
+                  리치 소프트 자동 쯔모기리 — 이 쯔모패가 곧 스스로 나간다는 게이지(docs/59 U52).
+                  줄어드는 막대라 남은 시간이 보이고, 손이 닿아 걷히면 함께 사라진다(그때부턴 예전처럼
+                  직접 둔다). key로 걸릴 때마다 처음부터 다시 줄어들게 한다.
+                */}
+                {isDrawn && myPrompt !== null && !isSpectator && props.riichiSoftAutoAt != null ? (
+                  <span
+                    key={props.riichiSoftAutoAt}
+                    className="hand-soft-auto"
+                    style={{ "--soft-auto-ms": `${RIICHI_SOFT_AUTO_MS}ms` } as React.CSSProperties}
+                    aria-hidden="true"
+                  />
                 ) : null}
                 {/* 가져온 패 — 봉인(오른쪽 위)·지뢰(왼쪽 위)·쏘이는 패(오른쪽 아래)와 안 겹치는 왼쪽 아래(U81) */}
                 {futureGot ? (
