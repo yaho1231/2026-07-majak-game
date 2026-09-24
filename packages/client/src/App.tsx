@@ -7636,7 +7636,13 @@ export function App(): JSX.Element {
     () => new Set((prompt?.options ?? []).map((o) => o.type)),
     [prompt],
   );
-  /** 그중 액티브 증강 발동이 있는가 — 액션 바의 색 판정(`act-aug`)과 같은 기준 */
+  /**
+   * 그중 액티브 증강 발동이 있는가 — 라벨 없는 타입과 AUGMENT_ACTION_TYPES만 센다.
+   * ⚠ 액션 바의 버튼 색(`act-aug`)과는 **일부러 다르다**: 버튼 색은 증강이 만든 콜
+   * (ACTION_AUGMENT — 허장성세·묵계·우는 국사 퐁)까지 증강 색으로 칠하지만, 여기에 넣으면
+   * 퐁이 뜨는 순간마다 튜토리얼 코치가 «증강을 써 보세요» 강의로 새어 나간다. 두 판정을
+   * «맞추지» 마라(2026-09-25, docs/59 U59).
+   */
   const promptHasAugment = useMemo(
     () =>
       (prompt?.options ?? []).some(
@@ -28792,6 +28798,23 @@ function ActionBar(props: {
    * 대신 title(툴팁)이 그대로 알려 준다.
    */
   const keyed: { key: string; run: () => void }[] = [];
+  /**
+   * 선택지 버튼 한 번 누르기 — 클릭과 숫자 단축키가 **같은 길**을 탄다. 미리보기 먼저
+   * (PREVIEW_FIRST_TYPES, 허장성세 퐁 등)는 첫 번째는 재료를 짚기만 하고 두 번째에 낸다 —
+   * 단축키만 곧장 내면 키보드로 두는 사람에게는 게이트가 없는 셈이다(리치 취소 단축키가
+   * pressCancelRiichi를 타는 것과 같다. 2026-09-25, docs/59 U61 리뷰).
+   * key는 `${type}-${선택지 버튼 순번}` 꼴이다(아래 renderButton의 key와 같아야 한다).
+   */
+  const pressOption = (o: ActionOption, key: string): void => {
+    const previewFirst = props.tapTwiceToDiscard === true && PREVIEW_FIRST_TYPES.has(o.type);
+    if (previewFirst && primedKey !== key) {
+      setPrimedKey(key);
+      props.onDoomedHint?.(doomedTileIdsOf(view, o.type));
+      return;
+    }
+    setPrimedKey(null);
+    props.onSubmit(o);
+  };
   /** 단축키 줄 끝에 이어 붙는 선택지 버튼 — 글자 단축키(R/P)가 이 목록에서 자리를 찾는다 */
   let hotButtons: ActionOption[];
   if (riichiLike) {
@@ -28818,7 +28841,9 @@ function ActionBar(props: {
     }
     hotButtons = buttons;
   }
-  for (const o of hotButtons) keyed.push({ key: String(keyed.length + 1), run: () => props.onSubmit(o) });
+  hotButtons.forEach((o, i) => {
+    keyed.push({ key: String(keyed.length + 1), run: () => pressOption(o, `${o.type}-${i}`) });
+  });
   /** 선택지 버튼 앞에 선 리치 계열 버튼 수 — 선택지 버튼의 단축키 번호가 여기서 이어진다 */
   const hotBase = keyed.length - hotButtons.length;
   const hotIndex = (i: number): string => String(hotBase + i + 1);
@@ -28875,23 +28900,14 @@ function ActionBar(props: {
             : "act-call";
     const detail = optionDetail(view, o);
     const key = `${o.type}-${i}`;
-    // 미리보기 먼저 — 첫 탭은 재료를 손패에 고정해 짚기만 한다(U61)
-    const previewFirst = props.tapTwiceToDiscard === true && PREVIEW_FIRST_TYPES.has(o.type);
+    // 미리보기 먼저 — 첫 탭은 재료를 손패에 고정해 짚기만 한다(U61). 판정은 pressOption 한 곳
     const primed = primedKey === key;
     return (
       <button
         key={key}
         className={`act ${tone}${primed ? " act-primed" : ""}`}
         data-confirm-pending={primed ? "bar" : undefined}
-        onClick={() => {
-          if (previewFirst && !primed) {
-            setPrimedKey(key);
-            props.onDoomedHint?.(doomedTileIdsOf(view, o.type));
-            return;
-          }
-          setPrimedKey(null);
-          props.onSubmit(o);
-        }}
+        onClick={() => pressOption(o, key)}
         /* 누르면 사라지는 패를 손패에서 짚는다 — 마우스·키보드 둘 다 (감사 §6-10) */
         onMouseEnter={() => props.onDoomedHint?.(doomedTileIdsOf(view, o.type))}
         // 첫 탭을 받은 동안은 손을 떼도(터치의 호환 mouseleave·blur) 짚은 패를 그대로 둔다(U61).
@@ -28919,6 +28935,38 @@ function ActionBar(props: {
       </button>
     );
   };
+
+  /*
+   * 잠긴 선언 — 증강이 막은 론/쯔모. 누를 수 없지만 **자리를 지킨다**:
+   * 여기서 사라지면 당한 사람은 왜 화료가 안 되는지 알 길이 없다.
+   * 고를 것이 패스뿐이면 스스로 넘어가므로, 남은 시간을 버튼이 직접 보여 준다.
+   * 증강 리치 무장 중에도 [쯔모] 옆에 그대로 선다 — 무장 분기가 따로 생기면서(U55) 잠긴 선언이
+   * 무장하는 순간 사라지던 것을 막는다(2026-09-25, B15 리뷰 R2). 평범한 리치 모드는 예전처럼
+   * 선언 버튼 없이 [취소]와 안내만 둔다.
+   */
+  const lockedButtons = locked.map((l) => {
+    // core 계약상 지금은 win뿐이지만, 늘어나도 내부 type이 조용히 서지 않게
+    // actionLabel 한 경로로 떨어뜨린다(2026-09-25, docs/59 U62)
+    const label =
+      l.type === "win" ? (isMyTurn ? "쯔모" : "론") : actionLabel(l.type, props.catalog);
+    return (
+      <button
+        key={`locked-${l.type}-${l.reason}`}
+        className={`act act-win act-locked${autoPassing ? " act-locked-timed" : ""}`}
+        type="button"
+        disabled
+        aria-disabled="true"
+        title={
+          autoPassing
+            ? `${lockedReasonText(l)}. 잠시 뒤 자동으로 넘어갑니다.`
+            : lockedReasonText(l)
+        }
+      >
+        🔒 {label}
+        <span className="act-target">{lockedReasonShort(l)}</span>
+      </button>
+    );
+  });
 
   if (riichiLike) {
     const hint =
@@ -28955,6 +29003,7 @@ function ActionBar(props: {
         {/* 그냥 리치를 걸려던 손을 여기서 한 번 더 붙잡는다 — 증강 리치가 있다는 걸
             가장 늦게 알려 줄 수 있는 자리다. */}
         {riichiCluster(switchNodes)}
+        {armedRiichiAug !== null ? lockedButtons : null}
         {armedRiichiAug !== null ? winButtons.map((o, i) => renderButton(o, i)) : null}
       </div>
     );
@@ -29016,32 +29065,7 @@ function ActionBar(props: {
     <div className="action-bar">
       <ActionHotkeys keyed={keyed} buttons={hotButtons} riichiMode={props.riichiMode} />
       {riichiCluster(riichiNodes)}
-      {/* 잠긴 선언 — 증강이 막은 론/쯔모. 누를 수 없지만 **자리를 지킨다**:
-          여기서 사라지면 당한 사람은 왜 화료가 안 되는지 알 길이 없다.
-          고를 것이 패스뿐이면 스스로 넘어가므로, 남은 시간을 버튼이 직접 보여 준다. */}
-      {locked.map((l) => {
-        // core 계약상 지금은 win뿐이지만, 늘어나도 내부 type이 조용히 서지 않게
-        // actionLabel 한 경로로 떨어뜨린다(2026-09-25, docs/59 U62)
-        const label =
-          l.type === "win" ? (isMyTurn ? "쯔모" : "론") : actionLabel(l.type, props.catalog);
-        return (
-          <button
-            key={`locked-${l.type}-${l.reason}`}
-            className={`act act-win act-locked${autoPassing ? " act-locked-timed" : ""}`}
-            type="button"
-            disabled
-            aria-disabled="true"
-            title={
-              autoPassing
-                ? `${lockedReasonText(l)}. 잠시 뒤 자동으로 넘어갑니다.`
-                : lockedReasonText(l)
-            }
-          >
-            🔒 {label}
-            <span className="act-target">{lockedReasonShort(l)}</span>
-          </button>
-        );
-      })}
+      {lockedButtons}
       {wins.map((o, i) => renderButton(o, i))}
       {calls.length > 0 ? (
         <div className="action-calls">

@@ -101,7 +101,9 @@ export interface CoachCtx {
    * 지금 고를 수 있는 것 중에 **액티브 증강 발동**이 있는가.
    *
    * 증강 액션 타입은 100종이 넘고 계속 는다 — 여기서 목록을 다시 적으면 곧 낡는다.
-   * 버튼 색(`act-aug`)을 정하는 App.tsx의 판정을 그대로 받아 쓴다.
+   * App.tsx의 `promptHasAugment`(라벨 없는 타입 + AUGMENT_ACTION_TYPES)를 받아 쓴다.
+   * ⚠ 버튼 색(`act-aug`) 판정과는 일부러 다르다 — 버튼 색은 증강이 만든 콜(ACTION_AUGMENT,
+   * 허장성세 퐁 등)도 칠하지만 그건 여기서 세지 않는다(2026-09-25, docs/59 U59).
    */
   augmentReady: boolean;
   /** 판 위에 전체 화면(도감·규칙)이 떠 있는가 — 그 자체가 강의의 완료 신호다 */

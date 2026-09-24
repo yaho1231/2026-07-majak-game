@@ -138,6 +138,9 @@ describe("U55 증강 리치 무장은 액션 바 한 줄", () => {
     expect(BAR).toMatch(/armedRiichiAug === "flip_riichi" \? "버릴 패" : "리치할 패"\s*\}를 바닥으로 끌어 놓거나 클릭하세요/);
     expect(BAR).toMatch(/const cancelRiichiLike = \(\): void => \{\s*if \(armedRiichiAug !== null\) sel\.arm\(null\);\s*else props\.onRiichiMode\(false\);/);
     expect(BAR).toContain("{armedRiichiAug !== null ? winButtons.map((o, i) => renderButton(o, i)) : null}");
+    // 잠긴 선언(🔒 론/쯔모)은 무장 중에도 자리를 지킨다 — 평상시 분기와 같은 목록(리뷰 R2)
+    expect(BAR).toContain("{armedRiichiAug !== null ? lockedButtons : null}");
+    expect(BAR).toContain("{lockedButtons}\n      {wins.map((o, i) => renderButton(o, i))}");
     // 평범한 리치 모드의 문구·취소 클래스는 그대로(튜토리얼 코치가 .action-bar .act-cancel을 본다)
     expect(BAR).toContain('"리치할 패를 바닥으로 끌어 놓거나 클릭하세요"');
     expect(BAR).toContain('<button className="act act-cancel" onClick={cancelRiichiLike} title="취소 (단축키 1)">');
@@ -196,8 +199,12 @@ describe("U61 손패를 태우거나 바꾸는 선언 — 터치에서 첫 탭�
       'const previewFirst = props.tapTwiceToDiscard === true && PREVIEW_FIRST_TYPES.has(o.type);',
     );
     expect(BAR).toMatch(
-      /if \(previewFirst && !primed\) \{\s*setPrimedKey\(key\);\s*props\.onDoomedHint\?\.\(doomedTileIdsOf\(view, o\.type\)\);\s*return;\s*\}\s*setPrimedKey\(null\);\s*props\.onSubmit\(o\);/,
+      /if \(previewFirst && primedKey !== key\) \{\s*setPrimedKey\(key\);\s*props\.onDoomedHint\?\.\(doomedTileIdsOf\(view, o\.type\)\);\s*return;\s*\}\s*setPrimedKey\(null\);\s*props\.onSubmit\(o\);/,
     );
+    // 클릭과 숫자 단축키가 같은 길(pressOption)을 탄다 — 키보드로는 게이트 없이 곧장 나가던 구멍(리뷰 R2)
+    expect(BAR).toContain("onClick={() => pressOption(o, key)}");
+    expect(BAR).toContain("run: () => pressOption(o, `${o.type}-${i}`)");
+    expect(BAR).not.toContain("run: () => props.onSubmit(o)");
     // 첫 탭을 받은 동안은 손을 떼도 짚은 패를 끄지 않는다 — 바 전체의 첫 탭을 본다(옆 버튼을
     // 스쳐도 첫 탭을 받은 콜의 재료로 되돌린다, U61 리뷰)
     expect(BAR).toContain("onMouseLeave={restoreDoomed}");
