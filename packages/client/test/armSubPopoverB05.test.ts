@@ -42,7 +42,7 @@ function popover(): string {
 }
 
 describe("U12 한 패의 변형 고르기는 누른 패 위 팝오버다", () => {
-  it("전면 오버레이·PickTimer 없이 body 포털 + data-arm-zone 으로 붙는다", () => {
+  it("전면 오버레이 없이 body 포털 + data-arm-zone 으로 붙는다", () => {
     const pop = popover();
     expect(pop).toContain('className="arm-sub-pop"');
     // 2026-08-07: 무장 해제 pointerdown 감시가 후보 클릭을 가로채지 않게
@@ -50,7 +50,12 @@ describe("U12 한 패의 변형 고르기는 누른 패 위 팝오버다", () =>
     // 2026-08-06: `.own-area` transform이 fixed를 가두지 않게
     expect(pop.trimEnd().endsWith("document.body,")).toBe(true);
     expect(pop).not.toContain("rinshan-pick-overlay");
-    expect(pop).not.toContain("<PickTimer");
+  });
+
+  it("리뷰 1차: 손패 위라 PromptTimer를 덮으므로 머리 줄에 남은 시간을 세운다", () => {
+    expect(popover()).toContain("<PickTimer deadline={props.promptDeadline} />");
+    // «자동으로 선택됩니다»는 이 창에선 틀린 말(시간이 다 되면 쯔모패를 버린다) — 숨긴다
+    expect(CSS_CODE).toMatch(/\.arm-sub-pop \.pick-timer-note \{\s*display: none;/);
   });
 
   it("칸마다 결과 패만 그린다 — 원래 패는 손패에서 들어 올린다", () => {
@@ -100,6 +105,22 @@ describe("U12 한 패의 변형 고르기는 누른 패 위 팝오버다", () =>
     // 다른 후보 패를 누르면 그 패의 click이 팝오버를 옮긴다
     expect(block).toContain('.closest(".hand-armable")');
     expect(block).not.toContain("sel.arm(null)");
+  });
+
+  it("리뷰 1차: 손패를 끌기 시작하면 닫는다 — 팝오버가 옛 자리에 남지 않게", () => {
+    expect(APP_CODE).toContain("const handDragMoved = drag?.moved === true;");
+    expect(APP_CODE).toMatch(/if \(handDragMoved\) setArmSub\(null\);\s*\}, \[handDragMoved\]\);/);
+  });
+
+  it("리뷰 1차: 키보드로 열면 첫 후보로 초점, Esc·✕로 닫으면 누른 손패로 되돌린다", () => {
+    expect(APP_CODE).toContain("armSubFocusBack.current = e.detail === 0 ? e.currentTarget : null;");
+    expect(APP_CODE).toContain('?.querySelector<HTMLElement>(".arm-sub-pop-opt")?.focus();');
+    expect(APP_CODE).toContain("if (back?.isConnected === true) back.focus();");
+    // Esc와 ✕가 같은 길로 닫는다
+    const at = APP_CODE.indexOf("const armSubRef = useRef<HTMLDivElement | null>(null);");
+    const block = APP_CODE.slice(at, APP_CODE.indexOf("}, [armSub !== null]);", at));
+    expect(block).toMatch(/e\.stopPropagation\(\);\s*closeArmSubToHand\(\);/);
+    expect(popover()).toContain("onClick={closeArmSubToHand}");
   });
 });
 

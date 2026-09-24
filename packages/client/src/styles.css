@@ -3222,6 +3222,23 @@ button {
 .arm-sub-pop-close:focus-visible {
   background: rgba(255, 255, 255, 0.18);
 }
+/* 머리 줄의 남은 시간 — 팝오버가 PromptTimer를 덮으므로 한 번 더 세운다(App.tsx 주석).
+   드래프트 알약을 그대로 쓰되 손패 위 작은 창에 맞게 줄이고, 알림 문구는 뺀다
+   («자동으로 선택됩니다»가 아니라 쯔모패를 버린다 — 그건 PromptTimer 쪽 문구가 말한다). */
+.arm-sub-pop .pick-timer {
+  flex: none;
+  margin: 0;
+  gap: 3px;
+  padding: 1px 9px;
+  font-size: 11px;
+  letter-spacing: 0;
+}
+.arm-sub-pop .pick-timer strong {
+  font-size: 14px;
+}
+.arm-sub-pop .pick-timer-note {
+  display: none;
+}
 /* 분열 — 어느 분할을 골라도 같은 패가 재료로 탄다. 손패의 ✕(.hand-doomed)와 같은 색 계열 */
 .arm-sub-pop-doomed {
   display: flex;

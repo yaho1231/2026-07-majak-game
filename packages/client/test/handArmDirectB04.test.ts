@@ -122,17 +122,22 @@ describe("붉은 손길 — 제자리 미리보기와 [확인] (U02)", () => {
     expect(hint).not.toContain("disabled={redShown");
   });
 
+  /** 무장이 바뀔 때 도는 effect 본문 — B05 리뷰(2026-09-25)로 armSub도 조건 없이 닫는다 */
+  function armedAugEffect(): string {
+    const end = APP_CODE.indexOf("}, [armedAug]);");
+    expect(end).toBeGreaterThan(0);
+    return APP_CODE.slice(APP_CODE.lastIndexOf("useEffect(() => {", end), end);
+  }
+
   it("무장이 바뀌면 들어 올린 패를 내린다 — 타패용 첫 탭이 «고른 숫자»로 읽히지 않게", () => {
-    const at = APP_CODE.indexOf("if (armedAug === null) setArmSub(null);");
-    expect(at).toBeGreaterThan(0);
-    expect(APP_CODE.slice(at, at + 400)).toContain("setArmedTileId(null);");
+    const effect = armedAugEffect();
+    expect(effect).toMatch(/^\s*setArmSub\(null\);$/m);
+    expect(effect).toContain("setArmedTileId(null);");
   });
 
   it("리치 무장(DRAG_DISCARD_ARM_TYPES)에도 조건 없이 건다 — 무장 전 들어 둔 패가 탭 한 번에 리치로 확정되지 않게", () => {
     // B06(손패 무장 확정·빗나감)이 이 effect를 손볼 때 리치 쪽 이유가 조용히 빠지지 않게 못 박는다.
-    const at = APP_CODE.indexOf("if (armedAug === null) setArmSub(null);");
-    const effectStart = APP_CODE.lastIndexOf("useEffect(() => {", at);
-    const effect = APP_CODE.slice(effectStart, APP_CODE.indexOf("}, [armedAug]);", at));
+    const effect = armedAugEffect();
     // 무장 종류로 거르지 않는다 — 리치 무장에서도 내려간다
     expect(effect).not.toMatch(/if \([^)]*\)\s*setArmedTileId\(null\)/);
     expect(effect).toMatch(/^\s*setArmedTileId\(null\);$/m);

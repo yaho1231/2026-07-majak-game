@@ -56,7 +56,9 @@ describe("증강 선택 모달이 남은 시간을 스스로 보여 준다", () 
     // 실물 손패 클릭으로 옮겨 10 → 8, B05(2026-09-25)가 armSub를 앵커 팝오버로 바꿔 8 → 7
     // (docs/59 §7 배치 공통 규약)
     expect(panels.length).toBeGreaterThanOrEqual(7);
-    expect(timers.length).toBe(panels.length);
+    // + 1 — armSub 팝오버(`.arm-sub-pop`, 패널이 아니다)도 손패 위에서 PromptTimer를 덮으므로
+    // 머리 줄에 PickTimer를 하나 갖는다(B05 리뷰, 2026-09-25)
+    expect(timers.length).toBe(panels.length + 1);
   });
 
   it("모달 안 타이머 알약이 드래프트 창과 같은 겉모습을 쓴다", () => {

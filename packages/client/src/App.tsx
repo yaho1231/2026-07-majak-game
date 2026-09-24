@@ -1069,9 +1069,9 @@ const ARM_MODE: Record<string, ArmMode> = {
   // 물러설 수 없는 선언 — 스텔스 리치와 같은 꼴의 버튼형 액티브 리치(2026-08-15)
   no_retreat_riichi: "hand",
   // 선언 간파 위조 — 새 탭이 아니라 **실제 내 손패**를 클릭해 바꿀 패를 고른다.
-  // 한 패에 후보(간파한 대기 종류)가 여럿이면 armSub 모달이 전→후를 보여 준다.
+  // 한 패에 후보(간파한 대기 종류)가 여럿이면 armSub 팝오버(누른 패 위, 결과 패만)로 고른다.
   peek_forge: "hand",
-  // 분열 — 쪼갤 수패를 클릭 (한 패에 분할 후보가 여럿이면 armSub 모달)
+  // 분열 — 쪼갤 수패를 클릭 (한 패에 분할 후보가 여럿이면 armSub 팝오버(누른 패 위, 결과 패만))
   split_tile: "hand",
   // 누명 — 심을 패를 클릭 → **상대 바닥을 클릭**해 그 바닥에 놓는다 (2026-09-14: 예전에는
   //   대상을 armSub 모달의 이름 버튼으로 골랐다 — 「바닥에 놓는다」는 증강이라 바닥을 눌러야 맞다)
@@ -21440,7 +21440,10 @@ function OwnArea(props: {
   // 패가 있어도 무장 순간 내려가므로, 탭 한 번으로 리치가 곧바로 확정되지 않는다 — 아래
   // riichiMode 초기화 effect와 같은 이유다(2026-09-25, docs/59 U01·U02).
   useEffect(() => {
-    if (armedAug === null) setArmSub(null);
+    // 변형 팝오버는 무장이 **바뀌기만 해도** 닫는다 — 팝오버는 모달이 아니라서 키보드로 ✦ 메뉴에
+    // 가 다른 증강을 무장할 수 있다(염색 → 연금술). 그때 남은 후보는 옛 증강의 것이라 고르면
+    // 새 무장 아래서 옛 선택지가 나갔다(2026-09-25, docs/59 U12 리뷰).
+    setArmSub(null);
     // 무장이 바뀌면 들어 올린 패도 내린다 — 타패용으로 들어 둔 패가 붉은 손길의 «고른 숫자»나
     // 이면투시의 첫 탭으로 읽혀, 한 번 누른 것이 곧바로 확정되지 않게(2026-09-25, docs/59 U01·U02).
     setArmedTileId(null);
@@ -21455,6 +21458,30 @@ function OwnArea(props: {
   useEffect(() => {
     setArmSub(null);
   }, [props.promptSeq]);
+  // 손패를 끌기 시작하면 닫는다 — 다른 후보 패의 pointerdown은 팝오버를 옮기려고 흘려보내는데,
+  // 그대로 끌면 click이 막혀 팝오버가 옛 자리에 남는다. 지금은 무장 중 드래그가 리치 계열
+  // (DRAG_DISCARD_ARM_TYPES, beginDrag)에만 열려 armSub 네 종류에선 일어나지 않지만, 그 계열에
+  // 한 패 여러 후보가 생겨도 새지 않게 막아 둔다(2026-09-25, docs/59 U12 리뷰).
+  const handDragMoved = drag?.moved === true;
+  useEffect(() => {
+    if (handDragMoved) setArmSub(null);
+  }, [handDragMoved]);
+  /*
+   * 키보드로 연 팝오버는 첫 후보로 초점을 옮기고, Esc·✕로 닫으면 누른 손패로 돌려준다.
+   * 팝오버는 body 끝에 포털로 붙어 있어, 초점을 그대로 두면 Tab으로 문서 전체를 돌아야
+   * 후보에 닿았다(2026-09-25, docs/59 U12 리뷰). 마우스·터치로 열었으면 null — 초점을 건드리지 않는다.
+   */
+  const armSubFocusBack = useRef<HTMLElement | null>(null);
+  const closeArmSubToHand = (): void => {
+    setArmSub(null);
+    const back = armSubFocusBack.current;
+    armSubFocusBack.current = null;
+    if (back?.isConnected === true) back.focus();
+  };
+  useEffect(() => {
+    if (armSub === null || armSubFocusBack.current === null) return;
+    armSubRef.current?.querySelector<HTMLElement>(".arm-sub-pop-opt")?.focus();
+  }, [armSub]);
   useEffect(() => {
     if (armSub === null) return;
     const close = (): void => setArmSub(null);
@@ -21462,7 +21489,7 @@ function OwnArea(props: {
       if (e.key !== "Escape" || isTypingTarget(e.target)) return;
       // 첫 Esc는 팝오버만 접는다 — 같은 키가 무장 해제까지 번지지 않게 여기서 멈춘다
       e.stopPropagation();
-      close();
+      closeArmSubToHand();
     };
     const onDown = (e: PointerEvent): void => {
       const t = e.target instanceof Element ? e.target : null;
@@ -22558,7 +22585,8 @@ function OwnArea(props: {
           무엇으로 바꿀지 정하는 근거인 **나머지 손패**가 가려졌다(2026-09-25, docs/59 U12).
           docs/10 §2a-1의 목적(후보를 글자 버튼이 아니라 실제 패 그림으로)은 그대로다 — 칸마다
           **결과 패**를 그리고, 원래 패는 손패에서 들어 올린 채(`hand-sub-open`) 둔다.
-          모달이 아니므로 PickTimer·👁 보기 단추도 없다: `.own-area`의 PromptTimer가 그대로 보인다.
+          모달이 아니므로 👁 보기 단추는 없다(판이 그대로 보인다). 남은 시간은 머리 줄의 PickTimer로 —
+          아래 주석.
         */}
         {/* ⚠ 반드시 포털로 body에 붙인다. 이 창만 `.own-area` 안에 있었는데
             `.own-area`는 `transform: translateX(-50%)`를 갖고 있어 **position: fixed의
@@ -22606,11 +22634,17 @@ function OwnArea(props: {
                 <span className="arm-sub-pop-title">
                   {armName}: {title}
                 </span>
+                {/* 손패 바로 위라 `.own-area`의 PromptTimer·무장 안내 줄을 **덮는다** — 1280×800
+                    실측에서 팝오버가 타이머 막대 위에 섰다. 초읽기 국(5~10초)에 남은 시간을
+                    못 본 채 고르게 두면 안 되므로 모달 때처럼 머리에 한 번 더 세운다
+                    (2026-09-25, docs/59 U12 리뷰). 알림 문구는 CSS에서 숨긴다 — 시간이 다 되면
+                    고르는 게 아니라 쯔모패를 버리므로 «자동으로 선택»은 틀린 말이다. */}
+                <PickTimer deadline={props.promptDeadline} />
                 <button
                   className="arm-sub-pop-close"
                   aria-label="바꾸지 않고 닫기"
                   title="바꾸지 않고 닫기 (Esc)"
-                  onClick={() => setArmSub(null)}
+                  onClick={closeArmSubToHand}
                 >
                   ✕
                 </button>
@@ -22995,6 +23029,8 @@ function OwnArea(props: {
                          */
                         const r = e.currentTarget.getBoundingClientRect();
                         const box = handRef.current?.getBoundingClientRect() ?? r;
+                        // detail 0 = 키보드(Enter·Space)로 누른 click — 초점을 팝오버로 옮긴다
+                        armSubFocusBack.current = e.detail === 0 ? e.currentTarget : null;
                         setArmSub({
                           tileId: id,
                           options: opts,
