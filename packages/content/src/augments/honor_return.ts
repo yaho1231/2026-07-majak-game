@@ -21,6 +21,7 @@ import {
   augmentDataSet,
   defineAugment,
   handZone,
+  kindKey,
   ownDiscardKindsOf,
   playerAtSeat,
   tileKindChanged,
@@ -33,7 +34,8 @@ import type {
   TileId,
   TileKind,
 } from "@majak/core";
-import { counterOf, matchUses, publishUsesLeft, viewKey } from "../util.js";
+import { counterOf, matchUses, publishUsesLeft, roundViewKey, viewKey } from "../util.js";
+import { clearViewOnDisarm } from "./disarmBanner.js";
 import { handAlteredKey } from "./handAltered.js";
 import { plan } from "./botPlan.js";
 
@@ -50,6 +52,18 @@ const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
 const keepKey = (h: PlayerId): string => `${ID}:keep:${h}`;
 /** 전원 공개 채널 */
 const noticeKey = (h: PlayerId): string => viewKey("*", `${ID}:${h}`);
+/**
+ * 발동 전 미리보기 — **보유자 전용**, 지금 누르면 다음 국 배패로 돌아올 자패 kindKey 목록.
+ *
+ * 되받는 패는 버림 **이력**(`ownDiscards`)으로 정해진다. 남이 울어 간 자패도 들어가고
+ * 누명으로 남의 바닥에 놓인 패는 내 이력으로 따지므로, 바닥만 보는 화면은 다시 셀 수 없다 —
+ * 그래서 서버가 실어 준다(2026-09-25, docs/59 U42). 쓸 수 없는 때(횟수 소진·이미 발동해
+ * 대기 중·리치 중)는 비운다. 상대에게는 가지 않는다 — 전원에게 보이면 «귀환을 쓸 것»이라는
+ * 의도가 드러난다(발동하면 그때 `noticeKey`로 전원 공개된다). 이력이 국마다 새로 시작하므로
+ * 국 스코프 키다. 채널 이름에 보유자를 붙여 관전 뷰(주인을 떼고 평평하게 담는다)에서
+ * 두 보유자가 서로 덮어쓰지 않게 한다.
+ */
+const previewKey = (h: PlayerId): string => roundViewKey(h, `${ID}:preview:${h}`);
 
 /** 자패(바람·삼원)인가 */
 function isHonor(kind: TileKind): boolean {
@@ -190,6 +204,25 @@ export const honorReturn: AugmentDef = defineAugment({
       rc.emit(augmentDataSet(keepKey(holder), []));
       rc.emit(augmentDataSet(noticeKey(holder), []));
     });
+
+    // 발동 전 미리보기(previewKey 주석). 도라의 잔상이 «되살릴 도라»를 미리 보여 주는 것과
+    // 같은 목적이다. 버림·울기·누명·리치 어느 이벤트로든 값이 바뀔 수 있어 이벤트를 열거하지
+    // 않고 `reaction("*")` + 값 비교로 따라간다(ura_peek·three_dragons_will과 같은 방식) —
+    // 값이 같으면 아무것도 내지 않으므로 리플레이 이벤트가 늘지 않고 반응 연쇄는 한 겹에서 멈춘다.
+    ctx.reaction("*", (_event, rc) => {
+      const state = rc.state;
+      const usable =
+        hasUsesLeft(state, holder) &&
+        keptKinds(state, holder).length === 0 &&
+        state.round.byPlayer[holder]?.riichi == null;
+      const next = usable ? recallableHonors(state, holder).map(kindKey) : [];
+      const cur = state.augmentData[previewKey(holder)];
+      const shown = Array.isArray(cur) ? (cur as unknown[]) : [];
+      if (shown.length === next.length && next.every((k, i) => shown[i] === k)) return;
+      rc.emit(augmentDataSet(previewKey(holder), next));
+    });
+    // 무장해제되면 위 반응이 멈춰 값이 얼어붙는다 — 쓸 수 없는 능력의 미리보기를 내린다
+    clearViewOnDisarm(ctx, () => [previewKey(holder)]);
 
     // 사용 횟수가 남았고 되받을 자패가 있으면 보유자 턴에 발동 후보를 낸다
     ctx.holderTurnOptions((state) => {

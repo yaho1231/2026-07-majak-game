@@ -164,8 +164,11 @@ describe("HumanAgent — 좌석별 결정 대기 (봇 좌석 조종)", () => {
 describe("safeFallbackOption — 되돌릴 수 없는 다단계 선택은 무작위로라도 끝맺는다", () => {
   const opt = (type: string, payload: unknown = {}): any => ({ type, payload });
 
-  it("swap3_give/take 후보가 있으면 그중에서 고른다 (패스·버림보다 우선)", () => {
-    for (const forced of ["swap3_give", "swap3_take"]) {
+  it("swap3_give/take·future_exchange 후보가 있으면 그중에서 고른다 (패스·버림보다 우선)", () => {
+    // future_exchange — 미래를 보는 자는 무장 순간 쿨다운이 찍힌다. 시간 초과가 쯔모기리로
+    // 흐르면 «쿨다운만 쓰고 교환 없음»이 돼 «쓰면 무조건 바뀐다»(2026-08-01)를 어긴다
+    // (2026-09-25, docs/59 U49).
+    for (const forced of ["swap3_give", "swap3_take", "future_exchange"]) {
       const options = [
         opt("discard", { tileId: 1 }),
         opt("discard", { tileId: 2 }),
@@ -176,6 +179,15 @@ describe("safeFallbackOption — 되돌릴 수 없는 다단계 선택은 무작
         expect(safeFallbackOption(options).type).toBe(forced);
       }
     }
+  });
+
+  it("무장 버튼(future_arm)은 강제가 아니다 — 무장 전 순의 시간 초과는 예전처럼 쯔모기리", () => {
+    const options = [
+      opt("future_arm", {}),
+      opt("discard", { tileId: 1 }),
+      opt("discard", { tileId: 2 }),
+    ];
+    expect(safeFallbackOption(options)).toEqual(opt("discard", { tileId: 2 }));
   });
 
   it("같은 후보 목록이면 항상 같은 것을 고른다 — 리플레이·resume 재현 가능", () => {

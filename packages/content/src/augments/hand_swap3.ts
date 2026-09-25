@@ -133,6 +133,17 @@ const aimViewKey = (holder: PlayerId): string => roundViewKey("*", `${ID}:${hold
  * 당사자 전용 채널이다.
  */
 const noticeKey = (viewer: PlayerId): string => roundViewKey(viewer, `${ID}:swapped`);
+/**
+ * 고른 «넘길 내 3장» — **보유자 전용**.
+ *
+ * take 단계(상대 손패에서 가져올 3장 고르기)에서 비교에 필요한 «내가 넘길 3장»이 화면에
+ * 없어 기억에 의존해야 했다(2026-09-25, docs/59 U09). gives는 `giveKey`(뷰 채널 아님)에만
+ * 있어 클라이언트가 알 수 없었다 — 클라 기억(useRef)은 새로고침·재접속에 사라진다.
+ * give에서 싣고, 교환이 끝나거나 새로 지정하면 비운다. 국 스코프 키라 국이 바뀌면 엔진이
+ * 지운다. 채널 이름에 보유자를 붙여 관전 뷰의 평평한 키가 서로 덮어쓰지 않게 한다.
+ * 상대에게는 가지 않는다(넘길 패는 교환 전까지 보유자만 안다).
+ */
+const givesViewKey = (holder: PlayerId): string => roundViewKey(holder, `${ID}:gives:${holder}`);
 
 /** `noticeKey` 채널에 실리는 값 (클라이언트 컷인이 그대로 읽는다) */
 interface Swap3Notice {
@@ -285,6 +296,11 @@ const aimAction: ActionDef<{ target: PlayerId }> = {
     augmentDataSet(targetKey(state, req.player), req.payload.target),
     augmentDataSet(leftKey(state, req.player), 1),
     augmentDataSet(giveKey(state, req.player), []),
+    // 지난 교환의 «넘길 패»가 새 지정의 take 단계에 뜨지 않게 — 실려 있을 때만 비운다
+    ...(Array.isArray(state.augmentData[givesViewKey(req.player)]) &&
+    (state.augmentData[givesViewKey(req.player)] as unknown[]).length > 0
+      ? [augmentDataSet(givesViewKey(req.player), [])]
+      : []),
     augmentDataSet(revealKey(req.player, req.payload.target), [
       ...handIdsOf(state, req.payload.target),
     ]),
@@ -316,6 +332,8 @@ const giveAction: ActionDef<{ gives: TileId[] }> = {
   },
   toEvents: (req, { state }) => [
     augmentDataSet(giveKey(state, req.player), [...req.payload.gives]),
+    // take 단계 화면의 «넘길 패» 줄 (givesViewKey 주석)
+    augmentDataSet(givesViewKey(req.player), [...req.payload.gives]),
   ],
 };
 
@@ -429,6 +447,7 @@ export const handSwap3: AugmentDef = defineAugment({
               counterOf(state, leftKey(state, p.holder)) - 1,
             ),
             [giveKey(state, p.holder)]: [],
+            [givesViewKey(p.holder)]: [],
             // 이 국에는 다시 지정할 수 없다 (사용자 피드백: 발동한 국 재사용 금지)
             [doneKey(state, p.holder)]: true,
             [revealKey(p.holder, p.target)]: [],

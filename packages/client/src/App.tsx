@@ -1406,6 +1406,19 @@ function appearedHandSlots(view: PlayerView, pid: string): number | null {
   return slots % 3 === 1 ? slots : null;
 }
 
+/**
+ * 카피 — 이 상대에게서 가져올 수 있는 액티브 수. 서버가 보유자 전용 채널 `copy:pool:{나}`에
+ * `{상대 id: 후보 수}`로 싣는다(content copy.ts poolViewKey). 판정(허용 목록·충돌·내가 든 증강)은
+ * content에만 있고 이 번들은 content를 싣지 않아 다시 셀 수 없다 — 채널이 없으면(옛 서버) null
+ * (2026-09-25, docs/59 U28).
+ */
+function copyPoolOf(view: PlayerView, pid: string): number | null {
+  const raw = view.augmentView[`copy:pool:${view.playerId}`];
+  if (raw === null || typeof raw !== "object") return null;
+  const n = (raw as Record<string, unknown>)[pid];
+  return typeof n === "number" ? n : null;
+}
+
 /** 이 사람의 후로가 손에서 가져간 장수 — 울어 온 패는 빼고 센다(content util.concealedSlotsOf와 같은 식). */
 function meldTakenCount(view: PlayerView, pid: string): number {
   return (view.round.byPlayer[pid]?.melds ?? []).reduce(
@@ -17237,8 +17250,15 @@ function useSelection(
    *    손패 장수**를 쯔모패를 빼고 비교한다(appearedHandSlots).
    * 3. 그 밖의 제외(숨은 리치 등)에는 아무것도 적지 않는다 — «고를 수 없음» 같은 일반 문구는
    *    설명할 수 없는 제외가 있다는 사실 자체를 드러낸다.
+   * 4. 카피 — 가져올 수 있는 액티브가 0인 상대(서버 채널 copy:pool, copyPoolOf). 값은 공개 정보
+   *    (보유 증강 목록 + 고정 허용 목록)에서만 나와 새는 것이 없다. 채널 값이 0일 때만 말한다
+   *    (2026-09-25, docs/59 U28).
    */
   const oppBlockedReason = (pid: string): string | null => {
+    if (armedType === "copy_take") {
+      if (oppArmable(pid) || pid === view.playerId) return null;
+      return copyPoolOf(view, pid) === 0 ? "가져올 수 있는 액티브가 없습니다" : null;
+    }
     if (armedType === null || !HAND_MANIP_ACTIONS.has(armedType)) return null;
     if (oppArmable(pid)) return null;
     if (view.round.byPlayer[pid]?.riichiDeclared === true) return "리치 중이라 대상으로 고를 수 없습니다";
@@ -20257,9 +20277,18 @@ function OpponentStrip({
   const armType = sel.armedType;
   const armVerb = armType !== null ? OPP_ARM_TAG[armType] : undefined;
   const armAugName = armType !== null ? augActionName(catalog, armType) : "";
+  // 카피 후보에는 «몇 개 중 무작위»를 붙인다 — 무엇을 가져올지 모르는 지목이라 판단 근거가 이것뿐이다
+  // (서버 채널 copy:pool, 2026-09-25 docs/59 U28)
+  const copyPool = armType === "copy_take" && oppArmable ? copyPoolOf(view, player.id) : null;
   const armTagText = (compact: boolean): string => {
-    const body =
+    const verb =
       armVerb === undefined ? "여기를 클릭" : compact ? armVerb : `${armAugName}: ${armVerb}`;
+    const body =
+      copyPool === null || copyPool <= 0
+        ? verb
+        : compact
+          ? `${verb} (${copyPool}개 중 무작위)`
+          : `${verb} · 액티브 ${copyPool}개 중 무작위`;
     // 좁은 줄에서는 머리도 줄인다 — «⚡ 나보다 빠름.»을 그대로 두면 160px 말줄임이 정작
     // 동사(«이 손패 가져오기»)를 잘라 먹는다(2026-09-25, docs/59 U29 리뷰). 전체 문장은
     // 줄의 aria-label·손패 위 안내 줄에 그대로 있다.
@@ -21101,6 +21130,32 @@ function augmentPillStatus(
     }
     const names = kinds.map((kind) => formatTile({ kind })).join("·");
     return withUses({ chip: names, note: `${names}은 이 사람에게만 도라입니다` });
+  }
+
+  /*
+   * 귀환 — 다음 국 배패로 돌아올 자패. 발동하면 전원 공개 채널(`honor_return:{좌석}`)이 굳은
+   * 목록을 싣고, 발동 전에는 **보유자에게만** 지금 누르면 돌아올 목록(`honor_return:preview:{나}`)
+   * 이 온다 — 잔상의 «↺ 되살릴 도라»와 같은 꼴이다. 버림 이력 기준이라(남이 울어 간 자패·누명으로
+   * 흘린 자패 포함) 바닥만 보고는 맞힐 수 없어 서버가 실어 준다(2026-09-25, docs/59 U42).
+   */
+  if (augId === "honor_return") {
+    const kindsIn = (raw: unknown): TileKind[] =>
+      (Array.isArray(raw) ? raw : [])
+        .filter((k): k is string => typeof k === "string")
+        .map(parseKindKey)
+        .filter((k): k is TileKind => k !== null);
+    const kept = kindsIn(av[`honor_return:${playerId}`]);
+    if (kept.length > 0) {
+      const names = kept.map((kind) => formatTile({ kind })).join("·");
+      return withUses({ chip: `↺ ${names}`, note: `다음 국 배패에 ${names}이(가) 들어옵니다` });
+    }
+    const preview = isSelf ? kindsIn(av[`honor_return:preview:${playerId}`]) : [];
+    if (preview.length === 0) return usesStatus;
+    const names = preview.map((kind) => formatTile({ kind })).join("·");
+    return withUses({
+      chip: `↺ ${names}`,
+      note: `발동하면 다음 국 배패에 이 자패가 들어옵니다(${names}). 이 정보는 나에게만 보입니다`,
+    });
   }
 
   // 편식 — 퀘스트 진행도. 발동 뒤에는 아래 PILL_CUSTOM이 통일된 무늬를 그린다.
@@ -23567,6 +23622,24 @@ function OwnArea(props: {
     const ids = armTileIdsOf(redShown, rawHand, view.tiles);
     return { total: ids.length, red: ids.filter((id) => tileIsRed(view.tiles[id], me.id)).length };
   }, [redShown, rawHand, view.tiles, me.id]);
+  /*
+   * 짝수의 세계 — 줄에 손이 올라갔거나 첫 탭(미리보기 먼저, B15)을 받은 동안 손패 제자리에 **바뀔
+   * 모양**을 유령패로 겹친다. 손패 전체를 바꾸는 증강인데 어떤 패가 무엇이 되는지 볼 길이 없었다
+   * (2026-09-25, docs/59 U61). 값은 서버 보유자 채널(`even_world:preview:{나}` = {tileId: kindKey})
+   * 그대로다 — 클라가 다시 세면 짚는 패와 실제로 바뀌는 패가 갈린다(qaFixes 2026-09-07 원칙).
+   */
+  const [flipHint, setFlipHint] = useState(false);
+  const flipPreview = useMemo<ReadonlyMap<number, TileKind>>(() => {
+    const out = new Map<number, TileKind>();
+    if (!flipHint) return out;
+    const raw = view.augmentView[`even_world:preview:${me.id}`];
+    if (raw === null || typeof raw !== "object") return out;
+    for (const [id, key] of Object.entries(raw as Record<string, unknown>)) {
+      const kind = typeof key === "string" ? parseKindKey(key) : null;
+      if (kind !== null) out.set(Number(id), kind);
+    }
+    return out;
+  }, [flipHint, view.augmentView, me.id]);
   const redPreviewIds = useMemo<ReadonlySet<number>>(() => {
     if (armedAug !== "red_touch" || armPreviewId === null) return new Set<number>();
     const o = armedByTile.get(armPreviewId)?.[0];
@@ -24180,9 +24253,9 @@ function OwnArea(props: {
   const swap3Option =
     swap3Sel.length === 3 ? swap3Pick.byKey.get([...swap3Sel].sort((a, b) => a - b).join(",")) : undefined;
   /*
-   * 넘길 3장 기억 — take 단계 모달 위 «넘길 패» 줄이 쓴다. gives는 content의 augmentData
-   * (뷰 키 아님)에만 있어 클라이언트가 달리 알 길이 없다. 재접속하면 사라지는 폴백이고,
-   * 보유자 채널로 옮기는 것은 B18 몫이다(2026-09-25, docs/59 U09). 렌더가 읽으므로 ref가 아니라 상태다.
+   * 넘길 3장 기억 — take 단계 모달 위 «넘길 패» 줄의 **폴백**. 원천은 서버 보유자 채널
+   * `hand_swap3:gives:{나}`다(B18). 채널이 없는 옛 서버에서만 이 기억을 쓴다 — 재접속하면 사라진다
+   * (2026-09-25, docs/59 U09). 렌더가 읽으므로 ref가 아니라 상태다.
    */
   const [swapGives, setSwapGives] = useState<number[]>([]);
   /*
@@ -24825,6 +24898,7 @@ function OwnArea(props: {
                 {...(props.onToast !== undefined ? { onToast: props.onToast } : {})}
                 onUsableHint={(ids) => setUsableHint(ids === null ? null : new Set(ids))}
                 onDoomedHint={(ids) => setDoomedHint(ids === null ? null : new Set(ids))}
+                onFlipHint={setFlipHint}
               />
             ) : null}
             {/*
@@ -25183,11 +25257,11 @@ function OwnArea(props: {
                 // 넘길 3장을 손패에서 고르게 되면서 이 타이머가 모달에 가리지 않고 보인다(docs/59 U07)
                 swap3Pick.stage !== null
                   ? "시간이 다 되면 남은 조합에서 무작위로 교환합니다"
-                  : // 미래를 보는 자는 아직 서버 폴백이 교환을 모른다(FORCED_ACTION_TYPES엔 swap3뿐 — B18
-                    // 몫). 시간이 다 되면 교환 없이 타패로 끝나니 그 손실을 숨기지 않고 미리 말한다
-                    // (2026-09-25, docs/59 U03 리뷰 · §2-2 «쓰면 무조건 교환»과의 틈)
+                  : // 미래를 보는 자도 서버 폴백이 뽑힌 3장 중 하나를 골라 교환을 끝낸다(FORCED_ACTION_TYPES에
+                    // future_exchange — §2-2 «쓰면 무조건 교환», 2026-09-25 docs/59 U49). 버림 폴백 문구보다
+                    // 먼저 거른다 — 이 프롬프트에도 discard가 섞여 있다
                     myPrompt.options.some((o) => o.type === "future_exchange")
-                    ? "시간이 다 되면 교환 없이 쯔모한 패를 버립니다"
+                    ? "시간이 다 되면 무작위로 한 장을 골라 교환합니다"
                     : myPrompt.options.some((o) => o.type === "pass")
                       ? "시간이 다 되면 자동으로 패스합니다"
                       : myPrompt.options.some((o) => o.type === "discard")
@@ -25390,6 +25464,9 @@ function OwnArea(props: {
                   armTip?.id === id ? `${armTip.label} ${armTip.tiles.map((t) => formatTile(t)).join(", ")}` : null,
                   armSub?.tileId === id ? "바꿀 모양을 고르는 중. 위에 뜬 후보에서 고르기" : null,
                   redPreviewIds.has(id) ? "붉은 손길 미리보기: 적도라가 될 패" : null,
+                  flipPreview.has(id)
+                    ? `짝수의 세계 미리보기: ${formatTile({ kind: flipPreview.get(id)! })}(으)로 바뀜`
+                    : null,
                   // 게이지(.hand-soft-auto)는 aria-hidden이라 같은 말을 여기서 읽어 준다(docs/59 U52)
                   isDrawn && myPrompt !== null && !isSpectator && props.riichiSoftAutoAt != null
                     ? "잠시 뒤 자동으로 버림. 키를 누르거나 화면을 누르면 멈춤"
@@ -25431,7 +25508,7 @@ function OwnArea(props: {
                   (armedAug !== null || callPicking) && !armable ? " hand-dimmed" : ""
                 }${
                   danger ? " hand-danger" : ""
-                }${doomed ? " hand-doomed" : ""}${safe ? " hand-safe" : ""}${futureGot ? " hand-future" : ""}${specDangerCls(id)}${hot === null ? "" : " spec-hot"}`}
+                }${doomed ? " hand-doomed" : ""}${flipPreview.has(id) ? " hand-flip-preview" : ""}${safe ? " hand-safe" : ""}${futureGot ? " hand-future" : ""}${specDangerCls(id)}${hot === null ? "" : " spec-hot"}`}
                 style={tileDragStyle(id, idx)}
                 onPointerDown={(e) => {
                   beginDrag(e, id, idx);
@@ -25681,13 +25758,23 @@ function OwnArea(props: {
                   tile={(() => {
                     // 붉은 손길 미리보기 — 같은 숫자를 제자리에서 내 각인 적도라 모양으로 그린다
                     const t = view.tiles[id];
-                    return t !== undefined && redPreviewIds.has(id)
+                    if (t === undefined) return t;
+                    // 짝수의 세계 미리보기 — 바뀐 뒤 모양을 제자리에 보랏빛(conjured)으로(U61)
+                    const flipped = flipPreview.get(id);
+                    if (flipped !== undefined) return { ...t, kind: flipped, attrs: { ...t.attrs, conjured: true, red: false } };
+                    return redPreviewIds.has(id)
                       ? { ...t, attrs: { ...t.attrs, red: true, redFor: me.id } }
                       : t;
                   })()}
                   size="hand"
                   owner={me.id}
                 />
+                {flipPreview.has(id) ? (
+                  // 원래 패 이름은 aria-label이 읽는다 — 눈으로는 «바뀐다»는 표식만(색만으로 말하지 않게)
+                  <span className="hand-flip-badge" aria-hidden="true">
+                    ↻
+                  </span>
+                ) : null}
                 {lockedTile ? (
                   <span
                     className="hand-seal-badge"
@@ -25924,11 +26011,18 @@ function OwnArea(props: {
             {/* 넘길 3장 — 비교할 짝이 기억에만 있으면 안 된다(U09). 아직 내 손패에 있을 때만
                 그린다: 재접속으로 기억이 비었거나 손을 떠났으면 줄을 내리고 지어내지 않는다 */}
             {(() => {
-              if (swapGives.length !== 3 || !swapGives.every((id) => rawHand.includes(id))) return null;
+              // 원천은 서버의 보유자 채널(content hand_swap3 givesViewKey) — 새로고침·재접속에도
+              // 살아 있다. 옛 서버처럼 채널이 없을 때만 give 제출 때 기억한 swapGives로 물러난다(B18 U09)
+              const served = view.augmentView[`hand_swap3:gives:${me.id}`];
+              const gives =
+                Array.isArray(served) && served.length === 3 && served.every((id) => typeof id === "number")
+                  ? sortTileIds(served as number[], view.tiles)
+                  : swapGives;
+              if (gives.length !== 3 || !gives.every((id) => rawHand.includes(id))) return null;
               return (
                 <div className="swap3-gives-row">
                   <span className="swap3-gives-label">넘길 패</span>
-                  {swapGives.map((id) => (
+                  {gives.map((id) => (
                     <TileImg key={id} tile={view.tiles[id]} size="mini" />
                   ))}
                 </div>
@@ -28263,6 +28357,12 @@ function ActiveAugmentControl(props: {
   onUsableHint?: (ids: readonly string[] | null) => void;
   /** 손을 올린 동안 «사라지는 내 패»를 짚어 달라는 신호 (허장성세·분열의 재료) */
   onDoomedHint?: (ids: readonly number[] | null) => void;
+  /**
+   * 짝수의 세계 줄에 손이 올라갔거나 첫 탭(미리보기 먼저)을 받은 동안 true — 손패 제자리에 바뀔
+   * 모양을 겹쳐 달라는 신호다. 짚는 패와 바뀔 모양은 서버 채널(`even_world:preview:{나}`)이 정한다
+   * (2026-09-25, docs/59 U61).
+   */
+  onFlipHint?: (on: boolean) => void;
 }): JSX.Element | null {
   const { view, me, prompt } = props;
   // pill 발광 신호를 보내는 콜백 — 훅(effect) 안에서도 써야 해서 여기서 한 번 꺼낸다.
@@ -28314,6 +28414,7 @@ function ActiveAugmentControl(props: {
   const primedRef = useRef<string | null>(null);
   primedRef.current = primed;
   const onDoomed = props.onDoomedHint;
+  const onFlip = props.onFlipHint;
   const rootRef = useRef<HTMLDivElement>(null);
   // 강제 선택이 시작되면 열린 메뉴를 접는다 — 그 메뉴의 항목이 강제 선택을 건너뛰는 길이다(docs/59 U03·U07)
   useEffect(() => {
@@ -28353,6 +28454,7 @@ function ActiveAugmentControl(props: {
       if (primedRef.current === null) return;
       onHint?.(null);
       onDoomed?.(null);
+      onFlip?.(false);
     };
   }, [myPrompt]);
   // 첫 탭을 받은 줄·버튼 밖을 누르면 푼다 — 짚어 둔 재료 표시도 함께 끈다(U61)
@@ -28367,10 +28469,11 @@ function ActiveAugmentControl(props: {
       setPrimed(null);
       onHint?.(null);
       onDoomed?.(null);
+      onFlip?.(false);
     };
     document.addEventListener("pointerdown", onDown, true);
     return () => document.removeEventListener("pointerdown", onDown, true);
-  }, [primed, onHint, onDoomed]);
+  }, [primed, onHint, onDoomed, onFlip]);
   // 영상패 선택(bloom_pick)은 전용 모달이 담당하므로 이 버튼에서는 제외한다.
   // (예지 foresight_order는 byType에는 남겨 두되 아래 menuTypes에서 빼 메뉴엔 안 띄운다.)
   // 증강 리치(오픈·스텔스·올인·영혼의 일격)는 액션 바가 [리치] 옆에 전용 버튼으로
@@ -28590,6 +28693,7 @@ function ActiveAugmentControl(props: {
   const hintOne = (type: string): void => {
     props.onUsableHint?.([ACTION_AUGMENT[type] ?? type]);
     props.onDoomedHint?.(doomedTileIdsOf(view, type));
+    props.onFlipHint?.(type === "even_world_flip");
   };
   const hintAll = (): void => {
     // 강제 선택 중에는 쓸 수 있는 것이 없다 — 버튼이 꺼져 있는데 pill만 빛나면 거짓말이 된다(U03·U07)
@@ -28603,11 +28707,14 @@ function ActiveAugmentControl(props: {
     }
     props.onUsableHint?.(usableAugIds);
     props.onDoomedHint?.([...new Set(types.flatMap((t) => doomedTileIdsOf(view, t)))]);
+    // 변환 미리보기는 그 줄 하나에만 — 전부를 비출 때 손패 전체가 바뀐 모양으로 뒤집히면 재료 ✕가 묻힌다
+    props.onFlipHint?.(false);
   };
   /** 발광·재료 짚기를 끈다 — 발동·제출처럼 첫 탭 상태와 무관하게 꺼야 하는 자리가 쓴다 */
   const clearHints = (): void => {
     props.onUsableHint?.(null);
     props.onDoomedHint?.(null);
+    props.onFlipHint?.(false);
   };
   const hintNone = (): void => {
     if (primed !== null) {
@@ -28730,6 +28837,7 @@ function ActiveAugmentControl(props: {
     setPrimed(type);
     props.onUsableHint?.([ACTION_AUGMENT[type] ?? type]);
     props.onDoomedHint?.(doomedTileIdsOf(view, type));
+    props.onFlipHint?.(type === "even_world_flip");
     return true;
   };
 
@@ -30006,8 +30114,45 @@ function ActionHotkeys({
   return null;
 }
 
+/**
+ * 되살리는 액션(도라의 잔상·귀환)이 **누르면 무엇을 되받는가** — 보유자 전용 미리보기 채널에서 읽는다.
+ * 잔상은 `dora_afterimage:prev:{나}`(되살릴 도라), 귀환은 `honor_return:preview:{나}`(다음 국 배패로
+ * 돌아올 자패, B18). 둘 다 payload가 `{}`라 버튼에 그릴 것이 채널뿐이다(2026-09-25, docs/59 U42).
+ * 그 밖의 액션·채널이 비었으면 빈 배열.
+ */
+function recallKindsOf(view: PlayerView, type: string): TileKind[] {
+  const key =
+    type === "dora_recall"
+      ? `dora_afterimage:prev:${view.playerId}`
+      : type === "honor_recall"
+        ? `honor_return:preview:${view.playerId}`
+        : null;
+  if (key === null) return [];
+  const raw = view.augmentView[key];
+  return (Array.isArray(raw) ? raw : [])
+    .filter((k): k is string => typeof k === "string")
+    .map(parseKindKey)
+    .filter((k): k is TileKind => k !== null);
+}
+
 function ActionTiles({ view, option }: { view: PlayerView; option: ActionOption }): JSX.Element | null {
   const p = (option.payload ?? {}) as Record<string, unknown>;
+  /*
+   * 잔상·귀환 — 되받을 패를 그림으로(보랏빛 conjured — 판에 새로 생기는 패와 같은 표식). 글자
+   * («3만·5통»)는 optionDetail이 그대로 적는다: «되살릴 도라를 버튼에 적는다»(잔상, 사용자 결정)의
+   * 목적은 같고 그림을 더했을 뿐이다(2026-09-25, docs/59 U42).
+   */
+  if (option.type === "dora_recall" || option.type === "honor_recall") {
+    const kinds = recallKindsOf(view, option.type);
+    if (kinds.length === 0) return null;
+    return (
+      <span className="act-tiles">
+        {kinds.map((kind, i) => (
+          <TileImg key={i} tile={{ kind, attrs: { conjured: true } }} size="mini" />
+        ))}
+      </span>
+    );
+  }
   /*
    * 무르기·욕심 — payload가 `{}`라 여태 줄에 이름만 섰다. 둘 다 대상은 손패 오른쪽 끝의
    * **방금 쯔모한 패**다: 무르기는 그 패가 사라지고, 욕심은 다음 순에 같은 패가 한 장 더
@@ -30308,12 +30453,10 @@ function optionDetail(view: PlayerView, option: ActionOption): string {
     if (src !== undefined) return `${p.a} + ${src.rank - p.a}`;
   }
   // 잔상 — 되살릴 도라를 버튼에 적는다. 무엇이 되살아나는지 모른 채 누르면 안 되는 액션이다.
-  if (option.type === "dora_recall") {
-    const raw = view.augmentView[`dora_afterimage:prev:${view.playerId}`];
-    const kinds = (Array.isArray(raw) ? raw : [])
-      .filter((k): k is string => typeof k === "string")
-      .map(parseKindKey)
-      .filter((k): k is TileKind => k !== null);
+  // 귀환도 같다 — 다음 국 배패로 돌아올 자패(보유자 채널, B18 U42). 버림 이력 기준이라 바닥만
+  // 보고는 맞힐 수 없다
+  if (option.type === "dora_recall" || option.type === "honor_recall") {
+    const kinds = recallKindsOf(view, option.type);
     if (kinds.length > 0) return kinds.map((kind) => formatTile({ kind })).join("·");
   }
   // 선언 간파 위조 — 후보마다 그림만 다르고 글자가 전부 같던(«이렇게 바꾸기») 것을 결과 패
@@ -30746,8 +30889,15 @@ function RoundResultPanel({
   // …화료에도 붙인다. `dealerContinues`는 화료 정산에도 실려 오는데 예전에는 `!isWin`
   // 안에서만 조립해서, 친이 화료해 연장인지 넘어가는지·본장이 몇 개가 되는지를
   // 결과 화면에서 알 수 없었다.
+  //
+  // 이 국으로 대국이 끝나면(서버가 roundOver 전에 판정해 싣는다) «친 넘어감·N본장·리치봉
+  // 이월»은 전부 틀린 말이 된다 — 통째로 빼고 종국 한 줄로 바꾼다. 버튼·카운트다운도
+  // «최종 결과»로 말한다(2026-09-25, docs/59 U77). 필드가 없는 옛 메시지는 종전 그대로다.
+  const gameEnds = result.gameEnds !== undefined;
   const nextRoundNote: string[] = [];
-  {
+  if (gameEnds) {
+    nextRoundNote.push("이 국으로 대국이 끝납니다");
+  } else {
     // 도중유국은 친이 "연장"된 게 아니라 같은 국을 다시 치는 것이라 표현을 나눈다
     if (settle.dealerContinues === true) nextRoundNote.push(isDraw || isWin ? "친 연장" : "친 유지");
     else if (settle.dealerContinues === false) nextRoundNote.push("친 넘어감");
@@ -31221,7 +31371,7 @@ function RoundResultPanel({
             className={`lobby-join result-close${showCountdown && remainSec <= 5 ? " result-close-urgent" : ""}`}
             onClick={onClose}
           >
-            {historical === true ? "닫기" : "다음 국으로"}
+            {historical === true ? "닫기" : gameEnds ? "최종 결과 보기" : "다음 국으로"}
             {showCountdown ? (
               <span className="result-close-count" aria-hidden>
                 {remainSec}초
@@ -31230,8 +31380,16 @@ function RoundResultPanel({
           </button>
           {showCountdown ? (
             <p className="result-close-note">
-              누르지 않아도 <strong>{remainSec}초</strong> 뒤에 다음 국이 자동으로
-              시작됩니다
+              {gameEnds ? (
+                <>
+                  누르지 않아도 <strong>{remainSec}초</strong> 뒤에 최종 결과가 표시됩니다
+                </>
+              ) : (
+                <>
+                  누르지 않아도 <strong>{remainSec}초</strong> 뒤에 다음 국이 자동으로
+                  시작됩니다
+                </>
+              )}
             </p>
           ) : null}
         </div>
@@ -31259,11 +31417,17 @@ function ChoiceLabel({
   label,
   catalog,
   title,
+  view,
 }: {
   label: string;
   catalog: Record<string, AugmentCatalogEntry>;
   /** 선택창 제목 — 머리가 이것과 같으면 생략한다 */
   title?: string;
+  /**
+   * 좌석 id(`target` 인자 «p2»)를 이름으로 바꿀 뷰. 서버 라벨은 좌석 id를 그대로 싣는다 —
+   * core에는 표시 이름이 없고 이름은 화면의 몫이다(2026-09-25, docs/59 U65).
+   */
+  view?: PlayerView;
 }): JSX.Element {
   const [head, ...rest] = label.split(" ");
   const name = augActionName(catalog, head ?? "");
@@ -31277,9 +31441,18 @@ function ChoiceLabel({
       {showHead || bareNumber ? <span className="spec-choice-opt-act">{name}</span> : null}
       {rest.map((tok, i) => {
         const kind = parseKindKey(tok);
+        // 좌석 id → 이름, 증강 id(무장해제 대상 등) → 증강 이름 — 원문을 그대로 찍지 않는다(원칙 3).
+        // 패는 서버가 **패 id 키에서만** kindKey로 바꿔 보내므로(optionLabel U65) 여기서 패로
+        // 읽히는 토막은 진짜 패다 — «+1»·«0» 같은 인자는 글자 그대로 남는다.
+        const text =
+          view !== undefined && view.players.some((p) => p.id === tok)
+            ? playerNameById(view, tok)
+            : catalog[tok] !== undefined
+              ? augName(tok, catalog)
+              : tok;
         return kind === null ? (
           <span className="spec-choice-opt-arg" key={`${i}-${tok}`}>
-            {tok}
+            {text}
           </span>
         ) : (
           <TileImg key={`${i}-${tok}`} tile={{ kind }} size="mini" />
@@ -31352,7 +31525,7 @@ function SpectateChoicePanel({
                 }`}
                 key={`${i}-${o.label}`}
               >
-                <ChoiceLabel label={o.label} catalog={catalog} title={choice.title} />
+                <ChoiceLabel label={o.label} catalog={catalog} title={choice.title} view={view} />
                 {o.detail !== undefined ? (
                   <span className="spec-choice-opt-detail">{o.detail}</span>
                 ) : null}
@@ -31362,7 +31535,7 @@ function SpectateChoicePanel({
         )}
         {picked !== undefined ? (
           <p className="spec-choice-note spec-choice-picked-line">
-            선택한 항목: <ChoiceLabel label={picked} catalog={catalog} title={choice.title} />. 잠시 후 게임에 반영됩니다
+            선택한 항목: <ChoiceLabel label={picked} catalog={catalog} title={choice.title} view={view} />. 잠시 후 게임에 반영됩니다
           </p>
         ) : (
           <p className="spec-choice-note">

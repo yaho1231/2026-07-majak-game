@@ -191,8 +191,15 @@ export const MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
  * "정보만 챙기고 교환은 안 한다"가 성립해 버린다. 그래서 클라이언트에서 닫기 버튼을
  * 없앴고(2026-08-02 사용자 지시), 시간이 다 되면 여기서 **남은 조합 중 무작위로**
  * 하나를 골라 교환을 끝낸다 — 패스하거나 그냥 버려서 능력을 흘리지 않는다.
+ *
+ * 미래를 보는 자의 교환(`future_exchange`)도 같다 — 무장(future_arm)하는 순간 쿨다운이
+ * 찍히고 뽑힌 3장이 보인다. 예전에는 시간이 다 되면 쯔모기리로 흘러 «쿨다운만 쓰고 교환은
+ * 없는» 결과가 났는데, 사용자 확정은 «사용하면 무조건 패가 바뀌어야 한다»(2026-08-01)다.
+ * 교환 후보는 무장한 뒤에만 뜨므로(future_sight.ts holderTurnOptions) 무장 전 순에는 이
+ * 표가 아무것도 고르지 않는다. 선택은 아래 해시라 리플레이·resume 재현도 그대로다
+ * (2026-09-25, docs/59 U49).
  */
-const FORCED_ACTION_TYPES = new Set(["swap3_give", "swap3_take"]);
+const FORCED_ACTION_TYPES = new Set(["swap3_give", "swap3_take", "future_exchange"]);
 
 /**
  * **상대의 손패를 조작하는** 액션 — 리치를 선언한 상대에게는 쓸 수 없다.

@@ -34,8 +34,9 @@ import {
   playerAtSeat,
 } from "@majak/core";
 import type { ActionDef, AugmentContext, AugmentDef, GameState, PlayerId } from "@majak/core";
-import { counterOf, matchUses, publishUsesLeft, roundViewKey } from "../util.js";
+import { counterOf, matchUses, publishUsesLeft, roundViewKey, viewKey } from "../util.js";
 import { plan } from "./botPlan.js";
+import { clearViewOnDisarm } from "./disarmBanner.js";
 
 const ID = "copy";
 const ACTION = "copy_take";
@@ -136,6 +137,19 @@ const hasUsesLeft = (state: GameState, h: PlayerId): boolean =>
 
 type Catalog = NonNullable<AugmentContext["catalog"]>;
 
+/**
+ * 상대별 «가져올 수 있는 액티브 수» — **보유자 전용**, `{ [상대 id]: 후보 수 }`.
+ *
+ * 상대를 눌러 고르는 무장에서 후보가 아닌 상대는 표시 없이 안 눌려 고장으로 읽혔고, 몇 개
+ * 중 무작위인지도 안 보였다(2026-09-25, docs/59 U28). 판정(`copyCandidates` — 허용 목록·
+ * 충돌·내가 든 증강·빌린 증강)은 content에만 있고 클라 메인 번들은 content를 싣지 않으므로
+ * 서버가 수를 실어 준다. 값은 공개 정보(보유 증강 목록 + 고정 허용 목록)에서만 나와 비밀이
+ * 아니지만 «카피를 쓸 것»이라는 의도가 드러나지 않게 보유자에게만 보낸다. 빌린 증강이 국마다
+ * 바뀌고 증강 목록은 국을 넘어 가므로 고정 키 + 값 비교로 갱신한다(`full_hand_swap:faster`
+ * 선례). 채널 이름에 보유자를 붙여 관전 뷰의 평평한 키가 서로 덮어쓰지 않게 한다.
+ */
+const poolViewKey = (h: PlayerId): string => viewKey(h, `${ID}:pool:${h}`);
+
 /** 이 상대에게서 내가 가져올 수 있는 증강 id (보유 순서 그대로) */
 export function copyCandidates(
   state: GameState,
@@ -235,6 +249,21 @@ export const copy: AugmentDef = defineAugment({
     }));
 
     if (!engine.actions.has(ACTION)) engine.actions.register(makeAction(ctx.catalog));
+
+    // 상대별 후보 수(poolViewKey 주석). 값이 같으면 아무것도 내지 않는다 — 증강 목록이
+    // 바뀌는 드래프트·카피·국 경계에서만 이벤트가 난다.
+    ctx.reaction("*", (_event, rc) => {
+      const state = rc.state;
+      const next: Record<string, number> = {};
+      for (const p of state.players) {
+        if (p.id === holder) continue;
+        next[p.id] = copyCandidates(state, holder, p.id, ctx.catalog).length;
+      }
+      const cur = state.augmentData[poolViewKey(holder)];
+      if (cur !== undefined && JSON.stringify(cur) === JSON.stringify(next)) return;
+      rc.emit(augmentDataSet(poolViewKey(holder), next));
+    });
+    clearViewOnDisarm(ctx, () => [poolViewKey(holder)]);
 
     // 가져올 것이 있는 상대만 후보로 낸다
     ctx.holderTurnOptions((state) => {

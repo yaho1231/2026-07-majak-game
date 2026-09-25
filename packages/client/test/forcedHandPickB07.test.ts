@@ -226,11 +226,14 @@ describe("B07 리뷰 라운드 1 — 봉쇄의 나머지 조각과 신호 일치
     );
   });
 
-  it("타이머 안내는 등가교환 무작위 교환 · 미래를 보는 자 교환 없는 버림을 미리 말한다", () => {
+  // B18(U49): 서버 폴백이 future_exchange도 강제로 골라 교환을 끝낸다 — 문구가 «교환 없는 버림»에서
+  // «무작위 교환»으로 바뀌었다(§2-2 «쓰면 무조건 교환»)
+  it("타이머 안내는 등가교환 무작위 교환 · 미래를 보는 자 무작위 교환을 미리 말한다", () => {
     expect(OWN).toContain('swap3Pick.stage !== null\n                  ? "시간이 다 되면 남은 조합에서 무작위로 교환합니다"');
     const fut = OWN.indexOf('myPrompt.options.some((o) => o.type === "future_exchange")');
     expect(fut).toBeGreaterThan(0);
-    expect(OWN.slice(fut, fut + 200)).toContain('"시간이 다 되면 교환 없이 쯔모한 패를 버립니다"');
+    expect(OWN.slice(fut, fut + 200)).toContain('"시간이 다 되면 무작위로 한 장을 골라 교환합니다"');
+    expect(OWN).not.toContain("시간이 다 되면 교환 없이 쯔모한 패를 버립니다");
     // 버림 폴백 문구보다 먼저 걸러야 한다(미래를 보는 자 프롬프트에도 discard가 섞여 있다)
     expect(fut).toBeLessThan(OWN.indexOf('"시간이 다 되면 쯔모한 패를 그대로 버립니다"'));
   });

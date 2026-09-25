@@ -58,6 +58,22 @@ describe("국 결과 화면 — 스스로 닫지 않는다", () => {
     expect(body).toContain("result-close-note");
   });
 
+  /*
+   * 2026-09-25 (docs/59 U77) — 마지막 국 결과창도 «다음 국으로»·«다음 국이 자동으로
+   * 시작됩니다»·«친 넘어감»을 띄웠다. 서버가 roundOver에 `gameEnds`를 싣고, 패널은
+   * 그 경우 버튼·안내를 «최종 결과»로 바꾸고 다음 국 안내를 통째로 뺀다.
+   */
+  it("종국 국(gameEnds)이면 «최종 결과 보기»·최종 결과 안내, 다음 국 안내는 빠진다", () => {
+    const body = panelSource();
+    expect(body).toContain("const gameEnds = result.gameEnds !== undefined;");
+    expect(body).toContain('gameEnds ? "최종 결과 보기" : "다음 국으로"');
+    expect(body).toContain("뒤에 최종 결과가 표시됩니다");
+    // 친·본장·리치봉 이월은 종국이 아닐 때만 조립한다
+    const from = body.indexOf("const nextRoundNote");
+    const note = body.slice(from, body.indexOf("return (", from));
+    expect(note).toMatch(/if \(gameEnds\) \{[\s\S]*\} else \{[\s\S]*친 넘어감/);
+  });
+
   it("카운트다운은 서버가 보낸 상한(deadlineAt)만 본다 — 숫자를 클라가 따로 들지 않는다", () => {
     const body = panelSource();
     expect(body).toContain("deadlineAt");

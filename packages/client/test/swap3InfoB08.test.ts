@@ -115,7 +115,10 @@ describe("U09 교환 상대·넘길 패", () => {
     expect(modal).toContain("가져올 패 3장");
     expect(modal).toContain('<div className="swap3-gives-row">');
     // 기억이 비었거나 손을 떠났으면 지어내지 않는다
-    expect(modal).toContain("if (swapGives.length !== 3 || !swapGives.every((id) => rawHand.includes(id))) return null;");
+    // B18: 원천은 서버 보유자 채널, 클라 기억(swapGives)은 폴백
+    expect(modal).toContain("view.augmentView[`hand_swap3:gives:${me.id}`]");
+    expect(modal).toContain(": swapGives;");
+    expect(modal).toContain("if (gives.length !== 3 || !gives.every((id) => rawHand.includes(id))) return null;");
     // 닫기는 여전히 없다(2026-08-02 «닫기 없음»)
     expect(modal).not.toContain("닫기");
   });

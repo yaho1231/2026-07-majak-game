@@ -395,6 +395,19 @@ export function agariYameTriggers(
  * 조건이 "해당 국 진입"이고 스테이지당 1회(draftedStages 가드)이므로, 본장 연장으로
  * 같은 국이 여러 번 열려도 **첫 진입 때만** 지급된다.
  */
+/**
+ * 관전 선택 라벨(`optionLabel`)이 **패로 읽는** 페이로드 키 — 값이 패 id인 것만.
+ * 값 모양(0~135 숫자)으로 추측하면 순번·방향·숫자 인자까지 패가 된다(docs/59 U65).
+ */
+const TILE_ID_PAYLOAD_KEYS: ReadonlySet<string> = new Set([
+  "tileId",
+  "handTileId",
+  "recallTileId",
+  "snatchId",
+  "graveId",
+  "targetMeldTileId",
+]);
+
 const MID_DRAFT_TRIGGER: Partial<
   Record<DraftStage, (r: GameState["round"]) => boolean>
 > = {
@@ -1304,6 +1317,8 @@ export class HanchanController {
         dealerSeat: number;
         outcome: "win" | "draw" | "abort";
       } | null = null;
+      /** roundOver에 실은 종국 판정(토비 제외) — 아래 종국 분기가 재사용한다 */
+      let preEnd: GameEndReason | null = null;
       if (!skipToNextRound) {
       if (this.aborted) return this.finishAborted();
       if (await this.gatePaused()) return this.finishAborted();
@@ -1333,19 +1348,27 @@ export class HanchanController {
       // 정산 후 뷰 전송 — 화료면 뒷도라까지 공개
       const ura = outcome === "win" ? this.uraForReveal(game) : [];
       this.broadcastViews(game, ura);
-      this.notifyRoundOver(game, outcome, ura);
+      // 이 국으로 대국이 끝나는가 — 결과 화면이 «다음 국으로»·«친 넘어감»을 띄울지
+      // «최종 결과 보기»를 띄울지 가른다(2026-09-25, docs/59 U77). 예전에는 종국 판정이
+      // roundOver **뒤**에 있어, 마지막 국 결과창도 다음 국이 있다고 안내했다.
+      // 판정은 여기 한 번 — 아래 토비·종국 분기가 **이 값을 그대로** 쓴다(두 벌로 갈라지면
+      // 화면이 «최종 결과»라 했는데 다음 국이 시작되는 거짓말이 된다). endReason은 state와
+      // played만 보는 순수 판정이고, 정산 뒤라 round는 이미 다음 국이다 — 지금 재도 같다.
+      const willEnd: GameEndReason | null =
+        this.config.dobi && game.engine.state.players.some((p) => p.score < 0)
+          ? "dobi"
+          : this.endReason(game.engine.state, game.engine.rules, played);
+      this.notifyRoundOver(game, outcome, ura, willEnd);
 
       // 결과 화면을 볼 시간을 준다 (다음 국이 결과보다 먼저 뜨는 문제 방지)
       await this.pauseBetweenRounds();
 
       // 토비 체크 — 0점 '미만'이면 즉시 종국 (정확히 0점은 속행, 01_GAME_RULES §1)
-      if (this.config.dobi) {
-        const bankrupt = game.engine.state.players.some((p) => p.score < 0);
-        if (bankrupt) {
-          endReason = "dobi";
-          break;
-        }
+      if (willEnd === "dobi") {
+        endReason = "dobi";
+        break;
       }
+      preEnd = willEnd;
 
       } // !skipToNextRound
 
@@ -1353,10 +1376,12 @@ export class HanchanController {
       // 반장전=동3·남1·남3국 진입, 동풍전=동3·동4국 진입. 연장(본장)으로
       // 라운드 번호가 유지돼도 재추첨하지 않는다(draftedStages 가드).
       const round = game.engine.state.round;
+      let drafted = false;
       for (const stage of this.config.draftSchedules ?? []) {
         const trigger = MID_DRAFT_TRIGGER[stage];
         if (trigger !== undefined && !this.draftedStages.has(stage) && trigger(round)) {
           await this.runDraft(game, stage);
+          drafted = true;
           this.flushEvents(game);
           // 드래프트 대기 중 무효가 들어오면 다음 국을 시작하지 않고 즉시 종료
           if (this.aborted) return this.finishAborted();
@@ -1369,7 +1394,13 @@ export class HanchanController {
       // (`agariYameTriggers`의 «도중유국은 렌짱이 아니다» 주석 — QA 2차 rules 확정 3).
       // 국 사이 재개 첫 반복은 건너뛴다 — «방금 친 국»이 없고 round는 이미 다음 국이다.
       if (played !== null) {
-        const reason = this.endReason(game.engine.state, game.engine.rules, played);
+        // 위에서 roundOver에 실은 값을 그대로 쓴다. 단 방금 중반 드래프트가 열렸으면 다시
+        // 잰다 — 새로 받은 증강(천하통일의 즉시 우승 문턱 등)이 판정을 바꿀 수 있고, 예전
+        // 순서(드래프트 → 판정)의 결과를 그대로 지키기 위해서다. 드래프트와 종국 판정의
+        // 순서 자체는 사용자 확인 전이라 건드리지 않는다(docs/59 §6 U77-순서).
+        const reason = drafted
+          ? this.endReason(game.engine.state, game.engine.rules, played)
+          : preEnd;
         if (reason !== null) {
           endReason = reason;
           break;
@@ -2032,15 +2063,29 @@ export class HanchanController {
    * 관전 화면은 이미 네 좌석의 손패를 전부 보고 있으므로 여기서 패를 적는 것은
    * 정보 누출이 아니다. 다만 **짧아야** 한다 — 중계 도크는 한 줄이다. 패 이름은
    * core에 한국어 표기가 없어 `kindKey`("man3")로 적고 표기는 화면이 맡는다.
+   *
+   * 패로 읽는 것은 **패 id를 담는 키**(`TILE_ID_PAYLOAD_KEYS`)뿐이다. 예전에는 값이
+   * 0~135 숫자이기만 하면 패로 바꿔, 연금술 `{tileId, delta: 1}`의 1·파혼 `meldIndex`·
+   * 절벽 위 꽃 `index`·붉은 손길 `rank`가 전부 **엉뚱한 패 그림**으로 떴다
+   * (2026-09-25, docs/59 U65). 방향 인자 `delta`는 부호를 붙여 «+1»/«-1»로 적는다 —
+   * 화면(ChoiceLabel)이 글자 그대로 두는 토막이다. 좌석 id(`target`)는 그대로 두고
+   * 표시 이름은 화면이 뷰에서 찾는다.
    */
   private optionLabel(option: ActionOption): string {
     const state = this.game?.engine.state;
     const parts: string[] = [];
     const payload = option.payload;
     if (payload !== null && typeof payload === "object") {
-      for (const v of Object.values(payload as Record<string, unknown>)) {
-        if (typeof v === "number" && state !== undefined && state.tiles[v] !== undefined) {
+      for (const [k, v] of Object.entries(payload as Record<string, unknown>)) {
+        if (
+          TILE_ID_PAYLOAD_KEYS.has(k) &&
+          typeof v === "number" &&
+          state !== undefined &&
+          state.tiles[v] !== undefined
+        ) {
           parts.push(kindKey(state.tiles[v]!.kind));
+        } else if (k === "delta" && typeof v === "number") {
+          parts.push(v > 0 ? `+${v}` : String(v));
         } else if (typeof v === "number" || typeof v === "string" || typeof v === "boolean") {
           parts.push(String(v));
         }
@@ -2156,6 +2201,8 @@ export class HanchanController {
     game: StandardGame,
     outcome: "win" | "draw" | "abort",
     ura: TileId[],
+    /** 이 국으로 대국이 끝나면 그 사유 (`runLoop`의 willEnd) */
+    willEnd: GameEndReason | null = null,
   ): void {
     const state = game.engine.state;
     const settle = this.lastSettle(game);
@@ -2225,6 +2272,8 @@ export class HanchanController {
       // 결과 화면의 "다음 국으로" 버튼이 세는 남은 시간의 근거 — pauseBetweenRounds가
       // 실제로 쓰는 상한 그대로다. 클라이언트에 같은 숫자를 두 벌 두지 않기 위해 싣는다.
       autoContinueMs: this.config.interRoundDelayMs ?? 0,
+      // 종국이 아니면 필드를 싣지 않는다(옛 메시지·리플레이와 같은 모양)
+      ...(willEnd !== null ? { gameEnds: willEnd } : {}),
     };
     // 결과 화면 구간에 합류하는 관전석에 다시 보낼 수 있게 들고 있는다
     // (`lastRoundOverMsg` 주석 — QA 2차 spectate 확정 7). 다음 국이 시작하면 비운다.
