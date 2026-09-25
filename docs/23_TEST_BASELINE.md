@@ -6,7 +6,7 @@
 ## 현재 상태 — 사실상 그린
 
 ```
-npm test                   3822 / 3822 통과 (실패 0)   ← 2026-08-25 갱신 (330 파일, 약 204초 — vitest 4)
+npm test                   5182 / 5182 통과 (실패 0)   ← 2026-09-25 갱신 (442 파일, 약 95초 벽시계 — vitest 4, docs/59 W5 브랜치)
 npm run typecheck          0 errors
 npm run typecheck:content  0 errors
 npm run typecheck:server   0 errors
@@ -32,6 +32,11 @@ npm run typecheck:client   0 errors
   항목과 정확히 같은 원인이다(다른 vitest가 함께 돌면 한 판 비용이 13~17초 → 31~45초).
   단독 실행 14/14 통과. **판별법은 아래와 같다** — 단독으로 돌려 보고, 그래도 의심스러우면
   변경을 되돌리고 전체를 한 번 더 돌린다.
+
+- `packages/server/test/ResumeMidDraft.test.ts > … southThird 드래프트 도중 끊긴 판을 되살리면 …` — `3판 모두 southThird 전에 끝났다 — 다시 돌려 보라`
+  (2026-09-25 추가) 판을 굴려 남3국 드래프트까지 가는 판을 찾는 **확률형** 테스트다(시도 3판). 부하가 걸리면
+  봇 판단 시간이 밀려 판 흐름이 달라지고, 세 판이 모두 그 전에 끝날 수 있다. 전체 실행 1회 실패 뒤
+  **단독 실행 3회 연속 4/4 통과**, 전체 재실행도 통과(docs/59 W5 브랜치). 단독으로 돌려 가린다.
 
 - `packages/server/test/Resume.test.ts > 진행 중인 대국이 디스크에 남는다 > 판이 끝나면 그 자리에서 지워진다 …` — `Test timed out in 90000ms`
   (2026-08-18 추가) 위 `Guest.test.ts`와 **같은 부류**다 — 한 판을 끝까지 굴린다.
