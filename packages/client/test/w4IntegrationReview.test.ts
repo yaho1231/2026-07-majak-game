@@ -63,9 +63,31 @@ const riichiSoftAutoOption: Fn = (() => {
     "AUGMENT_ACTION_TYPES",
     "RIICHI_SOFT_AUTO_OK_TYPES",
     "isForcedPickPrompt",
+    "bottomDealDecisive",
     `${js}\nreturn riichiSoftAutoOption;`,
-  )(AUG, OK, (p: { options: Opt[] }) => p.options.some((o) => FORCED.has(o.type))) as Fn;
+  )(
+    AUG,
+    OK,
+    (p: { options: Opt[] }) => p.options.some((o) => FORCED.has(o.type)),
+    // 밑장빼기의 «이번 순 결정» 판정은 아래에서 따로 돌려 본다 — 여기서는 view 에 실린 표시로 흉내 낸다
+    (v: { bottomDecisive?: boolean }) => v.bottomDecisive === true,
+  ) as Fn;
 })();
+
+type Kind = { suit: string; rank: number };
+/** 소스의 bottomDealDecisive 를 떼어 돌린다 — 대기 계산은 주입한 가짜(waits)로 대신한다 */
+const bottomDealDecisive = (waits: Kind[] | "throw") => {
+  const src = between(APP, "function bottomDealDecisive(", "\n}\n") + "\n}\n";
+  const js = ts.transpileModule(src, { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText;
+  // eslint-disable-next-line @typescript-eslint/no-implied-eval
+  return new Function("winningKinds", "waitDecompOptions", `${js}\nreturn bottomDealDecisive;`)(
+    () => {
+      if (waits === "throw") throw new Error("decompose failed");
+      return waits;
+    },
+    () => undefined,
+  ) as (view: unknown, drawn: number) => boolean;
+};
 
 const DRAWN = 77;
 const view = {
@@ -161,7 +183,8 @@ describe("interaction-2·lifecycle-2·regression-2 증강을 쓴 순의 뒤따�
     expect(mark).toBeGreaterThan(sentGuard);
     expect(submit).toContain("!DISCARD_LIKE.has(option.type)");
     const fn = between(APP_CODE, "function tryRiichiSoftAuto(", "function tryAutoRespond(");
-    expect(fn).toMatch(/if \(turnKey !== null && riichiSoftAutoHandTurnRef\.current === turnKey\) return;/);
+    // (W4 수정 커밋 리뷰) 걷을 때 «자동 멈춤» 표시를 남기고 돌아간다
+    expect(fn).toMatch(/if \(turnKey !== null && riichiSoftAutoHandTurnRef\.current === turnKey\) \{\s*setRiichiSoftAutoStopped\(true\);\s*return;\s*\}/);
     // 열쇠는 좌석·국·순·쯔모패 — 다음 순(새 쯔모)에는 다시 걸린다
     const key = between(APP_CODE, "function riichiSoftAutoTurnKey(", "\n}\n");
     expect(key).toContain("r.turnCount");
@@ -191,7 +214,7 @@ describe("interaction-3·lifecycle-3·regression-3 카운트다운과 멈춤이 
 
   it("걸릴 때 live 영역으로 한 번 읽어 준다", () => {
     expect(APP).toMatch(
-      /<div className="sr-only" aria-live="polite" aria-atomic="true">\s*\{riichiSoftAutoAt !== null \? "잠시 뒤 쯔모패를 자동으로 버립니다\. 아무 키나 화면을 누르면 멈춥니다" : ""\}/,
+      /<div className="sr-only" aria-live="polite" aria-atomic="true">\s*\{riichiSoftAutoAt !== null \? "잠시 뒤 쯔모패를 자동으로 버립니다\. 아무 키나 누르거나 화면을 누르면 멈춥니다" : ""\}/,
     );
   });
 });
@@ -215,9 +238,11 @@ describe("lifecycle-4 왕패의 주인 큐 — 전송 실패·순 경계에서 �
   });
 
   it("확정한 순이 아닌 프롬프트에는 싣지 않는다", () => {
-    expect(hook).toMatch(/if \(dwQueueTurnRef\.current !== view\.round\.turnCount\) \{\s*setDwQueue\(\[\]\);\s*return;\s*\}/);
+    // (W4 수정 커밋 리뷰) turnCount 는 친의 쯔모 수라 내 다음 차례에도 같을 수 있다 — 내 버림 수를 붙인 열쇠
+    expect(hook).toMatch(/if \(dwQueueTurnRef\.current !== dwTurnKey\) \{\s*setDwQueue\(\[\]\);\s*return;\s*\}/);
     const confirm = between(APP_CODE, "const dwConfirm = (): void => {", "\n  };");
-    expect(confirm.indexOf("dwQueueTurnRef.current = view.round.turnCount;")).toBeLessThan(confirm.indexOf("setDwQueue(dwPairs);"));
+    expect(confirm.indexOf("dwQueueTurnRef.current = dwTurnKey;")).toBeGreaterThan(-1);
+    expect(confirm.indexOf("dwQueueTurnRef.current = dwTurnKey;")).toBeLessThan(confirm.indexOf("setDwQueue(dwPairs);"));
   });
 
   it("국 경계 비우기는 그대로다 (알려진 문제 4)", () => {
@@ -228,7 +253,49 @@ describe("lifecycle-4 왕패의 주인 큐 — 전송 실패·순 경계에서 �
 describe("regression-5 도킹 패널 왕패 칸 — 터치에서 틈까지 닿게", () => {
   it("(pointer: coarse) 에서 ::after 껍데기로 칸 사이 틈을 메운다(빈 칸 제외)", () => {
     expect(CSS).toMatch(
-      /@media \(pointer: coarse\) \{\s*\.dw-dock \.aug-pick-tile \{ position: relative; \}\s*\.dw-dock \.aug-pick-tile:not\(\.aug-pick-tile-spent\)::after \{\s*content: "";\s*position: absolute;\s*inset: -1px;/,
+      /@media \(pointer: coarse\) \{\s*\.dw-dock \.aug-pick-tile \{ position: relative; \}\s*\.dw-dock \.aug-pick-tile:not\(\.aug-pick-tile-spent\)::after \{\s*content: "";\s*position: absolute;\s*(?:\/\*[\s\S]*?\*\/\s*)?inset: -2px;/,
     );
+  });
+});
+
+describe("W4 수정 커밋 리뷰 — 목록 안이라도 이번 순에 묶이면 멈춘다 (실제로 돌려 본다)", () => {
+  it("스파이 후보가 쯔모패 자체면 멈추고, 다른 장이면 건다", () => {
+    const spy = (tileId: number) => ({ player: "p0", options: [tsumogiri, { type: "spy_mark", payload: { tileId } }] });
+    expect(riichiSoftAutoOption(spy(DRAWN), view)).toBeNull();
+    expect(riichiSoftAutoOption(spy(DRAWN + 1), view)).toBe(tsumogiri);
+  });
+
+  it("밑장빼기가 이번 순의 결정이면 멈춘다", () => {
+    expect(riichiSoftAutoOption(prompt("bottom_deal"), { ...view, bottomDecisive: true })).toBeNull();
+    expect(riichiSoftAutoOption(prompt("bottom_deal", "cancel_riichi"), { ...view, bottomDecisive: true })).toBeNull();
+    expect(riichiSoftAutoOption(prompt("bottom_deal"), view)).toBe(tsumogiri);
+  });
+
+  const handView = (wallVisible: number[], hidden: number, bottomKind: Kind) => ({
+    playerId: "p0",
+    players: [{ id: "p0" }],
+    round: { byPlayer: { p0: { meldCount: 0 } } },
+    zones: {
+      wall: { tileIds: wallVisible, hiddenCount: hidden },
+      // 쯔모패(77) + 13장
+      "hand:p0": { tileIds: [77, ...Array.from({ length: 13 }, (_v, i) => 100 + i)] },
+    },
+    tiles: {
+      ...Object.fromEntries(Array.from({ length: 13 }, (_v, i) => [100 + i, { kind: { suit: "man", rank: 1 } }])),
+      77: { kind: { suit: "pin", rank: 9 } },
+      ...Object.fromEntries(wallVisible.map((id) => [id, { kind: bottomKind }])),
+    },
+  });
+
+  it("bottomDealDecisive — 밑장이 내 대기패면 결정, 아니면 아니다", () => {
+    const five = { suit: "sou", rank: 5 };
+    expect(bottomDealDecisive([five])(handView([201, 202, 203], 40, five), 77)).toBe(true);
+    expect(bottomDealDecisive([{ suit: "sou", rank: 6 }])(handView([201, 202, 203], 40, five), 77)).toBe(false);
+  });
+
+  it("bottomDealDecisive — 패산이 4장 이하면 결정, 대기를 못 세면 결정(fail-closed)", () => {
+    const five = { suit: "sou", rank: 5 };
+    expect(bottomDealDecisive([])(handView([201, 202, 203], 1, five), 77)).toBe(true);
+    expect(bottomDealDecisive("throw")(handView([201, 202, 203], 40, five), 77)).toBe(true);
   });
 });

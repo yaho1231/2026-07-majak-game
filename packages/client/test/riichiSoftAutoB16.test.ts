@@ -101,7 +101,8 @@ describe("B16 예약 — 자동응답과 같은 타이머 맵을 쓰고 프롬�
   });
 
   it("끊겨 있으면 소리·진동·토스트 없이 프롬프트만 남긴다 (리뷰 라운드 2)", () => {
-    const guard = fn.indexOf("if (wsRef.current?.readyState !== WebSocket.OPEN) return;");
+    // (W4 수정 커밋 리뷰) 끊겨 멈춘 것도 «자동 멈춤»으로 보인다 — 가드가 블록이 됐다
+    const guard = fn.indexOf("if (wsRef.current?.readyState !== WebSocket.OPEN) {");
     expect(guard).toBeGreaterThan(0);
     expect(fn.indexOf("sfx.discard();")).toBeGreaterThan(guard);
     expect(fn.indexOf("haptics.discard();")).toBeGreaterThan(guard);
@@ -201,5 +202,48 @@ describe("B16 표시 — 쯔모패 위 게이지", () => {
   it("게이지는 --soft-auto-ms 동안 한 번 줄어든다", () => {
     expect(CSS).toMatch(/\.hand-soft-auto \{[^}]*animation: soft-auto-drain var\(--soft-auto-ms, 2000ms\) linear forwards;/);
     expect(CSS).toMatch(/@keyframes soft-auto-drain \{\s*from \{ transform: scaleX\(1\); \}\s*to \{ transform: scaleX\(0\); \}/);
+  });
+});
+
+describe("W4 수정 커밋 리뷰 — 허용 목록 안이라도 이번 순에 묶이면 멈춘다", () => {
+  const fn = between(APP_CODE, "function riichiSoftAutoOption(", "\n}\n");
+  const list = between(APP_CODE, "const RIICHI_SOFT_AUTO_OK_TYPES", "]);");
+
+  it("일확천금은 첫 순 한정이라 목록에서 뺐다(리치 중에는 설 수 없다)", () => {
+    expect(list).not.toContain('"jackpot_roll"');
+    // 결정적 액티브는 목록에 없다(fail-closed)
+    for (const t of ["grave_rob", "alchemy", "tile_dye", "rinshan_arrange", "foresight_order", "bloom_pick", "copy_take", "greed_use", "conjure_tsumo"]) {
+      expect(list, t).not.toContain(`"${t}"`);
+    }
+  });
+
+  it("스파이 후보가 쯔모패 자체면 멈춘다 — 그 종류가 손에 한 장뿐이다", () => {
+    expect(fn).toMatch(/o\.type === "spy_mark" && \(o\.payload as \{ tileId\?: unknown \}\)\?\.tileId === drawn\) return null;/);
+  });
+
+  it("밑장빼기가 이번 순의 결정(밑장이 대기패·패산 4장 이하)이면 멈춘다", () => {
+    expect(fn).toContain('if (o.type === "bottom_deal" && bottomDealDecisive(view, drawn)) return null;');
+    const dec = between(APP_CODE, "function bottomDealDecisive(", "\n}\n");
+    expect(dec).toMatch(/visible\.length \+ \(wall\?\.hiddenCount \?\? 0\) <= 4\) return true;/);
+    expect(dec).toContain("visible[visible.length - 1]");
+    expect(dec).toContain("winningKinds(");
+    // 셀 수 없으면 결정으로 본다
+    expect(dec).toMatch(/catch \{\s*return true;\s*\}/);
+  });
+
+  it("멈춘 경로에도 «자동 멈춤» 표시를 남긴다 — 같은 순 재무장 금지·끊김", () => {
+    const tr = between(APP_CODE, "function tryRiichiSoftAuto(", "\n  }\n");
+    expect(tr).toMatch(/riichiSoftAutoHandTurnRef\.current === turnKey\) \{\s*setRiichiSoftAutoStopped\(true\);\s*return;/);
+    expect(tr).toMatch(/readyState !== WebSocket\.OPEN\) \{\s*setRiichiSoftAutoStopped\(true\);\s*return;/);
+  });
+
+  it("관리자 일시정지는 소프트 자동을 걷는다", () => {
+    const pause = between(APP_CODE, 'msg.type === "gamePaused"', "pausedAt.current =");
+    expect(pause).toContain("cancelRiichiSoftAuto();");
+  });
+
+  it("왕패의 주인 큐의 순 경계는 turnCount 에 내 버림 수를 붙여 판정한다", () => {
+    expect(APP_CODE).toContain("const dwTurnKey = `${view.round.turnCount}|${view.zones[`discards:${view.playerId}`]?.tileIds.length ?? 0}`;");
+    expect(APP_CODE).toContain("if (dwQueueTurnRef.current !== dwTurnKey) {");
   });
 });

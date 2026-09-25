@@ -1470,8 +1470,10 @@ const DRAG_DISCARD_ARM_TYPES = new Set([
  * 묶이지 않고, 손패·화료를 바꾸지 않으며, 다음 순에 눌러도 잃는 것이 없다:
  * 승부수(cancel_riichi)·밑장빼기·삼세 예지·예지 발동(공개만 — 뒤따르는 재배열은 목록 밖)·
  * 이면투시 발동·찬탈자·늪, 그리고 정보·선언·지목형(천리안·지뢰 탐지·투시·선언 간파·카르마·
- * 시간 정지·천하무적·일확천금·함구령·안개·박무·도라의 잔상·재장전·무장해제·스파이·덤터기·기생충·
- * 등 떠밀기). 첫 순 한정(sign_flip_use·blood_contract_declare)은 리치 중에 설 수 없어 넣지 않는다.
+ * 시간 정지·천하무적·함구령·안개·박무·도라의 잔상·재장전·무장해제·스파이·덤터기·기생충·
+ * 등 떠밀기). 첫 순 한정(sign_flip_use·blood_contract_declare·jackpot_roll)은 리치 중에 설 수 없어 넣지 않는다.
+ * 목록 안이라도 **이번 순에 묶이는 경우**는 `riichiSoftAutoOption`이 따로 멈춘다 — 스파이 후보가 쯔모패
+ * 자체일 때, 밑장빼기로 당길 밑장이 내 대기패이거나 패산이 거의 바닥났을 때(W4 수정 커밋 리뷰).
  */
 const RIICHI_SOFT_AUTO_OK_TYPES: ReadonlySet<string> = new Set([
   "cancel_riichi",
@@ -1488,7 +1490,6 @@ const RIICHI_SOFT_AUTO_OK_TYPES: ReadonlySet<string> = new Set([
   "karma_burn",
   "time_stop_use",
   "invincible_guard",
-  "jackpot_roll",
   "call_seal_use",
   "declare_fog",
   "declare_brief_fog",
@@ -1550,10 +1551,51 @@ function riichiSoftAutoOption(
       continue;
     }
     if (!AUGMENT_ACTION_TYPES.has(o.type) || !RIICHI_SOFT_AUTO_OK_TYPES.has(o.type)) return null;
+    // 스파이 — 서버는 종류마다 첫 장만 후보로 낸다. 후보가 곧 쯔모패면 그 종류는 손에 이 한 장뿐이라,
+    // 쯔모기리하면 그 종류를 지정할 기회가 영영 사라진다(spy.ts «tile not in hand»)
+    if (o.type === "spy_mark" && (o.payload as { tileId?: unknown })?.tileId === drawn) return null;
+    // 밑장빼기 — 당길 밑장이 내 대기패면 누르는 것이 곧 쯔모 화료다. 패산이 거의 바닥났으면 이번이
+    // 마지막 기회일 수 있다(W4 수정 커밋 리뷰)
+    if (o.type === "bottom_deal" && bottomDealDecisive(view, drawn)) return null;
     augs += 1;
   }
   // 증강이 하나도 없으면 서버가 이미 대신 버렸다(auto) — 여기 올 일이 없지만 겹쳐 걸지 않는다
   return augs > 0 ? discard : null;
+}
+
+/**
+ * 리치 중 밑장빼기가 **이번 순의 결정**인가 — 소프트 자동 쯔모기리가 덮으면 안 되는 경우.
+ * - 패산이 4장 이하: 한 바퀴 뒤에는 밑장이 남에게 가거나 국이 끝난다.
+ * - 보유자에게 보이는 맨 밑장(패산 줄 오른쪽 끝 = 예약하면 다음에 가져올 패)이 지금 내 대기패다.
+ * 대기를 셀 수 없으면(모양 계산 실패) 결정으로 본다 — 자동 타패는 모르면 멈춘다(fail-closed).
+ */
+function bottomDealDecisive(view: PlayerView, drawn: number): boolean {
+  const wall = view.zones["wall"];
+  const visible = wall?.tileIds ?? [];
+  if (visible.length + (wall?.hiddenCount ?? 0) <= 4) return true;
+  const bottomId = visible[visible.length - 1];
+  const bottom = bottomId !== undefined ? view.tiles[bottomId]?.kind : undefined;
+  if (bottom === undefined) return false;
+  const me = view.players.find((p) => p.id === view.playerId);
+  const full = (view.zones[`hand:${view.playerId}`]?.tileIds ?? [])
+    .map((id) => view.tiles[id]?.kind)
+    .filter((k): k is TileKind => k !== undefined);
+  const rest = (view.zones[`hand:${view.playerId}`]?.tileIds ?? [])
+    .filter((id) => id !== drawn)
+    .map((id) => view.tiles[id]?.kind)
+    .filter((k): k is TileKind => k !== undefined);
+  if (rest.length % 3 !== 1) return true;
+  try {
+    const waits = winningKinds(
+      rest,
+      view.round.byPlayer[view.playerId]?.meldCount ?? 0,
+      undefined,
+      waitDecompOptions(me, view, full),
+    );
+    return waits.some((k) => k.suit === bottom.suit && k.rank === bottom.rank);
+  } catch {
+    return true;
+  }
 }
 
 /**
@@ -5023,7 +5065,11 @@ export function App(): JSX.Element {
     const seat = p.player;
     // 이 순에 사람이 이미 증강을 썼다 — 뒤따르는 프롬프트(예지 재배열 등)는 그 사람이 마저 둔다
     const turnKey = riichiSoftAutoTurnKey(prevViewRef.current, seat);
-    if (turnKey !== null && riichiSoftAutoHandTurnRef.current === turnKey) return;
+    // 멈춘 줄 모르고 기다리지 않게 «자동 멈춤 · 직접 버리세요»를 남긴다(W4 수정 커밋 리뷰)
+    if (turnKey !== null && riichiSoftAutoHandTurnRef.current === turnKey) {
+      setRiichiSoftAutoStopped(true);
+      return;
+    }
     scheduleAutoRespond(
       seat,
       () => {
@@ -5037,7 +5083,10 @@ export function App(): JSX.Element {
         // 끊겨 있으면 조용히 프롬프트만 남긴다 — send()는 실패를 «다시 연결된 뒤에 눌러 주세요»로
         // 알리는데, 이건 사람이 누른 게 아니다. 버림 소리·진동도 나가지 않은 버림에 울리면 거짓말이다
         // (autoDiscard는 프롬프트를 접는 즉시 자동이라 그대로 둔다. B16 리뷰 라운드 2)
-        if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+        if (wsRef.current?.readyState !== WebSocket.OPEN) {
+          setRiichiSoftAutoStopped(true);
+          return;
+        }
         sfx.discard();
         haptics.discard();
         rememberOwnDiscard(disc.payload);
@@ -6202,6 +6251,11 @@ export function App(): JSX.Element {
     }
     if (msg.type === "gamePaused") {
       if (msg.paused) {
+        // 정지 중에 2초 타이머가 터져 쯔모기리가 나가지 않게 — 재개 뒤에는 사람이 직접 둔다(W4 수정 커밋 리뷰)
+        if (riichiSoftAutoRef.current !== null) {
+          cancelRiichiSoftAuto();
+          setRiichiSoftAutoStopped(true);
+        }
         pausedAt.current = { epoch: Date.now(), perf: performance.now() };
         setPause({
           ...(msg.reason !== undefined ? { reason: msg.reason } : {}),
@@ -8800,7 +8854,7 @@ export function App(): JSX.Element {
           전부 이 큐를 지나므로, 여기 한 곳만 live로 열어 두면 게임 사건 전체가 들린다. */}
       {/* 리치 소프트 자동 쯔모기리 — 걸릴 때 한 번 읽어 준다(게이지·글은 aria-hidden, W4 통합 리뷰 regression-3) */}
       <div className="sr-only" aria-live="polite" aria-atomic="true">
-        {riichiSoftAutoAt !== null ? "잠시 뒤 쯔모패를 자동으로 버립니다. 아무 키나 화면을 누르면 멈춥니다" : ""}
+        {riichiSoftAutoAt !== null ? "잠시 뒤 쯔모패를 자동으로 버립니다. 아무 키나 누르거나 화면을 누르면 멈춥니다" : ""}
       </div>
       <div className="sr-only" aria-live="polite" aria-atomic="true">
         {activeProd !== null
@@ -17034,12 +17088,17 @@ function useSelection(
    * 사이 서버가 시간 초과로 순을 넘기면 다음 내 차례에 지시하지 않은 교환이 나갔다
    * (W4 통합 리뷰 lifecycle-4).
    */
-  const dwQueueTurnRef = useRef<number | null>(null);
+  const dwQueueTurnRef = useRef<string | null>(null);
+  /*
+   * «내 이 순»의 열쇠 — `turnCount`는 친이 쯔모한 횟수라 후로로 친의 쯔모가 건너뛰면 내 다음 차례에도
+   * 같은 값이다. 내 버림 수를 붙이면 내가 한 번 버린 뒤로는 반드시 달라진다(W4 수정 커밋 리뷰).
+   */
+  const dwTurnKey = `${view.round.turnCount}|${view.zones[`discards:${view.playerId}`]?.tileIds.length ?? 0}`;
   useEffect(() => {
     if (dwQueue.length === 0) return;
     if (myPrompt === null) return;
     if (dwSentPromptRef.current === myPrompt) return; // 이 프롬프트에는 이미 보냈다
-    if (dwQueueTurnRef.current !== view.round.turnCount) {
+    if (dwQueueTurnRef.current !== dwTurnKey) {
       setDwQueue([]);
       return;
     }
@@ -17142,7 +17201,7 @@ function useSelection(
   // 있다는 것 자체가 강제 선택 중이 아니라는 뜻이다(강제 선택이 시작되면 위 effect가 무장을 걷는다)
   const dwConfirm = (): void => {
     if (armedType !== "dw_swap" || dwPairs.length === 0) return;
-    dwQueueTurnRef.current = view.round.turnCount;
+    dwQueueTurnRef.current = dwTurnKey;
     setDwQueue(dwPairs);
     setArmedType(null);
     clearDw();
