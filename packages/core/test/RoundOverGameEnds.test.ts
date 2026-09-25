@@ -233,19 +233,19 @@ describe("roundOver.gameEnds — 마지막 국 결과창은 종국을 안다", (
   }, 30_000);
 });
 
-describe("끝나는 판은 중반 드래프트를 열지 않는다 (W5 통합 리뷰 regression-1)", () => {
+describe("드래프트가 열릴 국은 종국을 확답하지 않는다 (W5 통합 리뷰 regression-1 · docs/59 §6 U77-순서)", () => {
   // 동풍전(maxWind 1)·서입 없음에서 동4국 자화(p0, 오야는 p3)로 국이 남1국으로 넘어가면 그 자리에서
-  // 끝난다(normal). 그런데 남1국 진입은 southEntry 드래프트의 트리거이기도 하다 — 예전에는 결과창이
-  // «최종 결과 보기»라 한 뒤 증강 선택창이 떴다.
-  it("preEnd가 있으면 트리거 국이어도 드래프트 없이 끝나고 결과창 표식과 사유가 같다", async () => {
+  // 끝난다(normal). 그런데 남1국 진입은 southEntry 드래프트의 트리거이기도 하다. 순서(드래프트 →
+  // 종국 판정)는 사용자 확인 전이라 그대로 두고, 결과창에 «최종 결과»를 싣지 않아 거짓 안내만 막는다.
+  it("끝나는 판이어도 드래프트는 그대로 열리고, 그 국의 roundOver에는 gameEnds가 없다", async () => {
     const { roundOvers, reason, drafts } = await resumeFrom(
       dealerTsumoState(1, 4, { p0: 25000, p1: 25000, p2: 25000, p3: 25000 }, 3),
       { dobi: false, maxWind: 1, westEntry: false, draftSchedules: ["southEntry"] },
     );
     expect(roundOvers).toHaveLength(1);
     expect(reason).toBe("normal");
-    expect(drafts, "끝나는 판에서 드래프트가 열렸다").toEqual([]);
-    expectOnlyLastEnds(roundOvers, reason);
+    expect(drafts, "순서 변경은 사용자 확인 전 — 드래프트는 열린다").toEqual(["southEntry"]);
+    expect(roundOvers[0]!.gameEnds, "드래프트가 열릴 국에서 종국을 확답했다").toBeUndefined();
   }, 30_000);
 
   it("끝나지 않는 판이면 같은 트리거에서 드래프트가 그대로 열린다", async () => {

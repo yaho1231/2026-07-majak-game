@@ -1410,7 +1410,18 @@ export class HanchanController {
         this.config.dobi && game.engine.state.players.some((p) => p.score < 0)
           ? "dobi"
           : this.endReason(game.engine.state, game.engine.rules, played);
-      this.notifyRoundOver(game, outcome, ura, willEnd);
+      /*
+       * 이번 국 뒤에 중반 드래프트가 열리면 결과창에 종국을 **확답하지 않는다**. 순서는 «드래프트 →
+       * 종국 판정» 그대로다 — 끝나는 판에서 드래프트를 건너뛸지는 규칙 흐름 변경이라 사용자 확인
+       * 전이다(docs/59 §6 U77-순서). 그 순서를 두고 «최종 결과 보기»를 실으면 결과창 뒤에 증강
+       * 선택창이 뜨는 거짓말이 된다(W5 통합 리뷰 regression-1). 실제로 겹치는 건 판 중간의 즉시
+       * 우승(문턱)뿐이고, 토비는 드래프트 전에 끝나므로 그대로 싣는다.
+       */
+      const draftPending = (this.config.draftSchedules ?? []).some((stage) => {
+        const trigger = MID_DRAFT_TRIGGER[stage];
+        return trigger !== undefined && !this.draftedStages.has(stage) && trigger(game.engine.state.round);
+      });
+      this.notifyRoundOver(game, outcome, ura, willEnd === "dobi" || !draftPending ? willEnd : null);
 
       // 결과 화면을 볼 시간을 준다 (다음 국이 결과보다 먼저 뜨는 문제 방지)
       await this.pauseBetweenRounds();
@@ -1440,13 +1451,11 @@ export class HanchanController {
       // 중반 드래프트 진입 체크 (드래프트) — 스테이지당 1회만.
       // 반장전=동3·남1·남3국 진입, 동풍전=동3·동4국 진입. 연장(본장)으로
       // 라운드 번호가 유지돼도 재추첨하지 않는다(draftedStages 가드).
-      // 이미 끝나는 판(preEnd)이면 드래프트를 열지 않는다 — 결과창이 «최종 결과 보기»라고
-      // 한 뒤에 증강 선택창이 뜨는 거짓말이 되고, 끝나는 판에서 받은 증강은 쓸 데도 없다
-      // (2026-09-25 W5 통합 리뷰 regression-1). 드래프트는 종국 판정을 «끝남 → 안 끝남»으로
-      // 되돌리지 못하므로(문턱·점수·국 수 판정뿐), 건너뛰어도 종국 결과는 그대로다.
+      // 끝나는 판(preEnd)이어도 드래프트는 연다 — 순서 변경은 사용자 확인 전(docs/59 §6 U77-순서).
+      // 그 대신 위에서 드래프트가 열릴 국의 roundOver에는 종국을 싣지 않았다.
       const round = game.engine.state.round;
       let drafted = false;
-      for (const stage of preEnd === null ? this.config.draftSchedules ?? [] : []) {
+      for (const stage of this.config.draftSchedules ?? []) {
         const trigger = MID_DRAFT_TRIGGER[stage];
         if (trigger !== undefined && !this.draftedStages.has(stage) && trigger(round)) {
           await this.runDraft(game, stage);
@@ -1468,10 +1477,10 @@ export class HanchanController {
         // 순서(드래프트 → 판정)의 결과를 그대로 지키기 위해서다. 드래프트와 종국 판정의
         // 순서 자체는 사용자 확인 전이라 건드리지 않는다(docs/59 §6 U77-순서).
         // ⚠ 알려진 틈: 그래서 드래프트가 열린 국에서는 이미 보낸 roundOver.gameEnds와 실제
-        // 종국이 어긋날 수 있다 — 결과창은 «다음 국으로»라 했는데 드래프트에서 새로 받은
-        // 문턱으로 여기서 끝나는 쪽 하나만 남았다(반대쪽 «끝난다 → 드래프트 → 계속»은 위에서
-        // preEnd가 있으면 드래프트를 열지 않아 막았다, W5 통합 리뷰 regression-1). 순서가
-        // 정해지기 전까지는 고칠 수 없어 QA에서 보이도록 로그만 남긴다 (2026-09-25 B18 리뷰).
+        // 종국이 어긋날 수 있다 — 드래프트가 열린 국은 roundOver에 종국을 싣지 않았으므로
+        // 결과창은 «다음 국으로»라 했는데 여기서 끝나는 쪽만 남는다(«최종 결과»라 한 뒤 계속되는
+        // 쪽은 생기지 않는다, W5 통합 리뷰 regression-1). 순서가 정해지기 전까지는 고칠 수 없어
+        // QA에서 보이도록 로그만 남긴다 (2026-09-25 B18 리뷰).
         const reason = drafted
           ? this.endReason(game.engine.state, game.engine.rules, played)
           : preEnd;
