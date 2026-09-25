@@ -8882,6 +8882,13 @@ button {
 .meld-armable.meld-unpickable:focus-visible {
   outline-color: #fff;
 }
+/* 가깡 고르기(docs/59 U56)에서 붙이려고 누른 퐁 — 손패의 «고른 패»처럼 눌린 채로 선다. 맥동을 멈춰
+   아직 고를 수 있는 다른 퐁(맥동)과 가른다(2026-09-25, B17 리뷰 R2) */
+.meld-armable.meld-call-on {
+  background: rgba(199, 188, 255, 0.4);
+  outline-color: #fff;
+  animation: none;
+}
 
 /* ── 바닥 **전체**가 클릭 대상 (누명: «이 상대의 바닥에 놓는다») ──────────────
    특정 버림패가 아니라 바닥 자체가 목적지다. wrap 의 pointer-events 를 되살리고

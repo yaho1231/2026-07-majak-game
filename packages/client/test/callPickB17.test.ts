@@ -19,6 +19,7 @@ import {
   callPickRemaining,
   callPickSigs,
   resolveCallPick,
+  resolveCallPickMeld,
   sameCallChoice,
 } from "../src/callPick.js";
 import type { CallPick } from "../src/callPick.js";
@@ -126,6 +127,36 @@ describe("U56 좁히기 규칙 (src/callPick.ts)", () => {
     ];
     expect(sameCallChoice(v, kan[0]!, kan[1]!)).toBe(false);
     expect(resolveCallPick(v, pickOf(v, "shouminkan", kan), 1)).toEqual({ picks: [1], submit: null });
+  });
+
+  it("가깡 — 붙일 퐁을 누르면 정해진다(퐁 선택, 리뷰 R2). 다시 누르면 푼다", () => {
+    const v = viewOf({ 1: m(5) }, { 10: m(5), 11: m(5), 12: m(5), 20: m(5), 21: m(5), 22: m(5) });
+    const kan = [
+      opt("shouminkan", { tileId: 1, targetMeldTileId: 10 }),
+      opt("shouminkan", { tileId: 1, targetMeldTileId: 20 }),
+    ];
+    expect(resolveCallPickMeld(v, pickOf(v, "shouminkan", kan), [20, 21, 22])).toEqual({ meld: 20, submit: kan[1] });
+    // 손패를 먼저 눌렀어도 퐁 한 번이면 정해진다
+    expect(resolveCallPickMeld(v, pickOf(v, "shouminkan", kan, [1]), [10, 11, 12])?.submit).toBe(kan[0]);
+    // 붙일 수 없는 후로는 대상이 아니다
+    expect(resolveCallPickMeld(v, pickOf(v, "shouminkan", kan), [30, 31, 32])).toBeNull();
+    // 치·퐁 고르기에서는 후로가 대상이 아니다
+    expect(resolveCallPickMeld(v, pickOf(v, "pon", kan), [10, 11, 12])).toBeNull();
+    const on = { ...pickOf(v, "shouminkan", kan), meld: 10 };
+    expect(resolveCallPickMeld(v, on, [10, 11, 12])).toEqual({ meld: null, submit: null });
+  });
+
+  it("가깡 — 한 퐁에 일반 5·적5가 둘 다 붙으면 퐁을 고른 채 손패로 좁힌다", () => {
+    const v = viewOf({ 1: m(5), 2: m(5, true) }, { 10: m(5), 11: m(5), 12: m(5) });
+    const kan = [
+      opt("shouminkan", { tileId: 1, targetMeldTileId: 10 }),
+      opt("shouminkan", { tileId: 2, targetMeldTileId: 10 }),
+    ];
+    expect(resolveCallPickMeld(v, pickOf(v, "shouminkan", kan), [10, 11, 12])).toEqual({ meld: 10, submit: null });
+    const withMeld: CallPick = { ...pickOf(v, "shouminkan", kan), meld: 10 };
+    expect(resolveCallPick(v, withMeld, 2)?.submit).toBe(kan[1]);
+    expect(callPickRemaining(v, kan, [], 10)).toEqual(kan);
+    expect(callPickRemaining(v, kan, [], 99)).toEqual([]);
   });
 
   it("쓰는 패가 손에 없으면 서명을 만들지 않는다 — 묶지 않고 제 버튼으로 남는다", () => {
@@ -285,6 +316,43 @@ describe("U56 손패 — 후보에 쓰이는 패만 밝히고, 클릭은 타패�
 
   it("튜토리얼 후로 강의가 새 흐름을 말한다", () => {
     expect(TUTORIAL).toContain("치·퐁을 누른 뒤 함께 쓸 손패를 고르세요");
+  });
+});
+
+describe("B17 리뷰 R2 — 고르는 중의 곁길", () => {
+  it("가깡 고르기에서 내 퐁 후로가 버튼이 되고, 후로 줄이 대상 영역이다", () => {
+    expect(OWN).toContain('const meldPicking = callPicking && sel.callPick?.type === "shouminkan";');
+    expect(OWN).toContain('{...(meldPicking ? { "data-arm-zone": "1" } : {})}');
+    const at = OWN.indexOf("if (meldPicking && sel.callPick !== null) {");
+    expect(at).toBeGreaterThan(-1);
+    const branch = OWN.slice(at, OWN.indexOf('if (sel.armMode !== "own-meld") {', at));
+    expect(branch).toContain("if (sel.callPickMeldClick(m.tileIds)) {");
+    expect(branch).toContain('data-arm-zone="1"');
+    // 빗나감은 풀지 않고 까닭만(원칙 7)
+    expect(branch).toContain("props.onToast?.(`이 후로에는 ${callPickName}할 수 없습니다`);");
+    expect(branch).not.toContain("cancelCallPick");
+    expect(SELECTION).toContain("const r = resolveCallPickMeld(view, callPick, meldTileIds);");
+    expect(CSS).toContain(".meld-armable.meld-call-on {");
+    expect(OWN).toContain("<>{callPickName}: 붙일 퐁이나 손패를 클릭하세요</>");
+  });
+
+  it("고르는 중에는 손패 드래그를 막는다 — 탭이 재정렬·끌어 버리기로 새지 않게", () => {
+    const bd = OWN.slice(OWN.indexOf("function beginDrag("), OWN.indexOf("const container = handRef.current;"));
+    expect(bd).toContain("if (callPicking) return;");
+  });
+
+  it("고르는 중 리치 무리의 툴팁은 숫자를 적지 않는다 — 1..N은 칩 차지다", () => {
+    expect(BAR).toContain('const riichiHotTip = (hot: number): string => (pickingHere ? "" : ` (단축키 ${hot})`);');
+    expect(BAR).toContain("title={`리치${riichiHotTip(1)}`}");
+    expect(BAR).toContain("title={`${title}${riichiHotTip(hot)}`}");
+    expect(BAR).toContain("두 번 눌러 확정${riichiHotTip(hot)}`}");
+  });
+
+  it("판 안 컨트롤(이름표 pill 등)을 눌러 풀려도 조용히 넘기지 않는다", () => {
+    const at = APP_CODE.indexOf("const callPickType = selection.callPick?.type ?? null;");
+    const block = APP_CODE.slice(at, APP_CODE.indexOf("const onKey = ", at));
+    expect(block).toContain("selection.cancelCallPick();\n      props.onToast?.(`${name} 고르기를 취소했습니다`);");
+    expect(block).not.toContain("onControl");
   });
 });
 

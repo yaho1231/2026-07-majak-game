@@ -47,6 +47,18 @@ export interface CallPick {
    * 에서 키보드로 특정 후보를 고르는 길이다 — 누르기 전에는 null. 손패를 눌러 후보가 바뀌면 다시 null.
    */
   cursor: number | null;
+  /**
+   * 가깡: 누른 **내 퐁 후로**의 대표 패 id(payload.targetMeldTileId와 같은 값). 가깡이 무엇을 할지는
+   * «어느 퐁에 붙이나»라 판의 실물 퐁을 눌러 고른다(docs/59 U56 3단계 · §2 원칙 1). 안 눌렀으면 null.
+   * 선택적인 것은 치·퐁에는 없는 축이라서다(없으면 null과 같다).
+   */
+  meld?: number | null;
+}
+
+/** 가깡 후보가 붙는 퐁의 대표 패 id(payload.targetMeldTileId) — 가깡이 아니면 null */
+export function callPickMeldTarget(o: ActionOption): number | null {
+  const t = (o.payload as { targetMeldTileId?: unknown } | undefined)?.targetMeldTileId;
+  return typeof t === "number" ? t : null;
 }
 
 /** 후로 후보가 쓰는 내 손패 id — chi·pon·깡·국사 퐁은 tileIds, 가깡은 손패 한 장(tileId) */
@@ -109,14 +121,16 @@ export function sameCallChoice(view: PlayerView, a: ActionOption, b: ActionOptio
   return rest(a) === rest(b);
 }
 
-/** 누른 패의 서명 멀티셋을 품는 후보만 */
+/** 누른 패의 서명 멀티셋을 품는 후보만 — 가깡에서 퐁을 눌렀으면(meld) 그 퐁에 붙는 후보만 */
 export function callPickRemaining(
   view: PlayerView,
   options: readonly ActionOption[],
   picks: readonly number[],
+  meld: number | null = null,
 ): ActionOption[] {
   const pickSigs = picks.map((id) => callTileSig(view, id) ?? "");
   return options.filter((o) => {
+    if (meld !== null && callPickMeldTarget(o) !== meld) return false;
     const sigs = callPickSigs(view, o);
     return sigs !== null && sigSubset(pickSigs, sigs);
   });
@@ -152,8 +166,45 @@ export function resolveCallPick(
   const on = pick.picks.includes(id);
   if (!on && !callPickArmableIn(view, pick, id)) return null;
   const picks = on ? pick.picks.filter((x) => x !== id) : [...pick.picks, id];
-  const rem = callPickRemaining(view, pick.options, picks);
+  const rem = callPickRemaining(view, pick.options, picks, pick.meld ?? null);
   const head = rem[0];
   const settled = head !== undefined && picks.length > 0 && rem.every((o) => sameCallChoice(view, o, head));
   return { picks, submit: settled ? head : null };
+}
+
+/**
+ * 가깡 고르기에서 이 퐁 후로(meldTileIds)에 붙는 후보 — 누른 손패는 지키고, 앞서 누른 다른 퐁은 무시한다
+ * (다른 퐁을 누르면 그쪽으로 갈아타는 것이라서). 가깡이 아니면 늘 빈 배열이다.
+ */
+export function callPickMeldOptions(
+  view: PlayerView,
+  pick: CallPick,
+  meldTileIds: readonly number[],
+): ActionOption[] {
+  if (pick.type !== "shouminkan") return [];
+  return callPickRemaining(view, pick.options, pick.picks).filter((o) => {
+    const t = callPickMeldTarget(o);
+    return t !== null && meldTileIds.includes(t);
+  });
+}
+
+/**
+ * 퐁 후로 한 벌을 누른 결과(가깡 고르기) — 대상이 아니면 null, 아니면 새 퐁 선택과 (정해졌다면) 낼 서버 옵션.
+ *
+ * 퐁 둘에 붙을 수 있는 가깡(1만 퐁·9통 퐁에 손패 1만·9통)은 퐁 한 번이면 정해진다. 같은 퐁에 붙는
+ * 손패가 둘로 갈리면(일반 5·적5) 퐁을 고른 채 손패로 좁힌다. 이미 고른 퐁을 다시 누르면 푼다 —
+ * 손패 누르기와 같은 규칙이다. 제출은 손패와 같이 **서버 옵션 객체 그대로**다.
+ */
+export function resolveCallPickMeld(
+  view: PlayerView,
+  pick: CallPick,
+  meldTileIds: readonly number[],
+): { meld: number | null; submit: ActionOption | null } | null {
+  const cur = pick.meld ?? null;
+  if (cur !== null && meldTileIds.includes(cur)) return { meld: null, submit: null };
+  const hit = callPickMeldOptions(view, pick, meldTileIds);
+  const head = hit[0];
+  if (head === undefined) return null;
+  const settled = hit.every((o) => sameCallChoice(view, o, head));
+  return { meld: callPickMeldTarget(head), submit: settled ? head : null };
 }

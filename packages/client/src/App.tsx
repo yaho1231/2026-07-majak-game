@@ -132,9 +132,11 @@ import {
   CALL_PICK_TYPES,
   callPickArmableIn,
   callPickRemaining,
+  callPickMeldOptions,
   callPickSigs,
   callPickTileIds,
   resolveCallPick,
+  resolveCallPickMeld,
   sameCallChoice,
 } from "./callPick.js";
 import type { CallPick } from "./callPick.js";
@@ -2137,6 +2139,8 @@ interface SelectionCtx {
   callPickArmable: (id: number) => boolean;
   /** 손패 누르기 — 고르기/빼기, 하나로 정해지면 그 서버 옵션을 낸다. 대상이 아니면 false */
   callPickClick: (id: number) => boolean;
+  /** 가깡: 내 퐁 후로(패 id들) 누르기 — 고르기/풀기, 정해지면 그 서버 옵션을 낸다. 대상이 아니면 false */
+  callPickMeldClick: (meldTileIds: readonly number[]) => boolean;
   /** 키보드 ←→ — 남은 후보를 하나씩 짚는다(callPick.cursor). 칩이 없는 많은 후보에서 쓴다 */
   stepCallPick: (delta: number) => void;
 }
@@ -2186,6 +2190,7 @@ const NO_SELECTION: SelectionCtx = {
   cancelCallPick: () => {},
   callPickArmable: () => false,
   callPickClick: () => false,
+  callPickMeldClick: () => false,
   stepCallPick: () => {},
 };
 
@@ -16241,7 +16246,10 @@ const GameTable = memo(function GameTable(props: {
   }, [selection.armedType]);
   /*
    * 후로 고르기(docs/59 U56)의 빠져나가기 — 무장과 같은 규칙이다(§2 원칙 7): 펠트의 빈 곳이나 Esc면 풀고
-   * 풀렸다고 말한다. 손패·액션 바(.own-area)와 판 가운데는 data-arm-zone이라 빗나가도 풀리지 않는다.
+   * 풀렸다고 말한다. 대상 영역(data-arm-zone)은 손패·액션 바·안내 줄이 있는 .own-area뿐이다 — 판 가운데·
+   * 강·이름표는 무장 중에만 data-arm-zone이 붙으므로 여기서는 «바깥»이라, 누르면 풀린다. 이름표 pill처럼
+   * 컨트롤을 눌러 풀렸을 때도 조용히 넘기지 않고 알린다: 리액션 도중 증강 설명을 확인하다 고르던 것을
+   * 모르고 잃었다(2026-09-25, B17 리뷰 R2).
    * 무장과 동시에 서지 않으므로(SelectionCtx.callPick) 위 두 리스너와 겹치지 않는다.
    */
   const callPickType = selection.callPick?.type ?? null;
@@ -16253,9 +16261,8 @@ const GameTable = memo(function GameTable(props: {
       const t = e.target as HTMLElement | null;
       if (t === null || tableRef.current?.contains(t) !== true) return;
       if (t.closest("[data-arm-zone]") !== null || t.closest(".icon-btn") !== null) return;
-      const onControl = t.closest("button, [role=button], a, input, select, textarea, label") !== null;
       selection.cancelCallPick();
-      if (!onControl) props.onToast?.(`${name} 고르기를 취소했습니다`);
+      props.onToast?.(`${name} 고르기를 취소했습니다`);
     };
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== "Escape" || e.defaultPrevented || isTypingTarget(e.target)) return;
@@ -16745,6 +16752,8 @@ function useSelection(
     options: ActionOption[];
     picks: number[];
     cursor: number | null;
+    /** 가깡에서 누른 내 퐁(CallPick.meld) */
+    meld: number | null;
   } | null>(null);
 
   const myPrompt = prompt !== null && prompt.player === view.playerId ? prompt : null;
@@ -16842,8 +16851,9 @@ function useSelection(
       type: callPickState.type,
       options: callPickState.options,
       picks: callPickState.picks,
-      remaining: callPickRemaining(view, callPickState.options, callPickState.picks),
+      remaining: callPickRemaining(view, callPickState.options, callPickState.picks, callPickState.meld),
       cursor: callPickState.cursor,
+      meld: callPickState.meld,
     };
   }, [callPickState, myPrompt, view]);
   // 순이 넘어가면(남의 론·퐁, 시간 초과) 고르던 것을 버린다 — 위 prompt 대조가 첫 렌더를 막고, 이건 뒷정리다
@@ -16864,7 +16874,7 @@ function useSelection(
     setFrameTile(null);
     clearDw();
     exitRiichiMode();
-    setCallPickState({ prompt: myPrompt, type, options, picks: [], cursor: null });
+    setCallPickState({ prompt: myPrompt, type, options, picks: [], cursor: null, meld: null });
   };
   const cancelCallPick = (): void => setCallPickState(null);
 
@@ -16886,6 +16896,22 @@ function useSelection(
     }
     // 남은 후보가 바뀌었으니 ←→로 짚던 자리는 버린다(다른 후보를 가리키게 되므로)
     setCallPickState({ ...callPickState, picks: r.picks, cursor: null });
+    return true;
+  };
+  /*
+   * 가깡의 퐁 누르기 — «어느 퐁에 붙이나»는 판의 실물 퐁을 눌러 고른다(docs/59 U56 3단계 · §2 원칙 1).
+   * 손패 한 장이 퐁 둘에 붙을 때 손패만으로는 못 가르던 것을 안내 줄 칩 없이 가른다(2026-09-25, B17 리뷰 R2).
+   * 정해지면 손패 누르기와 같이 서버 옵션 그대로 낸다.
+   */
+  const callPickMeldClick = (meldTileIds: readonly number[]): boolean => {
+    if (callPick === null || callPickState === null) return false;
+    const r = resolveCallPickMeld(view, callPick, meldTileIds);
+    if (r === null) return false;
+    if (r.submit !== null) {
+      submit(r.submit);
+      return true;
+    }
+    setCallPickState({ ...callPickState, meld: r.meld, cursor: null });
     return true;
   };
   /*
@@ -17164,6 +17190,7 @@ function useSelection(
     cancelCallPick,
     callPickArmable,
     callPickClick,
+    callPickMeldClick,
     stepCallPick,
     meldOptionFor,
   };
@@ -23150,6 +23177,8 @@ function OwnArea(props: {
   // 후로 고르기(docs/59 U56) — 액션 바의 묶음 버튼([치 ×3])을 누르면 선다. 관전에는 프롬프트가 없다
   const callPicking = !isSpectator && sel.callPick !== null;
   const callPickName = sel.callPick !== null ? actionLabel(sel.callPick.type, props.catalog) : "";
+  // 가깡 고르기 — 내 퐁 후로도 누를 대상이다(후로 줄의 meldPicking 분기)
+  const meldPicking = callPicking && sel.callPick?.type === "shouminkan";
   /*
    * 후로 고르기 안내 줄의 후보 칩 하나 — 그 후보가 쓰는 손패, 가깡이면 **붙일 퐁**까지 그린다. 가깡 칩이
    * 둘 서는 것은 손패 한 장이 퐁 둘에 붙을 때뿐인데, 손패(payload.tileId)만 그리면 두 칩이 그림도
@@ -24359,6 +24388,12 @@ function OwnArea(props: {
     // 등가교환 교환 중(give·take) — 끌어 버리기가 강제 선택을 건너뛰는 길이 된다(docs/59 U07)
     if (swap3Pending) return;
     if (armedAug !== null && !DRAG_DISCARD_ARM_TYPES.has(armedAug) && armedAug !== "future_exchange") return;
+    /*
+     * 후로 고르기 중에도 막는다 — 고르는 동안 손패 누르기는 «고르기»다(§2 원칙 7). 터치 탭이 조금만
+     * 흔들려도 재정렬 드래그가 되어 그 탭의 고르기 클릭이 삼켜졌고, 내 차례 안깡 고르기에서는
+     * «안깡에 쓰이지 않는 패»로 흐려진 패를 바닥으로 끌어 버릴 수 있었다(2026-09-25, B17 리뷰 R2).
+     */
+    if (callPicking) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
     const container = handRef.current;
     if (container === null) return;
@@ -24732,7 +24767,12 @@ function OwnArea(props: {
                   : undefined
               }
             >
-              {callPickName}: 함께 쓸 손패를 클릭하세요
+              {/* 가깡은 붙일 퐁을 판에서 눌러도 정해진다(후로 줄의 meldPicking) — 한 줄로 말해 폰에서 접히지 않게 */}
+              {meldPicking ? (
+                <>{callPickName}: 붙일 퐁이나 손패를 클릭하세요</>
+              ) : (
+                <>{callPickName}: 함께 쓸 손패를 클릭하세요</>
+              )}
               {sel.callPick.picks.length > 0 ? ` (${sel.callPick.picks.length}장 고름)` : ""}
             </span>
             {/* 후보가 적으면 전부 칩(숫자 1..N), 많으면 ←→로 짚은 하나만 칩(숫자 1) — 키보드로도 특정
@@ -25583,6 +25623,8 @@ function OwnArea(props: {
              읽혀 무장이 풀렸다. 후로 사이를 빗나가도 아무 일도 없게 한다(2026-09-25, docs/59 U25) */
           /* 강제 무장(미래를 보는 자)에서는 후로가 대상이 아니다 — 판 표면의 안내(FORCED_PICK_HINT)가 서게 뺀다 */
           {...(sel.armedType !== null && !FORCED_ARM_TYPES.has(sel.armedType) ? { "data-arm-zone": "1" } : {})}
+          /* 가깡 고르기에서도 이 줄은 대상 영역이다 — 붙일 퐁을 여기서 누른다(아래 meldPicking) */
+          {...(meldPicking ? { "data-arm-zone": "1" } : {})}
           /* 후로 개수 — CSS가 «몇 개를 이 폭에 담아야 하는지»를 알아야 타일 크기를
              줄여 덜 넘치게 할 수 있다(styles.css `.own-corner-right`의 --mt-w).
              북풍 상인의 빼놓은 北도 같은 줄에 서므로 하나로 센다. */
@@ -25593,6 +25635,40 @@ function OwnArea(props: {
           }
         >
           {myMelds.map((m, i) => {
+            if (meldPicking && sel.callPick !== null) {
+              /*
+               * 가깡 — «어느 퐁에 붙이나»를 판의 실물 퐁에서 고른다(docs/59 U56 3단계 · §2 원칙 1). 손패
+               * 한 장이 퐁 둘에 붙을 때 안내 줄 칩의 «→ n번째 후로»를 대조하던 것을 퐁 한 번으로 줄인다
+               * (2026-09-25, B17 리뷰 R2). 붙일 수 없는 후로는 흐리고, 눌러도 고르기는 그대로다(원칙 7).
+               */
+              const on = sel.callPick.meld != null && m.tileIds.includes(sel.callPick.meld);
+              const can = on || callPickMeldOptions(view, sel.callPick, m.tileIds).length > 0;
+              const brief = meldBrief(view, m);
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  className={`meld-armable${can ? "" : " meld-unpickable"}${on ? " meld-call-on" : ""}`}
+                  data-arm-zone="1"
+                  aria-disabled={!can}
+                  aria-pressed={on}
+                  aria-label={can ? `${brief}에 ${callPickName}` : `${brief} (${callPickName}할 수 없음)`}
+                  onClick={() => {
+                    if (sel.callPickMeldClick(m.tileIds)) {
+                      sfx.pick();
+                      return;
+                    }
+                    haptics.reject();
+                    props.onToast?.(`이 후로에는 ${callPickName}할 수 없습니다`);
+                  }}
+                >
+                  <MeldGroup view={view} meld={m} owner={me} layout="row" />
+                  {can ? (
+                    <span className="meld-arm-tag" aria-hidden="true">{on ? "고름" : callPickName}</span>
+                  ) : null}
+                </button>
+              );
+            }
             if (sel.armMode !== "own-meld") {
               return <MeldGroup key={i} view={view} meld={m} owner={me} layout="row" />;
             }
@@ -29417,6 +29493,12 @@ function ActionBar(props: {
   /** 선택지 버튼 앞에 선 리치 계열 버튼 수 — 선택지 버튼의 단축키 번호가 여기서 이어진다 */
   const hotBase = keyed.length - hotButtons.length;
   const hotIndex = (i: number): string => String(hotBase + i + 1);
+  /*
+   * 리치 무리(리치·리치 취소·⚡)의 툴팁 단축키 — 후로 고르기 중에는 바의 숫자가 전부 비고 1..N이
+   * 칩 차지라, «리치 (단축키 1)»을 믿고 1을 누르면 깡 후보가 되돌릴 수 없이 나간다. 그동안은 숫자를
+   * 적지 않는다(2026-09-25, B17 리뷰 R2 — 선택지 버튼의 hotBound와 같은 규칙, docs/59 U57).
+   */
+  const riichiHotTip = (hot: number): string => (pickingHere ? "" : ` (단축키 ${hot})`);
 
   /** ⚡ 증강 리치 버튼 하나 — 평상시와 리치 모드·무장 분기가 같은 모양을 쓴다(U53) */
   const riichiAugButton = (t: string, hot: number, title: string): JSX.Element => {
@@ -29426,7 +29508,7 @@ function ActionBar(props: {
         key={t}
         className="act act-riichi-aug"
         onClick={() => armRiichiAug(t)}
-        title={`${title} (단축키 ${hot})`}
+        title={`${title}${riichiHotTip(hot)}`}
       >
         ⚡ {augActionName(props.catalog, t)}
         {sub !== "" ? <span className="act-target">{sub}</span> : null}
@@ -29623,7 +29705,7 @@ function ActionBar(props: {
           sel.arm(null); // 증강 리치로 무장 중이었다면 풀고 평범한 리치로
           props.onRiichiMode(true);
         }}
-        title="리치 (단축키 1)"
+        title={`리치${riichiHotTip(1)}`}
       >
         리치
       </button>,
@@ -29637,7 +29719,7 @@ function ActionBar(props: {
         className={`act act-riichi-cancel${cancelArmed ? " act-riichi-cancel-armed" : ""}`}
         data-confirm-pending={cancelArmed ? "bar" : undefined}
         onClick={pressCancelRiichi}
-        title={`${augActionName(props.catalog, "cancel_riichi")}: 리치를 취소하고 리치봉을 돌려받습니다. 이 국에는 다시 리치를 걸 수 없습니다. 두 번 눌러 확정 (단축키 ${hot})`}
+        title={`${augActionName(props.catalog, "cancel_riichi")}: 리치를 취소하고 리치봉을 돌려받습니다. 이 국에는 다시 리치를 걸 수 없습니다. 두 번 눌러 확정${riichiHotTip(hot)}`}
       >
         {/* 이름은 증강 이름 하나(§2 원칙 6) — 무엇을 하는지는 부제가 말한다. 첫 탭 뒤에는
             무엇이 남았는지를 본문이 말한다. 리치봉 환급은 title에만 두면 터치에서 안 보인다(U51 리뷰) —
