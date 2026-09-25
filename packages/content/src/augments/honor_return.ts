@@ -35,7 +35,7 @@ import type {
   TileKind,
 } from "@majak/core";
 import { counterOf, matchUses, publishUsesLeft, roundViewKey, viewKey } from "../util.js";
-import { clearViewOnDisarm } from "./disarmBanner.js";
+import { clearViewOnDisarm, isDisarmEcho } from "./disarmBanner.js";
 import { handAlteredKey } from "./handAltered.js";
 import { plan } from "./botPlan.js";
 
@@ -209,7 +209,9 @@ export const honorReturn: AugmentDef = defineAugment({
     // 같은 목적이다. 버림·울기·누명·리치 어느 이벤트로든 값이 바뀔 수 있어 이벤트를 열거하지
     // 않고 `reaction("*")` + 값 비교로 따라간다(ura_peek·three_dragons_will과 같은 방식) —
     // 값이 같으면 아무것도 내지 않으므로 리플레이 이벤트가 늘지 않고 반응 연쇄는 한 겹에서 멈춘다.
-    ctx.reaction("*", (_event, rc) => {
+    ctx.reaction("*", (event, rc) => {
+      // 무장해제 연쇄 안에서 방금 비운 채널을 도로 채우지 않는다(isDisarmEcho 주석)
+      if (isDisarmEcho(ctx, event, [previewKey(holder)])) return;
       const state = rc.state;
       const usable =
         hasUsesLeft(state, holder) &&
@@ -221,7 +223,8 @@ export const honorReturn: AugmentDef = defineAugment({
       if (shown.length === next.length && next.every((k, i) => shown[i] === k)) return;
       rc.emit(augmentDataSet(previewKey(holder), next));
     });
-    // 무장해제되면 위 반응이 멈춰 값이 얼어붙는다 — 쓸 수 없는 능력의 미리보기를 내린다
+    // 무장해제되면 위 반응이 멈춰 값이 얼어붙는다 — 쓸 수 없는 능력의 미리보기를 내린다.
+    // 위 반응의 isDisarmEcho 가드가 있어야 실제로 내려간 채로 남는다.
     clearViewOnDisarm(ctx, () => [previewKey(holder)]);
 
     // 사용 횟수가 남았고 되받을 자패가 있으면 보유자 턴에 발동 후보를 낸다

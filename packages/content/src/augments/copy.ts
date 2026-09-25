@@ -36,7 +36,7 @@ import {
 import type { ActionDef, AugmentContext, AugmentDef, GameState, PlayerId } from "@majak/core";
 import { counterOf, matchUses, publishUsesLeft, roundViewKey, viewKey } from "../util.js";
 import { plan } from "./botPlan.js";
-import { clearViewOnDisarm } from "./disarmBanner.js";
+import { clearViewOnDisarm, isDisarmEcho } from "./disarmBanner.js";
 
 const ID = "copy";
 const ACTION = "copy_take";
@@ -252,7 +252,9 @@ export const copy: AugmentDef = defineAugment({
 
     // 상대별 후보 수(poolViewKey 주석). 값이 같으면 아무것도 내지 않는다 — 증강 목록이
     // 바뀌는 드래프트·카피·국 경계에서만 이벤트가 난다.
-    ctx.reaction("*", (_event, rc) => {
+    ctx.reaction("*", (event, rc) => {
+      // 무장해제 연쇄 안에서 방금 비운 채널을 도로 채우지 않는다(isDisarmEcho 주석)
+      if (isDisarmEcho(ctx, event, [poolViewKey(holder)])) return;
       const state = rc.state;
       const next: Record<string, number> = {};
       for (const p of state.players) {
@@ -263,6 +265,7 @@ export const copy: AugmentDef = defineAugment({
       if (cur !== undefined && JSON.stringify(cur) === JSON.stringify(next)) return;
       rc.emit(augmentDataSet(poolViewKey(holder), next));
     });
+    // 잠기면 지목 후보 수도 내린다 — isDisarmEcho 가드가 있어야 내려간 채로 남는다
     clearViewOnDisarm(ctx, () => [poolViewKey(holder)]);
 
     // 가져올 것이 있는 상대만 후보로 낸다

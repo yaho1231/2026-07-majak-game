@@ -33,10 +33,12 @@
  * 보유자별로 갈린 키뿐이다.
  */
 
-import { AUGMENT_DISARMED, augmentDataSet } from "@majak/core";
+import { AUGMENT_DATA_SET, AUGMENT_DISARMED, augmentDataSet } from "@majak/core";
 import type {
   AugmentContext,
+  AugmentDataSetPayload,
   AugmentDisarmedPayload,
+  GameEvent,
   GameState,
 } from "@majak/core";
 
@@ -58,4 +60,32 @@ export function clearViewOnDisarm(
       rc.emit(augmentDataSet(key, undefined));
     }
   });
+}
+
+/**
+ * `reaction("*")` 로 보유자 뷰 채널을 값 비교 동기화하는 증강이, 무장해제 통보 연쇄 안에서
+ * 방금 {@link clearViewOnDisarm}이 비운 채널을 **도로 채우지 않게** 걸러야 할 이벤트인가.
+ *
+ * 통보는 잠금 목록에 넣기 **전에** 오므로(disarm.ts 순서 계약) 그 연쇄 안에서는 "*"
+ * 리액션이 아직 살아 있다. 비우기(AUGMENT_DATA_SET → undefined)에 "*"가 반응하면
+ * «저장값 ≠ 계산값»이라 곧바로 다시 싣고, 그 직후 잠금이 걸려 그 값이 국 끝까지 얼어붙는다
+ * — 거울(mirror_dora)이 먼저 밟고 머리말에 적어 둔 함정이다. 귀환·짝수의 세계·카피의
+ * 미리보기 채널(docs/59 B18)이 같은 구조로 다시 밟아, 2026-09-25 리뷰에서 잠긴 pill 옆에
+ * 살아 있는 미리보기 칩이 남는 것이 확인됐다. 그래서 ① 나를 잠그는 통보 자체와 ② 내
+ * 채널에 대한 AUGMENT_DATA_SET 에는 반응하지 않는다. ②는 원래도 미리보기 입력이 바뀌는
+ * 이벤트가 아니라 다시 계산할 이유가 없다.
+ */
+export function isDisarmEcho(
+  ctx: AugmentContext,
+  event: GameEvent,
+  keys: readonly string[],
+): boolean {
+  if (event.type === AUGMENT_DISARMED) {
+    const p = event.payload as AugmentDisarmedPayload;
+    return p.augmentId === ctx.augmentId && p.target === ctx.holder;
+  }
+  if (event.type === AUGMENT_DATA_SET) {
+    return keys.includes((event.payload as AugmentDataSetPayload).key);
+  }
+  return false;
 }

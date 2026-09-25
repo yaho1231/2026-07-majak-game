@@ -398,3 +398,55 @@ describe("짝수의 세계 — 변환 미리보기(even_world:preview)", () => {
     expect(writesTo(a, CH)).toBe(before);
   });
 });
+
+// ─────────────────────────── 무장해제 ───────────────────────────
+
+/*
+ * 잠기면 미리보기를 내리고, **내려간 채로 남는다** (2026-09-25 B18 리뷰 라운드 2).
+ *
+ * 통보(AUGMENT_DISARMED)는 잠금 목록에 넣기 전에 오므로 그 연쇄 안에서는 각 증강의
+ * `reaction("*")`가 아직 살아 있다. 가드가 없으면 `clearViewOnDisarm`이 비운 채널을 그
+ * 리액션이 곧바로 다시 싣고, 잠금이 걸린 뒤로는 그 값이 국 끝까지 얼어붙었다 — 보유자
+ * pill에 «🔒 무장해제로 이번 국 잠김»과 살아 있는 미리보기 칩이 나란히 떴다.
+ * `isDisarmEcho` 가드 한 줄을 지우면 아래 «잠근 직후» 단언이 실패한다.
+ */
+describe("무장해제 — 잠기면 미리보기 채널을 내리고 되살리지 않는다", () => {
+  const cases = [
+    { id: "honor_return", ch: "honor_return:preview:p1" },
+    { id: "even_world", ch: "even_world:preview:p1" },
+    { id: "copy", ch: "copy:pool:p1" },
+  ] as const;
+  const isEmpty = (v: unknown): boolean =>
+    v === undefined ||
+    (Array.isArray(v) ? v.length === 0 : Object.keys(v as object).length === 0);
+
+  for (const { id, ch } of cases) {
+    it(id, () => {
+      const base = withAugments(
+        craft({
+          hands: { p0: "123m456m789m123p99p", p1: "1m3m5m7m9m1p3p5p7p9p1s3s5s", p2: "*", p3: "*" },
+          discards: { p1: "5z1z" },
+          phase: "turn.act",
+          turnSeat: 0,
+          drawnLastFor: "p0",
+        }),
+        // p2의 연금술사는 카피가 가져올 후보(0이 아니어야 카피 채널이 비어 있지 않다)
+        { p0: ["disarm"], p1: [id], p2: ["alchemist"] },
+      );
+      const defOf = (aid: string): AugmentDef => C.contentAugments.find((a) => a.id === aid)!;
+      const game = start(
+        base,
+        base.players.flatMap((p) => p.augments.map((aid) => ({ def: defOf(aid), holder: p.id }))),
+      );
+      tick(game, 1);
+      // 대조군 — 잠기기 전에는 실려 있다
+      expect(isEmpty(viewOf(game, "p1")[ch])).toBe(false);
+
+      act(game, "p0", "disarm_lock", { target: "p1", augmentId: id });
+      expect(isEmpty(viewOf(game, "p1")[ch])).toBe(true);
+      // 잠긴 동안 다른 이벤트가 와도 되살아나지 않는다(리액션이 게이트에 꺼져 있다)
+      tick(game, 2);
+      expect(isEmpty(viewOf(game, "p1")[ch])).toBe(true);
+    });
+  }
+});

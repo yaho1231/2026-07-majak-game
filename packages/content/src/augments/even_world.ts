@@ -43,7 +43,7 @@ import { cooldownReady, cooldownUse, roundViewKey, trackRoundSeq } from "../util
 import { handIsPoor } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
 import { handAlteredKey } from "./handAltered.js";
-import { clearViewOnDisarm } from "./disarmBanner.js";
+import { clearViewOnDisarm, isDisarmEcho } from "./disarmBanner.js";
 
 const ID = "even_world";
 const ACTION = "even_world_flip";
@@ -179,7 +179,9 @@ export const evenWorld: AugmentDef = defineAugment({
     // 미리보기(previewKey 주석) — 손패가 바뀌는 이벤트를 열거하지 않고 `reaction("*")` +
     // 값 비교로 따라간다. 값이 같으면 아무것도 내지 않으므로 반응 연쇄는 한 겹에서 멈추고
     // 리플레이 이벤트는 손패가 실제로 바뀐 때만 는다.
-    ctx.reaction("*", (_event, rc) => {
+    ctx.reaction("*", (event, rc) => {
+      // 무장해제 연쇄 안에서 방금 비운 채널을 도로 채우지 않는다(isDisarmEcho 주석)
+      if (isDisarmEcho(ctx, event, [previewKey(holder)])) return;
       const state = rc.state;
       const usable =
         hasUsesLeft(state, holder) && state.round.byPlayer[holder]?.riichi == null;
@@ -188,7 +190,8 @@ export const evenWorld: AugmentDef = defineAugment({
       if (JSON.stringify(cur ?? {}) === JSON.stringify(next)) return;
       rc.emit(augmentDataSet(previewKey(holder), next));
     });
-    // 무장해제되면 위 반응이 멈춰 값이 얼어붙는다 — 쓸 수 없는 능력의 미리보기를 내린다
+    // 무장해제되면 위 반응이 멈춰 값이 얼어붙는다 — 쓸 수 없는 능력의 미리보기를 내린다.
+    // 위 반응의 isDisarmEcho 가드가 있어야 실제로 내려간 채로 남는다.
     clearViewOnDisarm(ctx, () => [previewKey(holder)]);
 
     // 자기 턴에, 아직 안 썼고, 바꿀 홀수 수패가 있을 때만 버튼을 노출한다 (합법성은 validate가 최종 판정)

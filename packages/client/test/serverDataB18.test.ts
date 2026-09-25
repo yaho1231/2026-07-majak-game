@@ -83,6 +83,14 @@ describe("U42 귀환 — 누르기 전에 돌아올 자패를 보인다", () => 
     expect(tiles).toContain("attrs: { conjured: true }");
   });
 
+  it("단일 ✦ 버튼(한 번 누르면 제출)의 부제에도 되받을 패 이름을 적는다(B18 리뷰 라운드 2)", () => {
+    const ctl = fnBody("ActiveAugmentControl");
+    expect(ctl).toMatch(
+      /const singleRecall =\s*single !== null\s*\? recallKindsOf\(view, single\)\s*\.map\(\(kind\) => formatTile\(\{ kind \}\)\)\s*\.join\("·"\)/,
+    );
+    expect(ctl).toContain("[actionSub(single), singleRecall].filter((s) => s !== \"\").join(\" \")");
+  });
+
   it("📜 기록에는 새 채널이 줄로 새지 않는다(귀환 head는 건너뛴다)", () => {
     const log = APP_CODE.slice(
       APP_CODE.indexOf("function augmentLogRows("),
@@ -138,6 +146,10 @@ describe("U61 짝수의 세계 — 손패 제자리 유령패", () => {
     const ctl = fnBody("ActiveAugmentControl");
     expect(ctl).toMatch(/const hintOne = \(type: string\): void => \{[\s\S]*?props\.onFlipHint\?\.\(type === "even_world_flip"\);/);
     expect(ctl).toMatch(/const clearHints = \(\): void => \{[\s\S]*?props\.onFlipHint\?\.\(false\);/);
+    // 짝수의 세계 하나뿐이면 메뉴가 안 열린다 — 버튼 위(전부 비추기)에서 바로 켠다(마우스 경로, B18 리뷰)
+    expect(ctl).toMatch(
+      /const hintAll = \(\): void => \{[\s\S]*?props\.onFlipHint\?\.\(types\.length === 1 && types\[0\] === "even_world_flip"\);/,
+    );
     expect(ctl).toMatch(/const primeFirst = \(type: string\): boolean => \{[\s\S]*?props\.onFlipHint\?\.\(type === "even_world_flip"\);/);
     expect(ctl).toMatch(/setPrimed\(null\);\s*onHint\?\.\(null\);\s*onDoomed\?\.\(null\);\s*onFlip\?\.\(false\);/);
     // 프롬프트가 바뀌면 hover만 받은(첫 탭 없는) 유령패도 끈다 — 첫 탭 검사보다 먼저

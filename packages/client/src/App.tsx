@@ -28723,8 +28723,10 @@ function ActiveAugmentControl(props: {
     }
     props.onUsableHint?.(usableAugIds);
     props.onDoomedHint?.([...new Set(types.flatMap((t) => doomedTileIdsOf(view, t)))]);
-    // 변환 미리보기는 그 줄 하나에만 — 전부를 비출 때 손패 전체가 바뀐 모양으로 뒤집히면 재료 ✕가 묻힌다
-    props.onFlipHint?.(false);
+    // 변환 미리보기는 그 줄 하나에만 — 전부를 비출 때 손패 전체가 바뀐 모양으로 뒤집히면 재료 ✕가 묻힌다.
+    // 단, 쓸 수 있는 것이 짝수의 세계 하나뿐이면 메뉴가 안 열려 hintOne이 돌 길이 없다 — 가릴 남의
+    // ✕도 없으니 버튼 위에서 바로 비춘다(마우스로는 미리보기를 볼 방법이 없었다, 2026-09-25 B18 리뷰·U61).
+    props.onFlipHint?.(types.length === 1 && types[0] === "even_world_flip");
   };
   /** 발광·재료 짚기를 끈다 — 발동·제출처럼 첫 탭 상태와 무관하게 꺼야 하는 자리가 쓴다 */
   const clearHints = (): void => {
@@ -28872,7 +28874,19 @@ function ActiveAugmentControl(props: {
    * 때(둘 이상)만 붙는다.
    */
   const single = usable && types.length === 1 ? (types[0] ?? null) : null;
-  const singleSub = single !== null ? actionSub(single) : "";
+  /*
+   * 되살리는 액션(잔상·귀환) 하나뿐이면 한 번 누르는 순간 제출된다 — 무엇이 돌아오는지를 버튼에도
+   * 적는다. 여태는 보유자 pill 칩에만 있어 «누르면 뭘 받지»를 버튼에서 읽을 수 없었다(2026-09-25,
+   * docs/59 U42 · B18 리뷰). 메뉴 줄은 ActionTiles가 그림으로 그린다.
+   */
+  const singleRecall =
+    single !== null
+      ? recallKindsOf(view, single)
+          .map((kind) => formatTile({ kind }))
+          .join("·")
+      : "";
+  const singleSub =
+    single !== null ? [actionSub(single), singleRecall].filter((s) => s !== "").join(" ") : "";
   // 첫 순 한정 액티브가 지금 후보에 있다 — 한 장 버리면 사라지는 기회라 평소 켜짐과 구별한다(U40)
   const firstTurnNow = usable && types.some((t) => FIRST_TURN_ONLY_TYPES.has(t));
 
