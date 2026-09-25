@@ -11,6 +11,7 @@
  */
 
 import type { GameEngine } from "../../engine/GameEngine.js";
+import type { GameState } from "../../engine/state/GameState.js";
 import type { PlayerId } from "../../engine/zones/Zone.js";
 import { WALL, discardsZone } from "../../engine/zones/Zone.js";
 import { sameKind, kindKey } from "../tiles/Tile.js";
@@ -111,7 +112,7 @@ const PASS: ActionOption = { type: "pass", payload: {} };
  * 손패로는 같은 수(같은 서명의 다른 장)를 한 번만 내려고 쓴다(2026-09-25, docs/59 U58).
  * 클라이언트 callPick(callTileSig)이 누른 패와 후보를 짓는 기준과 같다.
  */
-function callSigKey(state: Parameters<typeof kindOf>[0], ids: readonly TileId[]): string {
+function callSigKey(state: GameState, ids: readonly TileId[]): string {
   return ids
     .map((t) => `${kindKey(kindOf(state, t))}${state.tiles[t]?.attrs.red === true ? "*" : ""}`)
     .sort()
@@ -620,14 +621,20 @@ export class FlowController {
           }
           return null;
         };
-        const combos: [TileId, TileId][] = [];
+        /*
+         * 서명을 **검증을 통과한 짝으로만** 차지한다(2026-09-25 B19 리뷰). 먼저 서명을 잡고
+         * 뒤에서 validate하면, 그 서명의 첫 짝이 막혔을 때 같은 서명의 다른 장(통과할 수도
+         * 있는)이 영영 시도되지 않는다. 막히는 짝이 없으면 순서·개수는 예전과 같다.
+         */
         const seen = new Set<string>();
         const push = (pair: [TileId, TileId] | null): void => {
           if (pair === null) return;
           const key = callSigKey(state, pair);
           if (seen.has(key)) return;
+          const payload = { tileIds: pair };
+          if (!this.validateOk(p.id, "pon", payload)) return;
           seen.add(key);
-          combos.push(pair);
+          options.push({ type: "pon", payload });
         };
         push(firstPair(norms, norms));
         push(firstPair(norms, reds));
@@ -653,25 +660,18 @@ export class FlowController {
             if (closes(x, y)) push([x, y]);
           }
         }
-        for (const tileIds of combos) {
-          const payload = { tileIds };
-          if (this.validateOk(p.id, "pon", payload)) {
-            options.push({ type: "pon", payload });
-          }
-        }
       }
       if (matching.length >= 3) {
         /*
-         * 넉 장이 **한 규칙 안에서** 닫히는 조합을 찾는다 — 퐁과 같은 규약.
-         * 양극·동수의 결속을 함께 들면 앞 세 장이 서로 다른 규칙으로 하나씩 통과해
-         * 잡종 깡이 후보로 서는 일이 생긴다(sameCallBody 주석의 그 경로).
-         */
-        /*
+         * 넉 장이 **한 규칙 안에서** 닫히는 조합만 낸다 — 퐁과 같은 규약. 양극·동수의 결속을
+         * 함께 들면 앞 세 장이 서로 다른 규칙으로 하나씩 통과해 잡종 깡이 후보로 서는 일이
+         * 생긴다(sameCallBody 주석의 그 경로).
+         *
          * 퐁과 같은 까닭으로 서명(종류·적도라)이 다른 조합을 하나씩 낸다(2026-09-25, docs/59 U58).
-         * 앞에서부터 훑으므로 첫 후보는 예전의 «처음 닫히는 세 장» 그대로다. 규칙이 꺼져 있으면
-         * 버림패가 넷째 장이라 손패의 같은 종류가 셋뿐 — 조합이 하나라 아무것도 늘지 않는다.
+         * 앞에서부터 훑으므로 첫 후보는 예전의 «처음 닫히는 세 장» 그대로다. 서명은 퐁처럼
+         * 검증을 통과한 조합으로만 차지한다. 규칙이 꺼져 있으면 버림패가 넷째 장이라 손패의
+         * 같은 종류가 셋뿐 — 조합이 하나라 아무것도 늘지 않는다.
          */
-        const trios: [TileId, TileId, TileId][] = [];
         const seenTrio = new Set<string>();
         for (let i = 0; i < matching.length; i++) {
           for (let j = i + 1; j < matching.length; j++) {
@@ -679,17 +679,14 @@ export class FlowController {
               const ids = [matching[i]!, matching[j]!, matching[k]!] as [TileId, TileId, TileId];
               const key = callSigKey(state, ids);
               if (seenTrio.has(key)) continue;
-              if (sameCallQuad([discardKind, ...ids.map((t) => kindOf(state, t))], mixedTri, polar)) {
-                seenTrio.add(key);
-                trios.push(ids);
+              if (!sameCallQuad([discardKind, ...ids.map((t) => kindOf(state, t))], mixedTri, polar)) {
+                continue;
               }
+              const payload = { tileIds: ids };
+              if (!this.validateOk(p.id, "minkan", payload)) continue;
+              seenTrio.add(key);
+              options.push({ type: "minkan", payload });
             }
-          }
-        }
-        for (const trio of trios) {
-          const payload = { tileIds: trio };
-          if (this.validateOk(p.id, "minkan", payload)) {
-            options.push({ type: "minkan", payload });
           }
         }
       }

@@ -112,7 +112,8 @@ describe("퐁 후보 넓히기 — 동수의 결속 (U58)", () => {
   it("대명깡도 서명이 다른 조합을 하나씩 낸다 — 1통1통1삭1삭 + 1만", () => {
     const game = start(scene("1p1p1s1s345m678m9s", "1m"), [mixedTriplet]);
     const kans = options(game, "minkan").map((o) => kinds(game, o));
-    expect(kans).toContain("pin1,pin1,sou1");
+    // 첫 후보는 예전의 «처음 닫히는 세 장» — 손패 순서 1통1통1삭1삭에서 {1통,1통,1삭}
+    expect(kans[0]).toBe("pin1,pin1,sou1");
     expect(kans).toContain("pin1,sou1,sou1");
     expect(new Set(kans).size).toBe(kans.length);
   });
@@ -131,6 +132,22 @@ describe("퐁 후보 넓히기 — 양극 (U58)", () => {
     const game = start(scene("9m1p9m345p678s99s", "1m"), [polarEnds]);
     const pons = options(game, "pon").map((o) => kinds(game, o));
     expect(pons).toEqual(["man9,man9"]);
+  });
+});
+
+describe("퐁 후보 넓히기 — 둘 다 든 최악의 경우 (U58 상한 고정)", () => {
+  /*
+   * 양극 × 동수의 결속을 함께 들면 1·9 네 종류가 서로 닫혀 조합이 빨리 는다(B19 리뷰 2026-09-25:
+   * 이 손에서 퐁 15·대명깡 30, 봇 bidCall 약 77ms). 지금은 드문 조합이라 받아들이지만, 뒤의
+   * 변경이 이 수를 몰래 불리지 못하도록 개수를 못박는다 — 늘려야 하면 이 숫자를 의식하고 바꾼다.
+   */
+  it("1통1통9통9통1삭1삭9삭9삭9만9만 + 1만 → 퐁 15·대명깡 30, 중복 없음", () => {
+    const game = start(scene("1p1p9p9p1s1s9s9s9m9m234z", "1m"), [mixedTriplet, polarEnds]);
+    const pons = options(game, "pon").map((o) => kinds(game, o));
+    const kans = options(game, "minkan").map((o) => kinds(game, o));
+    expect(new Set(pons).size).toBe(pons.length);
+    expect(new Set(kans).size).toBe(kans.length);
+    expect([pons.length, kans.length]).toEqual([15, 30]);
   });
 });
 
