@@ -1698,9 +1698,12 @@ const ARM_PROMPT: Record<string, string> = {
   // 순서를 강제하지 않는다 — 손패를 먼저 눌러도, 위에 펼친 왕패 칸을 먼저 눌러도 된다(docs/59 U04)
   dw_swap: "내 손패와 위의 왕패 칸을 하나씩 눌러 맞바꿀 짝을 정하세요",
   // 옛 모달 문구를 옮겼다 — 나머지 두 장의 행방은 누르기 전에 알아야 한다(docs/59 U03).
-  // 시간 초과도 서버가 3장 중 하나로 교환을 끝낸다(«쓰면 무조건 교환», 2026-09-25 docs/59 U49).
+  // 시간 초과(서버가 3장 중 하나로 교환을 끝낸다, U49)는 여기 싣지 않는다 — PromptTimer의
+  // onTimeout이 마지막 5초에 따로 말한다. 여기 붙이면 armPromptText의 꼬리 «누르면 바로
+  // 버립니다»가 시간 초과 문장 뒤에 떨어져 뜻이 흐려지고, 폰에서 안내 줄만 한 줄 늘었다
+  // (2026-09-25 W5 통합 리뷰 regression-3).
   future_exchange:
-    "빛나는 3장 중 바닥에 버릴 패를 클릭하세요. 나머지 2장은 패산 맨 밑으로 가고, 패산 위 3장이 손에 들어옵니다. 시간이 다 되면 무작위로 한 장을 골라 교환합니다",
+    "빛나는 3장 중 바닥에 버릴 패를 클릭하세요. 나머지 2장은 패산 맨 밑으로 가고, 패산 위 3장이 손에 들어옵니다",
   // 상대
   // 통째로 바꾸기는 «맞바꾸기»가 아니라 상대 손패를 가져온다(내 손패는 패산 맨 밑 — full_hand_swap.ts)
   hand_swap: "손패를 통째로 가져올 상대를 클릭하세요",
@@ -28476,19 +28479,52 @@ function ActiveAugmentControl(props: {
   // 첫 탭을 받은 줄·버튼 밖을 누르면 푼다 — 짚어 둔 재료 표시도 함께 끈다(U61)
   useEffect(() => {
     if (primed === null) return;
-    const onDown = (e: PointerEvent): void => {
-      const t = e.target as Element | null;
+    /** 이 첫 탭의 자리(✦ 줄·버튼·메뉴) 안인가 */
+    const insidePrimed = (target: EventTarget | null): boolean => {
+      const t = target as Element | null;
+      if (t === null || typeof t.closest !== "function") return false;
       // 표식은 주인별로 다르다 — 액션 바의 첫 탭("bar")을 눌러도 이쪽 첫 탭은 풀려야 한다(U61 리뷰)
-      if (t !== null && typeof t.closest === "function" && t.closest('[data-confirm-pending="aug"]') !== null) {
-        return;
-      }
+      if (t.closest('[data-confirm-pending="aug"]') !== null) return true;
+      return rootRef.current !== null && rootRef.current.contains(t);
+    };
+    const release = (): void => {
       setPrimed(null);
       onHint?.(null);
       onDoomed?.(null);
       onFlip?.(false);
     };
+    const onDown = (e: PointerEvent): void => {
+      if (insidePrimed(e.target)) return;
+      release();
+    };
+    /*
+     * **키보드도 «다른 곳»으로 나갈 수 있다** (2026-09-25 W5 통합 리뷰 interaction-1).
+     * 위 pointerdown만으로는 Tab으로 손패에 가거나 숫자 단축키로 [리치]에 들어가도 첫 탭이
+     * 안 풀렸다 — 버튼의 onBlur(hintNone)는 첫 탭 동안 그 미리보기를 되살린다. 재료 ✕는 패
+     * 얼굴을 그대로 두지만 짝수의 세계 미리보기는 TileImg의 kind 자체를 바꿔, 키보드로 버릴 패를
+     * 고르는 내내 **가짜 패 얼굴**이 보였다(버려지는 것·대기 툴팁은 실제 패 기준).
+     * 초점이 이 자리 밖으로 옮겨 가거나, 이 자리 밖에서 키를 누르거나, 어디서든 숫자
+     * 단축키·Esc를 누르면 푼다. 이 자리 안의 Enter·Space(두 번째 누르기)와 조합 키는 둔다.
+     */
+    const onFocusIn = (e: FocusEvent): void => {
+      if (insidePrimed(e.target)) return;
+      release();
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Shift" || e.key === "Control" || e.key === "Alt" || e.key === "Meta" || e.key === "Tab") {
+        return; // Tab은 초점 이동(focusin)이 판단한다
+      }
+      if (insidePrimed(e.target) && !/^[0-9]$/.test(e.key) && e.key !== "Escape") return;
+      release();
+    };
     document.addEventListener("pointerdown", onDown, true);
-    return () => document.removeEventListener("pointerdown", onDown, true);
+    document.addEventListener("focusin", onFocusIn, true);
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("pointerdown", onDown, true);
+      document.removeEventListener("focusin", onFocusIn, true);
+      document.removeEventListener("keydown", onKey, true);
+    };
   }, [primed, onHint, onDoomed, onFlip]);
   // 영상패 선택(bloom_pick)은 전용 모달이 담당하므로 이 버튼에서는 제외한다.
   // (예지 foresight_order는 byType에는 남겨 두되 아래 menuTypes에서 빼 메뉴엔 안 띄운다.)

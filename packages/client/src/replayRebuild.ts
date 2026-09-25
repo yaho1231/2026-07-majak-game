@@ -198,6 +198,17 @@ export function replaySettlements(replay: RebuiltReplay): {
       },
     });
   });
+  /*
+   * **마지막 정산은 종국 국이다** — 생방과 같은 말을 하게 `gameEnds`를 싣는다
+   * (2026-09-25 W5 통합 리뷰 regression-2). 생방 결과창은 서버가 roundOver에 실어 준
+   * `gameEnds`로 «이 국으로 대국이 끝납니다»를 띄우고 «친 넘어감·본장·리치봉 이월»·미련/귀환의
+   * «다음 국으로 가져갑니다»를 걷는데, 여기서 만든 메시지에는 그 필드가 없어 리플레이·공유
+   * 링크만 같은 국을 «다음 국이 있다»고 읽었다. 리플레이는 **끝난 판만** 기록된다
+   * (서버 `recordGame`은 onGameOver에서만 부른다) — 그래서 마지막 정산이 곧 마지막 국이다.
+   * 사유는 로그에 없어 "normal"로 둔다 — 패널은 사유를 읽지 않고 «끝나는가»만 본다.
+   */
+  const last = out[out.length - 1];
+  if (last !== undefined) last.result = { ...last.result, gameEnds: "normal" };
   return out;
 }
 
