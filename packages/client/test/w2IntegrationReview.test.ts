@@ -94,7 +94,8 @@ describe("interaction-4 등가교환 — give·take 두 단계 모두 타패를 
 
 describe("regression-1 등가교환 참고 줄은 --own-band 에 들지 않는다", () => {
   it("실측 제외 목록과 CSS order:-1 목록이 둘 다 .swap3-reveal-strip 을 포함한다", () => {
-    expect(APP_CODE).toContain('el.matches(".action-bar, .prompt-timer, .arm-hint, .swap3-reveal-strip")');
+    // B13(docs/59 U04)이 왕패의 주인 도킹 패널(.dw-dock)을 목록 끝에 더했다
+    expect(APP_CODE).toContain('el.matches(".action-bar, .prompt-timer, .arm-hint, .swap3-reveal-strip, .dw-dock")');
     const order = between(CSS_CODE, ".own-area > .action-bar,\n", "order: -1;");
     expect(order).toContain(".own-area > .prompt-timer,");
     expect(order).toContain(".own-area > .arm-hint,");

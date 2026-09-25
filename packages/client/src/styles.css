@@ -2283,7 +2283,9 @@ button {
  * 자라 봐야 바닥 아래쪽 한두 단을 잠시 덮을 뿐, 패널 안의 점수판에는 닿지 않는다.
  *
  * ⚠ 이 목록은 App(OwnArea)의 `--own-band` 실측에서 빼는 목록과 **같아야 한다**.
+ * 왕패의 주인 도킹 패널(.dw-dock)도 그 국 첫 순의 무장 동안만 뜨는 줄이다(2026-09-25, docs/59 U04).
  */
+.own-area > .dw-dock,
 .own-area > .action-bar,
 .own-area > .prompt-timer,
 .own-area > .arm-hint,
@@ -2674,6 +2676,54 @@ button {
   pointer-events: none;
 }
 
+/* 리치 소프트 자동 쯔모기리 게이지 — 쯔모패 위끝의 가는 놋쇠 막대가 오른쪽에서 왼쪽으로 줄어든다
+   (2026-09-25, docs/59 U52). 봉인(오른쪽 위)·지뢰(왼쪽 위) 뱃지 사이 가운데 위라 겹치지 않는다.
+   길이는 App.tsx가 --soft-auto-ms(= RIICHI_SOFT_AUTO_MS)로 넘긴다. 손이 닿으면 요소째 사라진다.
+   남은 시간을 나르는 한 번짜리 게이지라 제한시간 게이지(.prompt-timer-fill)처럼 reduce에서도 끄지 않는다
+   (맥동이 아니다 — a11yPerfGuards «정보를 나르는 애니메이션»). */
+.hand-soft-auto {
+  position: absolute;
+  top: -7px;
+  left: 14%;
+  right: 14%;
+  z-index: 3;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--brass-bright);
+  box-shadow: 0 0 6px rgba(240, 200, 106, 0.7);
+  transform-origin: left center;
+  animation: soft-auto-drain var(--soft-auto-ms, 2000ms) linear forwards;
+  pointer-events: none;
+}
+@keyframes soft-auto-drain {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+/* 게이지 옆 짧은 글 — 무엇이 일어나는지(곧 쯔모기리)와 멈추는 법(누르면 멈춤)을 눈으로 보인다.
+   걷힌 뒤에는 .is-stopped «자동 멈춤 · 직접 버리세요»로 남는다(W4 통합 리뷰 interaction-3).
+   쯔모패는 손패 맨 오른쪽이라 오른쪽 끝에 맞춰 왼쪽으로 펼친다 — 가운데 맞춤이면 화면 밖으로 샌다.
+   자리는 «한 번 더» 뱃지(.hand-armed-badge)와 같은 패 아래 — 둘은 동시에 서지 않는다(App.tsx). */
+.hand-soft-auto-note {
+  position: absolute;
+  right: 0;
+  bottom: -17px;
+  z-index: 3;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(20, 16, 10, 0.88);
+  border: 1px solid var(--brass-bright);
+  color: var(--brass-bright);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.hand-soft-auto-note.is-stopped {
+  border-color: rgba(255, 255, 255, 0.45);
+  color: #f3ead7;
+}
+
 
 /* ── 재료로 사라질 패 (허장성세 퐁 · 분열 · 삼원의 의지 · 회수의 쯔모패) ──
    발동 버튼 위에 손이 올라가 있는 **동안에만** 뜬다 — 누르기 전에 "무엇을 잃는가"를
@@ -2952,12 +3002,6 @@ button {
   }
 }
 
-/* 영상패 재열기 버튼의 숨쉬는 발광. (2026-07-26까지 폐기된 도박사의 손과 공용
-   키프레임(gamble-lock-glow)을 쓰고 있어, 그쪽을 지우면 조용히 죽는 구조였다) */
-@keyframes rinshan-reopen-glow {
-  0%, 100% { box-shadow: 0 0 12px rgba(184, 151, 92, 0.35); }
-  50% { box-shadow: 0 0 22px rgba(184, 151, 92, 0.6); }
-}
 /* 영상패 선택 모달 — 깡 직후 "따로 조금 크게" 띄우는 선택 창 */
 .rinshan-pick-overlay {
   position: fixed;
@@ -3005,6 +3049,30 @@ button {
   font-size: 12px;
   font-weight: 600;
   opacity: 0.85;
+}
+/* 좁은 화면 — U49로 안내문이 «시간이 다 되면 실제로 무엇이 일어나는지»를 말하게 되면서 두 배 가까이
+   길어졌다(20자 → 40자 안팎). 375px에서는 999px 알약 안에서 두세 줄로 접혀 캡슐이 찌그러지므로,
+   안내문을 알약 아래 제 줄로 내리고 모서리를 줄인다. 드래프트 창처럼 숨기지는 않는다 — 이 문구가
+   «증강이 사용되지 않는다»는 유일한 경고다(2026-09-25, docs/59 U49 리뷰).
+   선택자는 .draft-timer.pick-timer 로 올린다 — 컨테이너 쿼리는 특정도를 더하지 않아서, 파일 뒤쪽의
+   .draft-timer { border-radius: 999px } 가 같은 특정도로 이겨 모서리가 줄지 않았다. */
+@container ui (max-width: 700px) {
+  .draft-timer.pick-timer {
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 100%;
+    row-gap: 2px;
+    border-radius: 14px;
+    text-align: center;
+  }
+  .pick-timer-note {
+    flex-basis: 100%;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+  .pick-timer-sep {
+    display: none;
+  }
 }
 .rinshan-pick-sub {
   margin: 8px auto 18px;
@@ -3073,6 +3141,14 @@ button {
    나오지 않으므로(고를 수 없다) 자리별 색 구분과 범례는 폐기했다(2026-07-26). */
 .rinshan-slot-rinshan { border-color: rgba(111, 214, 167, 0.5); }
 .rinshan-slot-rinshan .rinshan-pick-label { color: #94e4be; }
+/* 지금 뽑은 패 — 누르면 그대로 둔다(창만 닫힌다). 영상패가 아니라 점선으로 가르고 한 칸 띄운다
+   (2026-09-25, docs/59 U47) */
+.rinshan-slot-drawn {
+  margin-right: 10px;
+  border-style: dashed;
+  border-color: rgba(149, 217, 246, 0.6);
+}
+.rinshan-slot-drawn .rinshan-pick-label { color: #bfe9fa; }
 
 /* 등가교환 3장 선택 — 고른 패는 켜진 상태로 유지된다 (세 번째 클릭에 제출) */
 .rinshan-pick-tile.rinshan-pick-on {
@@ -3367,8 +3443,9 @@ button {
   }
 }
 /* 머리 줄의 남은 시간 — 팝오버가 PromptTimer를 덮으므로 한 번 더 세운다(App.tsx 주석).
-   드래프트 알약을 그대로 쓰되 손패 위 작은 창에 맞게 줄이고, 알림 문구는 뺀다
-   («자동으로 선택됩니다»가 아니라 쯔모패를 버린다 — 그건 PromptTimer 쪽 문구가 말한다). */
+   드래프트 알약을 그대로 쓰되 손패 위 작은 창에 맞게 줄이고, 알림 문구는 뺀다 — 좁은 머리 줄이라
+   시간만 둔다. 문구 자체는 이제 실제 결과(패 한 장이 버려지고 증강은 사용되지 않음)를 말한다
+   (docs/59 U49). */
 .arm-sub-pop .pick-timer {
   flex: none;
   margin: 0;
@@ -3451,10 +3528,7 @@ button {
   width: var(--pick-tile-w);
   height: calc(var(--pick-tile-w) * 1.48);
 }
-/* 교환 예약 목록 — 손패 → 왕패 한 쌍씩 묶어 보여준다 */
-.aug-pick-pairs {
-  gap: 12px;
-}
+/* 교환 예약 한 쌍 — 손패 → 왕패(왕패의 주인 도킹 패널 .dw-dock-pairs 안) */
 .aug-pick-pair {
   display: inline-flex;
   align-items: center;
@@ -3500,15 +3574,6 @@ button {
   gap: 2px;
   justify-content: flex-start;
 }
-/* 행 자체는 버튼이 아니고 안의 패가 버튼인 경우 (왕패의 주인·이면투시) */
-.aug-pick-row-static {
-  cursor: default;
-}
-.aug-pick-row-static:hover {
-  transform: none;
-  border-color: rgba(207, 174, 118, 0.35);
-  box-shadow: none;
-}
 .aug-pick-tile {
   padding: 2px;
   border-radius: 6px;
@@ -3517,7 +3582,9 @@ button {
   cursor: pointer;
   transition: transform 0.1s ease, border-color 0.1s ease, box-shadow 0.1s ease;
 }
-.aug-pick-tile:hover:not(:disabled) {
+/* 빈 영상패 칸(span)은 :disabled가 될 수 없어 예전엔 hover에 떠올랐다 — 누를 수 없는 칸이 눌릴 것처럼
+   보이지 않게 뺀다(2026-09-25, B13 리뷰 · 도킹 패널은 상시 보여 더 눈에 띈다) */
+.aug-pick-tile:hover:not(:disabled):not(.aug-pick-tile-spent) {
   transform: translateY(-4px);
   border-color: rgba(240, 200, 106, 0.95);
   box-shadow: 0 0 12px rgba(184, 151, 92, 0.55);
@@ -3547,30 +3614,207 @@ button {
   transform: translateY(-4px);
 }
 
-/* 모달을 닫은 뒤 다시 열기 위한 플로팅 버튼 */
 /*
- * 「다시 열기」 알약 — `.emote-bar` 와 같은 구석에 사는데, 그쪽이 2026-08-19에 받은
- * 수리를 이건 못 받았다(폰 규칙이 하나도 없었다). 375×812 에서 `--own-band-full`
- * (액션 바까지 포함한 내 영역 실측 높이)이 150~193px 까지 자라므로 bottom:140px
- * 고정으로는 액션 바·손패 오른쪽 끝에 그대로 얹힌다.
+ * 왕패의 주인 — 손패 위 비차단 도킹 패널(App DeadWallDock, 2026-09-25 docs/59 U04). 예전 전면 모달이
+ * 판 손패를 복제해 다시 그리고 블러로 실제 손패를 가렸다. 판에 없는 왕패 14칸만 여기 편다.
+ * 흐름 안 줄이지만 `.own-area > .dw-dock { order: -1 }` 무리라 이름표 줄 위에 서고 --own-band에서 빠진다.
  */
-.rinshan-reopen {
-  position: fixed;
-  right: max(20px, env(safe-area-inset-right, 0px));
-  bottom: max(140px, calc(var(--own-band-full, 0px) + 10px));
-  z-index: 60;
-  padding: 10px 16px;
-  border-radius: 999px;
-  border: 1px solid rgba(207, 174, 118, 0.8);
-  background: linear-gradient(180deg, rgba(107, 84, 48, 0.95), rgba(74, 58, 34, 0.95));
-  color: #e2c793;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 0 0 18px rgba(184, 151, 92, 0.45);
-  animation: rinshan-reopen-glow 1.6s ease-in-out infinite;
+.dw-dock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 8px;
+  margin: 2px 0;
+  max-width: calc(100cqw - 32px);
+  border-radius: 12px;
+  background: rgba(36, 26, 61, 0.95);
+  border: 1px solid rgba(199, 188, 255, 0.7);
+  box-shadow: 0 0 14px rgba(165, 145, 255, 0.4);
+  animation: bar-in 0.25s ease-out;
+  /* 패 칸 폭 — 폰 세로(375)에서 영상 2열 + 표시패 5열이 한 줄에 들어가는 하한 */
+  --pick-tile-w: clamp(22px, 2.6cqw, 34px);
 }
-.rinshan-reopen:hover { filter: brightness(1.12); }
+.dw-dock-text {
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(226, 220, 255, 0.98);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.dw-dock-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 14px;
+}
+.dw-dock-wall {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+.dw-dock-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.dw-dock-tag {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(226, 199, 147, 0.85);
+  white-space: nowrap;
+}
+/* 실제 왕패처럼 2단 — 열 우선이라 표시패 블록은 도라가 위, 짝이 되는 뒷도라가 아래에 선다 */
+.dw-dock-grid {
+  display: grid;
+  grid-template-rows: repeat(2, auto);
+  grid-auto-flow: column;
+  gap: 2px;
+}
+.dw-dock .tile-mini {
+  width: var(--pick-tile-w);
+  height: calc(var(--pick-tile-w) * 1.48);
+}
+.dw-dock .aug-pick-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 2px;
+}
+/* 빈 영상패 칸은 이름표 줄만큼 키를 맞춘다 — 옆 칸과 윗단·아랫단이 어긋나지 않게 */
+.dw-dock .aug-pick-tile-spent {
+  box-sizing: content-box;
+  height: calc(var(--pick-tile-w) * 1.48 + 12px);
+}
+.dw-dock-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.dw-dock-pairs {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+.dw-dock-actions {
+  display: flex;
+  gap: 8px;
+}
+.dw-dock-actions > button {
+  flex: none;
+  white-space: nowrap;
+}
+/* 지금 짝이 안 되는 칸 — 흐림만, 누를 수는 있다(그 칸부터 다시 고른다). disabled로 막지 않는다 */
+.dw-dock .dw-dock-off {
+  opacity: 0.5;
+}
+
+/*
+ * 왕패 칸의 자리 이름(영상1·도라1✓·뒷1) — 칸 안에 상시로 붙는다(docs/59 U05). 예전엔 title에만 있어
+ * 터치에서 어느 칸이 도라 표시패인지 볼 길이 없었다. 색 구분은 **.aug-pick-tile로 한정**한다 —
+ * 절벽 위 꽃(.rinshan-pick-tile.rinshan-slot-*)의 «자리별 색 구분 폐기(2026-07-26)»는 그 모달에만
+ * 해당하고, 왕패의 주인은 도라 자리를 실제로 고른다(docs/16 «왕패 자리별 색 구분»). 특이도를
+ * `.aug-pick-tile`(border: transparent)보다 높여야 테두리가 지워지지 않는다.
+ */
+.aug-pick-slot-label {
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.1;
+  white-space: nowrap;
+  color: rgba(226, 220, 255, 0.8);
+}
+.aug-pick-tile.rinshan-slot-rinshan { border-color: rgba(111, 214, 167, 0.55); }
+.aug-pick-tile.rinshan-slot-rinshan .aug-pick-slot-label { color: #94e4be; }
+.aug-pick-tile.rinshan-slot-dora { border-color: rgba(240, 200, 106, 0.55); }
+.aug-pick-tile.rinshan-slot-dora .aug-pick-slot-label { color: #f0c86a; }
+.aug-pick-tile.rinshan-slot-dora-open {
+  border-color: rgba(255, 214, 102, 0.95);
+  background: rgba(240, 200, 106, 0.12);
+}
+.aug-pick-tile.rinshan-slot-dora-open .aug-pick-slot-label { color: #ffd666; }
+.aug-pick-tile.rinshan-slot-ura { border-color: rgba(159, 140, 240, 0.6); }
+.aug-pick-tile.rinshan-slot-ura .aug-pick-slot-label { color: #c7bcff; }
+/* 고른 칸·예약한 칸은 자리 색보다 선택 표시가 앞선다 — 공개된 도라 자리(.rinshan-slot-dora-open)의
+   금빛 바탕이 선택 바탕을 덮지 않게 background도 되돌린다(B13 리뷰) */
+.dw-dock .aug-pick-tile.aug-pick-tile-on {
+  border-color: rgba(149, 217, 246, 0.95);
+  background: rgba(126, 201, 234, 0.22);
+}
+.dw-dock .aug-pick-tile.aug-pick-tile-staged {
+  border-color: rgba(149, 217, 246, 0.75);
+  background: rgba(126, 201, 234, 0.1);
+}
+/*
+ * 좁은 화면·폰 가로 — 이 패널은 --own-band 에 들지 않고 .own-area 가 바닥에서 위로 자라므로
+ * (order:-1 무리, 등가교환 참고 줄 .swap3-reveal-strip 과 같은 처지) 두꺼울수록 강·중앙 패널을
+ * 오래 덮는다. 칸 이름(영상1·도라1·뒷1)이 이미 자리를 말하니 블록 태그를 접고, 패·여백·글자를
+ * 줄인다. 예약 쌍·[이대로 교환]·[취소]는 왕패 옆 같은 줄에 세워 한 단을 아낀다 — 폰 세로(375)는
+ * 두 버튼을 세로로 쌓아야 옆에 들어간다(2026-09-25, B13 리뷰 — docs/59 §7 실측 규약).
+ * 경계가 등가교환 줄(700px)보다 넓은 820px인 까닭: 태블릿 세로(768)에서 기본 배치가 161px로 자라
+ * 중앙 패널 아랫단을 37px 덮었다. 접으면 127px로 중앙 패널 테두리에서 멈추고 도라 줄은 덮지 않는다.
+ * 실측(무장 + 두 쌍 예약, 판 위): 375×700 142px · 740×360 100px · 767×1024(터치) 127px ·
+ * 1280×800 132px(무대 배율이라 접지 않음).
+ */
+@container ui (max-width: 820px) {
+  .dw-dock {
+    gap: 4px;
+    padding: 4px 8px 6px;
+    margin: 0 0 2px;
+    --pick-tile-w: 20px;
+  }
+  .dw-dock-text { font-size: 12px; }
+  .dw-dock-tag { display: none; }
+  .dw-dock-body { flex-wrap: nowrap; gap: 8px; }
+  .dw-dock-wall { gap: 6px; }
+  .dw-dock .aug-pick-tile { padding: 1px; }
+  .dw-dock .aug-pick-tile-spent { height: calc(var(--pick-tile-w) * 1.48 + 11px); }
+  .dw-dock .aug-pick-slot-label { font-size: 9px; }
+  .dw-dock-side { gap: 4px; }
+  .dw-dock-actions { flex-direction: column; gap: 4px; }
+  /* 예약 쌍도 줄여 두 쌍(기본 횟수)이 버튼 폭 안 한 줄에 선다 — 안 줄이면 쌍마다 한 줄씩 쌓여 패널이 자랐다 */
+  .dw-dock-pairs { gap: 3px; }
+  .dw-dock .aug-pick-pair { gap: 0; padding: 1px 2px; }
+  .dw-dock .aug-pick-pair .tile-mini { width: 18px; height: calc(18px * 1.48); }
+}
+@container ui (max-height: 560px) and (orientation: landscape) {
+  /* 폰 가로는 높이가 모자라고 폭은 남는다 — 안내 글을 왕패 왼쪽 칸으로 돌려 한 단(≈25px)을 더 아낀다.
+     740×360 실측: 글 위·왕패 아래 2단이면 123px로 중앙 패널을 통째로 덮었다 */
+  .dw-dock {
+    flex-direction: row;
+    gap: 10px;
+    padding: 3px 10px 4px;
+    margin: 0 0 2px;
+    --pick-tile-w: 20px;
+  }
+  .dw-dock-text { font-size: 12px; max-width: 170px; text-align: left; }
+  .dw-dock-tag { display: none; }
+  .dw-dock-body { flex-wrap: nowrap; gap: 10px; }
+  .dw-dock .aug-pick-tile { padding: 1px; }
+  .dw-dock .aug-pick-tile-spent { height: calc(var(--pick-tile-w) * 1.48 + 11px); }
+  .dw-dock .aug-pick-slot-label { font-size: 9px; }
+}
+
+/* 터치 — 도킹 패널의 왕패 칸은 20px로 줄어 예전 모달(34~50px)의 절반 남짓이다. 겉모습은 두고
+   «닿는 자리»만 칸 사이 틈까지 넓혀 틈을 짚은 탭이 허공으로 빠지지 않게 한다(9-2의 ::after 껍데기 기법,
+   W4 통합 리뷰 regression-5). 이웃 칸까지 먹지 않게 칸 사이 틈(2px)의 절반인 1px만 뻗는다. 빈 영상패
+   칸(span)은 누를 수 없으니 뻗지 않는다. */
+@media (pointer: coarse) {
+  .dw-dock .aug-pick-tile { position: relative; }
+  .dw-dock .aug-pick-tile:not(.aug-pick-tile-spent)::after {
+    content: "";
+    position: absolute;
+    /* 절대 위치의 기준은 패딩 박스라 -1px 은 테두리(1px) 바깥선에 멈춘다 — 테두리 1px + 틈 절반 1px */
+    inset: -2px;
+  }
+}
+
+/* (절벽 위 꽃 창을 접은 뒤 다시 여는 플로팅 알약 .rinshan-reopen은 걷었다 — 손패 위 안내 줄
+   .arm-bloom으로 옮겼다, 2026-09-25 docs/59 U48) */
 
 /* 포인터로 들어 올린 타일 — 커서를 따라 이동(transform은 인라인)하며 위로 떠오른다.
    hover 들림보다 우선하도록 hover transform을 덮는다. */
@@ -3897,18 +4141,91 @@ button {
   50% { box-shadow: var(--shadow-2), inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 0 26px rgba(199, 188, 255, 0.8); }
 }
 
-/* 무장 중 — 숨쉬기를 멈추고 계속 밝게 켜 둔다("지금 이걸 걸고 있다") */
-.act-riichi-aug-on {
-  animation: none;
-  filter: brightness(1.12);
-  box-shadow: var(--shadow-2), inset 0 1px 0 rgba(255, 255, 255, 0.14),
-    0 0 26px rgba(199, 188, 255, 0.9);
-  outline: 2px solid rgba(226, 220, 255, 0.9);
-  outline-offset: 2px;
-}
+/* (무장 중 켜짐 `.act-riichi-aug-on`은 걷었다 — 증강 리치로 무장하면 액션 바가 리치 모드와 같은
+   한 줄로 바뀌어 무장한 ⚡는 서지 않는다. 무엇을 걸고 있는지는 안내 줄 이름이 말한다. docs/59 U55) */
 
 @media (prefers-reduced-motion: reduce) {
   .act-riichi-aug { animation: none; }
+}
+
+/* ⚡ 버튼의 보조 줄(«리치 · 판돈 N점», docs/59 U53) — 본문(카드 이름) 아래 한 줄로 */
+.act-riichi-aug,
+.act-riichi-cancel {
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.15;
+}
+
+/*
+ * 증강 리치가 둘 이상 — [리치]와 ⚡들을 한 테두리로 묶는다(segmented). 접지 않고 모두 보인다:
+ * 2026-08-08 결정(리치 순간 한눈에)을 지키면서 «리치 계열 한 덩어리»로 읽히게 한다(docs/59 U54).
+ * 가운데 무리(.action-calls)처럼 줄바꿈을 허용해 [쯔모]·[패스]를 밀어내지 않는다.
+ *
+ * 네 화면 실측(2026-09-25, B15 리뷰 R2 — 실제 styles.css + 액션 바 마크업, 상태 다섯 가지:
+ * 바 없음·리치 전 묶음·리치 중 [승부수]·그 첫 탭·증강 리치 무장[안내·취소·묶음·🔒론·쯔모]).
+ * 리치 중에 바가 떠도 손패 레일과 `--own-band`는 한 픽셀도 안 움직인다 — 바는 띠 실측에서
+ * 빠지고(App OwnArea, `.own-area > .action-bar` order:-1) 위로만 자란다. 가로 넘침 0.
+ *   · 375×700  레일 [4,612,371,682] 고정 · 바 위끝 무장 413 / 리치 중 519 — 이름표 줄(579~) 위
+ *   · 768×1024 레일 [9,912,759,1010] 고정 · 바 위끝 무장 399 / 리치 중 712 — 이름표 줄(811~) 위
+ *   · 1280×800(1920 무대) 레일 고정 · 무장 바 한 줄 [453,772,1467,870] — 이름표 줄(879~) 위
+ *   · 740×360  알약 칸(아래 가로 블록): 무장 상태는 세 칸 [122,112,505,251]로 접히고, 가장 긴
+ *     둘째 칸(이 묶음)의 아래끝이 알약 줄 바닥(레일 위 20px)까지 내려와 이름표 줄 위끝을
+ *     ≈10px 덮는다. 알약 줄 바닥이 원래 이름표 줄 위끝보다 아래라서(§9-1-c) 두 칸 이상 접히는
+ *     모든 바(후로 여럿 포함)의 공통 성질이다 — 이름표 글자는 줄 아래끝(align-items:end)에 붙어
+ *     가려지지 않았다(모의 이름표 기준, 스크린샷은 작업 scratchpad b15r3).
+ */
+.riichi-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 4px;
+  padding: 3px;
+  border-radius: calc(var(--r-md) + 3px);
+  border: 1px solid rgba(199, 188, 255, 0.45);
+  background: rgba(123, 58, 114, 0.18);
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/*
+ * 승부수(리치 취소) — 리치 중 [리치] 자리에 선다(docs/59 U51). 되돌릴 수 없는 수라 리치 붉은색을
+ * 어둡게 깔아 «거는» 리치와 구별하고, 첫 탭 뒤(«한 번 더 눌러 확정»)에는 밝은 테두리로 붙잡는다.
+ * 색만으로 말하지 않는다 — 본문 글자가 바뀐다.
+ */
+.act-riichi-cancel {
+  background: #5d2432;
+  border: 1px dashed rgba(250, 188, 173, 0.7);
+}
+.act-riichi-cancel-armed {
+  background: #ad2b42;
+  border-style: solid;
+  outline: 2px solid rgba(255, 226, 214, 0.95);
+  outline-offset: 2px;
+}
+
+/* 미리보기 먼저인 발동의 첫 탭 — «한 번 더 눌러 발동»(docs/59 U61). 손패 두 번 누르기처럼 테두리로 */
+.act-primed,
+.aug-menu-item-primed {
+  outline: 2px solid rgba(226, 220, 255, 0.95);
+  outline-offset: 2px;
+}
+
+/* 허장성세 퐁의 희생패 — 손패의 ✕(.hand-doomed)와 같은 표식을 버튼 안 미니패에 붙인다(docs/59 U61) */
+.act-tile-doomed {
+  position: relative;
+  display: inline-flex;
+  filter: grayscale(0.5) brightness(0.85);
+}
+.act-tile-doomed::after {
+  content: "✕";
+  position: absolute;
+  top: -6px;
+  right: -3px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #c7bcff;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.85));
+  pointer-events: none;
 }
 
 /*
@@ -3999,6 +4316,22 @@ button {
   font-weight: 800;
   opacity: 0.75;
   padding: 0 1px;
+}
+
+/*
+ * 후로 묶음 버튼 — [치 (부른 패) ×3]. 같은 종류의 후로 변형을 버튼 하나로 접고, 몸통은 손패를 눌러
+ * 고른다(2026-09-25, docs/59 U56). ×N은 «누르면 곧바로 나가지 않는다»는 표시이기도 하다.
+ * 고르는 중에는 눌린 채(안쪽 테두리)로 둔다 — 다시 누르면 푼다.
+ */
+.act-group-count {
+  font-size: 12px;
+  font-weight: 800;
+  opacity: 0.85;
+  padding-left: 2px;
+}
+.act-group-on {
+  box-shadow: inset 0 0 0 2px rgba(247, 243, 232, 0.85);
+  filter: brightness(1.15);
 }
 
 /* ─────────────── 타일 ─────────────── */
@@ -8319,6 +8652,22 @@ button {
     text-align: center;
   }
 }
+/* 후로 고르기 안내 줄의 남은 후보 칩 — 손패로 못 가르는 드문 경우와 키보드(1..N)의 길(docs/59 U56) */
+.call-pick-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(199, 188, 255, 0.6);
+  background: rgba(44, 90, 136, 0.55);
+  /* 가깡 칩의 «→ 붙일 퐁»·←→로 짚은 칩의 «3/22»가 버튼 기본 글자색(어두움)에 묻혔다(B17 리뷰 실측) */
+  color: #f7f3e8;
+  gap: 3px;
+  cursor: pointer;
+}
+.call-pick-chip:hover {
+  background: rgba(44, 90, 136, 0.85);
+}
 @keyframes arm-hint-confirm-pulse {
   0%,
   100% {
@@ -8570,6 +8919,13 @@ button {
 /* 흐린 후로도 키보드로는 지나간다 — 어디 서 있는지는 보여야 한다 */
 .meld-armable.meld-unpickable:focus-visible {
   outline-color: #fff;
+}
+/* 가깡 고르기(docs/59 U56)에서 붙이려고 누른 퐁 — 손패의 «고른 패»처럼 눌린 채로 선다. 맥동을 멈춰
+   아직 고를 수 있는 다른 퐁(맥동)과 가른다(2026-09-25, B17 리뷰 R2) */
+.meld-armable.meld-call-on {
+  background: rgba(199, 188, 255, 0.4);
+  outline-color: #fff;
+  animation: none;
 }
 
 /* ── 바닥 **전체**가 클릭 대상 (누명: «이 상대의 바닥에 놓는다») ──────────────
@@ -17568,7 +17924,6 @@ body.peeking .overlay-peekable > * {
   .rt.rt-win-armable,
   .waits-badge-open,
   .waits-badge-peek,
-  .rinshan-reopen,
   .sbx-observe-bar.my-turn,
   .nameplate-disconnected .np-conn { animation: none; opacity: 1; }
 
@@ -18379,18 +18734,17 @@ body.peeking .overlay-peekable > * {
    배율 140~170% 구간에서 정산 점수판(.result-total)을 물었다 (2026-08-18 실측).
    창이 떠 있는 동안 정형구를 보낼 일은 없으므로 위치를 다투는 대신 아예 비운다. */
 /*
- * 운영자 공지 카드(z299)와 「다시 열기」 알약(z60)은 **판 위에 떠 있는 조각**인데
+ * 운영자 공지 카드(z299)는 **판 위에 떠 있는 조각**인데
  * 전체 화면 창(증강 선택·정산·설정·영상패 선택)보다 위이거나 그 위를 지나간다.
  * 폰에서는 공지 카드 하나가 폭의 69%·세로 최대 40%를 차지하므로 «반드시 골라야 하는
  * 창»의 왼쪽 열이 통째로 안 눌린다. 창이 떠 있는 동안에는 함께 걷는다 —
- * 아래 `.emote-bar` 와 같은 이유·같은 방식이다.
+ * `.emote-bar` 와 같은 이유라 같은 규칙에서 함께 숨긴다.
  */
+/* 한 목록으로 묶는다 — 예전엔 목록 끝이 재열기 알약(.rinshan-reopen)이었는데 그것을 걷으면서(U48)
+   아래 .emote-bar 규칙과 합쳤다. 공지 카드 선택자로 끝나는 목록은 본 규칙을 찾는 검사
+   (noticeBannerClick cqw 규약)가 이쪽을 먼저 집는다. */
 body:has(.overlay) .game-notice-float,
 body:has(.rinshan-pick-overlay) .game-notice-float,
-body:has(.overlay) .rinshan-reopen {
-  display: none;
-}
-
 body:has(.overlay) .emote-bar {
   display: none;
 }
@@ -18952,6 +19306,25 @@ body:has(.rinshan-pick-overlay):not(.peeking) .game-root .quick-toggles {
     max-width: 150px;
     white-space: normal;
   }
+  /* 리치 묶음도 세로 알약 줄에서는 세로로 — 가로로 펼치면 알약 칸 폭을 넘는다(docs/59 U54) */
+  .own-area > .action-bar .riichi-group {
+    flex-direction: column;
+    flex-wrap: nowrap;
+  }
+  /* 승부수·⚡의 보조 줄(docs/59 U51·U53)은 세로 알약 줄에서 두 줄로 접는다 — 한 줄로 두면 알약 칸이
+     그 폭만큼 넓어져(740×360 실측: 승부수 234px·«⚡ 위압 리치» 161px) 아래 112px 밀기를 넘어 내
+     이름표 줄을 문다. 112px이면 보조 줄 없는 ⚡(108px)와 같은 칸이다(2026-09-25 실측, B15 리뷰). */
+  .own-area > .action-bar .act-riichi-cancel,
+  .own-area > .action-bar .act-riichi-aug {
+    max-width: 112px;
+  }
+  .own-area > .action-bar .act-riichi-cancel .act-target,
+  .own-area > .action-bar .act-riichi-aug .act-target {
+    font-size: 11px;
+    letter-spacing: 0;
+    text-align: center;
+    word-break: keep-all;
+  }
 
   /*
    * 알약 줄이 서 있는 동안만 내 이름표 줄을 그 폭만큼 오른쪽으로 민다.
@@ -18961,6 +19334,23 @@ body:has(.rinshan-pick-overlay):not(.peeking) .game-root .quick-toggles {
    */
   .own-area:has(> .action-bar) > .own-top {
     padding-left: 112px;
+  }
+  /*
+   * 후로 고르기 안내 줄(docs/59 U56)은 **늘** 알약 줄과 함께 선다(리액션 프롬프트 한가운데라). 가운데
+   * 정렬로 두면 왼쪽 알약 칸에 깔려 «치: 함께 쓸 손패를…» 문구와 첫 칩이 [론]·[치] 밑으로 숨었다
+   * (2026-09-25 740×360 실측, B17 리뷰: 안내 줄 [75,173,665,226] × 알약 줄 [122,115,340,251]).
+   * 알약 칸 오른쪽(세 칸일 때 오른끝 340 = 내 영역 왼끝 70 + 270, 여유 20)으로 비켜 세우고 줄을 접는다.
+   */
+  .own-area:has(> .action-bar) > .arm-hint.arm-call {
+    align-self: flex-end;
+    max-width: calc(100% - 290px);
+    flex-wrap: wrap;
+    justify-content: center;
+    row-gap: 6px;
+  }
+  .own-area:has(> .action-bar) > .arm-hint.arm-call .arm-hint-text {
+    flex: 1 1 100%;
+    text-align: center;
   }
 }
 
@@ -20588,59 +20978,35 @@ body:has(.prod-skip) .toast-stack {
  * 그러면 알약·타이머가 화면 중앙에서 멀리 떨어져 오히려 놓치기 쉬웠다.
  */
 
-/* ── 영상 정찰(rinshan_arrange) 모달 — 예지 탭의 칸을 그대로 쓰되, 한 칸 안에
-   «집기(드래그) / 좌우 이동 / 교환» 세 조작이 들어간다 (2026-08-27 버프).
-   예지와 달리 칸 자체가 <div>다 — 안에 버튼이 셋 들어가야 하므로 버튼을 중첩할 수 없다. */
-.rinshan-arr-grab {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  border: 0;
-  background: none;
-  color: inherit;
-  cursor: grab;
-  padding: 0;
-}
-.rinshan-arr-grab:active {
-  cursor: grabbing;
-}
-.rinshan-arr-nudge {
-  display: flex;
-  gap: 6px;
-}
-.rinshan-arr-nudge button {
-  /* 터치 표적 최소 크기 — 폰 세로에서 손가락으로 눌러야 한다 (docs/44) */
-  min-width: 34px;
-  min-height: 30px;
-  border-radius: 8px;
-  border: 1px solid rgba(199, 188, 255, 0.45);
-  background: rgba(31, 22, 56, 0.7);
-  color: #dbd4ff;
-  font-size: 13px;
+/* ── 영상 정찰(rinshan_arrange) 모달 — 예지 탭의 칸(<button>)을 그대로 쓴다. 칸마다 달던 ◀▶ 이동과
+   [이 패와 교환]을 걷고(←/→ 키·탭-탭이 대신한다), 교환은 줄 맨 왼쪽의 «내 쯔모패» 칸 하나로 모았다
+   (2026-09-25, docs/59 U44). */
+/* 내 쯔모패 — 영상패가 아니라 교환 상대라 테두리를 점선으로 가르고 한 칸 띄운다 */
+.rinshan-arr-drawn {
+  margin-right: 10px;
+  border-style: dashed;
+  border-color: rgba(149, 217, 246, 0.7);
+  background: rgba(40, 70, 92, 0.5);
   cursor: pointer;
 }
-.rinshan-arr-nudge button:disabled {
-  opacity: 0.35;
-  cursor: default;
+.rinshan-arr-drawn .foresight-tab-label {
+  color: #bfe9fa;
 }
-.rinshan-arr-take {
-  min-height: 34px;
-  padding: 4px 10px;
-  border-radius: 10px;
-  border: 1px solid rgba(240, 200, 106, 0.65);
-  background: rgba(90, 68, 26, 0.6);
-  color: #f6e2b0;
-  font-size: 12px;
-  font-weight: 800;
-  cursor: pointer;
+/* 교환 대상을 올렸다 — 쯔모패 칸과 그 영상패가 같은 색으로 짝을 이룬다 */
+.rinshan-arr-drawn.rinshan-arr-drawn-on,
+.foresight-tab-cell.rinshan-arr-taken {
+  border-style: solid;
+  border-color: rgba(149, 217, 246, 0.95);
+  box-shadow: 0 0 18px rgba(118, 201, 233, 0.55);
 }
-.rinshan-arr-take:hover:not(:disabled) {
-  background: rgba(126, 96, 32, 0.75);
+.foresight-tab-cell.rinshan-arr-taken .foresight-tab-label {
+  color: #bfe9fa;
 }
-.rinshan-arr-take:disabled {
-  opacity: 0.35;
-  cursor: default;
+/* 교환 대상을 탭-탭으로 집어 들었을 때는 «집었다»가 이긴다 — 위 규칙이 명시도가 같고 뒤에 와서
+   .foresight-dragging의 금빛 테두리를 파랗게 덮어, 어느 칸을 들고 있는지가 흐려졌다(B14 리뷰). */
+.foresight-tab-cell.rinshan-arr-taken.foresight-dragging {
+  border-color: #f0c86a;
+  box-shadow: 0 0 18px rgba(240, 200, 106, 0.5);
 }
 
 /* ─────────────── 이름표 → 증강 보기 시트 (폰 전용 경로) ───────────────

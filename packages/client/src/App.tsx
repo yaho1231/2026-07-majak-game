@@ -127,6 +127,19 @@ import { LESSONS, TUTORIAL_KEY, pickLesson, pickUrgent, placeBubble } from "./tu
 import { DRAWN_TILE } from "./tutorial.js";
 import type { BubbleSpot, CoachCtx, CoachRect, Lesson, LessonLock } from "./tutorial.js";
 import { remainingCounter } from "./waitCounts.js";
+import {
+  CALL_PICK_CHIP_MAX,
+  CALL_PICK_TYPES,
+  callPickArmableIn,
+  callPickRemaining,
+  callPickMeldOptions,
+  callPickSigs,
+  callPickTileIds,
+  resolveCallPick,
+  resolveCallPickMeld,
+  sameCallChoice,
+} from "./callPick.js";
+import type { CallPick } from "./callPick.js";
 import { groupWinHand, shapeGroupLabel } from "./winShapeView.js";
 import {
   backlogProdTtl,
@@ -146,6 +159,19 @@ import { LOCK_NOTICE_MS, isLockNoticeOnly } from "./lockNotice.js";
  * (`AUTO_MOVE_MS`)·봇의 생각 시간(`BOT_THINK_MS`)과 **같은 값**이다.
  */
 const AUTO_RESPOND_MS = 1000;
+/**
+ * **리치 중 소프트 자동 쯔모기리**를 기다리는 시간(ms) — 2026-09-25, docs/59 U52.
+ *
+ * 서버는 리치 중 후보가 쯔모기리 하나뿐일 때만 대신 버린다(FlowController `auto`). 승부수처럼
+ * 리치 내내 서는 선택형 액티브가 하나라도 끼면 그 자동이 꺼져, 매 순 같은 패를 직접 눌러야
+ * 했다 — «강제 수는 에이전트에게 묻지 않는다»(HanchanController)는 결정이 깨진다.
+ * 서버는 사람이 ✦ 메뉴를 열려는 중인지 모르므로 클라가 이만큼 기다렸다 쯔모기리하고,
+ * 그 사이 손이 닿으면 걷는다. 자동응답의 한 박자(1초)보다 길게 — ✦까지 손을 옮길 틈이다.
+ * 초읽기 유예(매 순 10초) 안이라 은행도 깎이지 않는다.
+ */
+const RIICHI_SOFT_AUTO_MS = 2000;
+/** 위 대기를 건 직후 hover(pointerover)를 흘려 보내는 틈 — 가만히 있는 포인터 밑에 버튼이 뜰 때도 over가 난다 */
+const RIICHI_SOFT_AUTO_HOVER_GRACE_MS = 300;
 import { dueForResend, enqueueSend, isResendable } from "./resendPolicy.js";
 import type { QueuedSend } from "./resendPolicy.js";
 import type { RebuiltReplay } from "./replayRebuild.js";
@@ -843,6 +869,8 @@ const ACTION_VERB: Record<string, string> = {
   foresight_order: "패산 재배열",
   future_arm: "미래 보기",
   future_exchange: "버릴 패 고르기",
+  // 모달이 걷히자 무장형 기본 부제(«손패 고르기»)로 떨어졌다 — 왕패 쪽을 고른다는 게 빠진다(U04)
+  dw_swap: "왕패와 맞바꾸기",
   swap3: "상대 지정",
   swap3_give: "넘길 3장 고르기",
   swap3_take: "가져올 3장 고르기",
@@ -1232,6 +1260,11 @@ const ARM_MODE: Record<string, ArmMode> = {
   //   액션이라 대상을 한 번 가리키는 것이 확인 구실을 한다(예전엔 ✦ 누르는 즉시 해체됐다)
   //   (2026-09-25, docs/59 U31)
   dissolve_meld: "own-meld",
+  // 왕패의 주인 — 판 손패를 복제한 «내 손패» 줄 + 왕패 14칸을 전면 모달에 그리던 것을, 손패는 판에서
+  //   직접 누르고(들어 올림) 판에 없는 왕패만 손패 위 도킹 패널(DeadWallDock)에 편다. 손패 한 장에 후보가
+  //   14개라 armedByTile로 풀면 armSub 14지선다로 새므로, OwnArea 손패 클릭이 누명처럼 먼저 가로챈다
+  //   (2026-09-25, docs/59 U04 — §2 원칙 2)
+  dw_swap: "hand",
 };
 
 /**
@@ -1307,7 +1340,8 @@ const FORCED_ARM_TYPES = new Set([
 /**
  * 무장형 옵션 하나가 **손패의 어느 패를 누르면** 골라지는가 — payload 모양이 타입마다 다르다.
  * 전역으로 handTileId까지 읽게 하지 않는다: 왕패의 주인(dw_swap)은 손패 한 장에 후보가 14개라,
- * 무장형이 되는 순간 armSub 14지선다로 샌다(2026-09-25, docs/59 U01).
+ * 여기서 풀면 armSub 14지선다로 샌다(2026-09-25, docs/59 U01). dw_swap은 무장형이지만 이 함수를
+ * 거치지 않고 OwnArea 손패 클릭이 먼저 가로챈다(U04 — 손패는 들어 올리기만, 짝은 왕패 칸에서).
  */
 function armTileIdsOf(
   o: ActionOption,
@@ -1419,6 +1453,152 @@ const DRAG_DISCARD_ARM_TYPES = new Set([
 ]);
 
 /**
+ * 리치 소프트 자동 쯔모기리를 걸어도 되는 액티브 — **허용 목록**(W4 통합 리뷰 interaction-1 ·
+ * lifecycle-1 · regression-1, 2026-09-25). 여기 없는 타입이 하나라도 끼면 멈춘다(fail-closed).
+ *
+ * 예전에는 «멈추는 목록»(DRAG_DISCARD_ARM_TYPES + bloom_pick)이라 목록 밖 액티브가 전부 자동으로
+ * 넘어갔다. 그래서 리치 중에도 서는 **결정적** 액티브가 2초 뒤 쯔모기리로 덮였다:
+ * - `grave_rob` — 후보가 선다는 것 자체가 «지금 화료한다»다(리치 가드 없음).
+ * - `alchemy`·`tile_dye` — 리치 중 쯔모패 한 장만 바꾸는 그 순 한정 결정(riichiDrawOnly.ts 설계:
+ *   «자동으로 넘어가지 않고 플레이어가 직접 버린다»). ±1이 곧 쯔모 화료·방총 회피다.
+ * - `rinshan_arrange`(쯔모패를 영상패와 맞바꿈)·`greed_use`(방금 쯔모한 패 한정)·`conjure_tsumo`
+ *   (대기패를 다음 쯔모로)·`copy_take`(무엇을 빌려 올지 모른다)·`foresight_order`(공개한 그 순에만
+ *   열리는 재배열, 창이 스스로 뜬다)·`bloom_pick`·DRAG 계열.
+ * 새 증강이 생겨도 기본값이 «멈춤»이라 같은 사고가 다시 나지 않는다.
+ *
+ * 들어 있는 것은 content에서 하나씩 확인한 «리치 내내 서 있는 선택지»다 — 이번 쯔모패·이번 순에
+ * 묶이지 않고, 손패·화료를 바꾸지 않으며, 다음 순에 눌러도 잃는 것이 없다:
+ * 승부수(cancel_riichi)·밑장빼기·삼세 예지·예지 발동(공개만 — 뒤따르는 재배열은 목록 밖)·
+ * 이면투시 발동·찬탈자·늪, 그리고 정보·선언·지목형(천리안·지뢰 탐지·투시·선언 간파·카르마·
+ * 시간 정지·천하무적·함구령·안개·박무·도라의 잔상·재장전·무장해제·스파이·덤터기·기생충·
+ * 등 떠밀기). 첫 순 한정(sign_flip_use·blood_contract_declare·jackpot_roll)은 리치 중에 설 수 없어 넣지 않는다.
+ * 목록 안이라도 **이번 순에 묶이는 경우**는 `riichiSoftAutoOption`이 따로 멈춘다 — 스파이 후보가 쯔모패
+ * 자체일 때, 밑장빼기로 당길 밑장이 내 대기패이거나 패산이 거의 바닥났을 때(W4 수정 커밋 리뷰).
+ */
+const RIICHI_SOFT_AUTO_OK_TYPES: ReadonlySet<string> = new Set([
+  "cancel_riichi",
+  "bottom_deal",
+  "triple_peek_use",
+  "foresight_reveal",
+  "ura_peek_reveal",
+  "claim_dealer",
+  "swamp_activate",
+  "tenpai_scan_use",
+  "danger_sense_use",
+  "xray_reveal",
+  "peek_waits",
+  "karma_burn",
+  "time_stop_use",
+  "invincible_guard",
+  "call_seal_use",
+  "declare_fog",
+  "declare_brief_fog",
+  "dora_recall",
+  "reload_use",
+  "disarm_lock",
+  "spy_mark",
+  "scapegoat_mark",
+  "parasite_attach",
+  "push_brand",
+]);
+
+/**
+ * «지금 손을 쓰는 중»인 화면 요소 — 이것이 서 있으면 리치 소프트 자동을 곧바로 걷고, 발사 직전에도
+ * 다시 봐서 서 있으면 보내지 않는다. ✦ 메뉴·무장 안내 줄·왕패 도킹에 더해 **스스로 뜨는 고르기 창**
+ * (.rinshan-pick-overlay — 예지 재배열·절벽 위 꽃·영상 정찰·단색 세계)을 본다. 그 창은 자식 effect가
+ * 연 뒤 다음 커밋에 그려지므로 걸 때 한 번 보는 것으로는 놓친다(W4 통합 리뷰 interaction-2·lifecycle-2).
+ */
+const RIICHI_SOFT_AUTO_BUSY_SELECTOR = ".aug-menu, .arm-hint, .dw-dock, .rinshan-pick-overlay";
+
+/**
+ * 리치 소프트 자동의 «이 순» 열쇠 — 좌석·국·순·쯔모패. 사람이 이 순에 이미 증강을 썼으면 같은 순의
+ * 뒤따르는 프롬프트에는 다시 걸지 않는다(W4 통합 리뷰 interaction-2 — 예지 발동 뒤 재배열 프롬프트).
+ */
+function riichiSoftAutoTurnKey(view: PlayerView | null, seat: string): string | null {
+  if (view === null) return null;
+  const r = view.round;
+  return `${seat}|${r.prevalentWind}-${r.roundNumber}-${r.honba}|${r.turnCount}|${r.myDrawnTile ?? "-"}`;
+}
+
+/**
+ * 리치 중 **소프트 자동 쯔모기리**를 걸어도 되는 프롬프트면 그 쯔모기리 후보를, 아니면 null
+ * (2026-09-25, docs/59 U52 — 대기 시간과 이유는 `RIICHI_SOFT_AUTO_MS`).
+ *
+ * 서버의 강제 쯔모기리(FlowController `auto`)와 같은 판정에서 **선택형 증강 후보만** 너그럽게 본다:
+ * - 내가 리치 중이고, 버림 후보가 쯔모패 한 장뿐이다.
+ * - 나머지가 전부 액티브 증강(`AUGMENT_ACTION_TYPES`)이다 — 쯔모·안깡·가깡·구종구패는
+ *   거기 없으므로 저절로 멈춘다(화료·깡은 사람이 정할 순간이다).
+ * - 그 액티브가 전부 «리치 내내 서 있는 선택지»(`RIICHI_SOFT_AUTO_OK_TYPES`, 허용 목록)여야 한다 —
+ *   목록 밖(화료·쯔모패 변경·그 순 한정 선택, 모르는 새 타입)이 하나라도 끼면 멈춘다.
+ * - 자물쇠(격에 막힌 화료)가 있으면 서버처럼 멈춘다 — 그 순이 바로 알아야 하는 순간이다.
+ * - 강제 선택(미래를 보는 자·등가교환)에는 버림이 함께 실려도 걸지 않는다(§2-2).
+ */
+function riichiSoftAutoOption(
+  p: PromptMessage["prompt"],
+  view: PlayerView | null,
+): ActionOption | null {
+  if (view === null || p.player !== view.playerId) return null;
+  if (view.round.byPlayer[view.playerId]?.riichiDeclared !== true) return null;
+  if ((p.locked?.length ?? 0) > 0 || isForcedPickPrompt(p)) return null;
+  const drawn = view.round.myDrawnTile;
+  if (drawn === null) return null;
+  let discard: ActionOption | null = null;
+  let augs = 0;
+  for (const o of p.options) {
+    if (o.type === "discard") {
+      if (discard !== null || (o.payload as { tileId?: unknown })?.tileId !== drawn) return null;
+      discard = o;
+      continue;
+    }
+    if (!AUGMENT_ACTION_TYPES.has(o.type) || !RIICHI_SOFT_AUTO_OK_TYPES.has(o.type)) return null;
+    // 스파이 — 서버는 종류마다 첫 장만 후보로 낸다. 후보가 곧 쯔모패면 그 종류는 손에 이 한 장뿐이라,
+    // 쯔모기리하면 그 종류를 지정할 기회가 영영 사라진다(spy.ts «tile not in hand»)
+    if (o.type === "spy_mark" && (o.payload as { tileId?: unknown })?.tileId === drawn) return null;
+    // 밑장빼기 — 당길 밑장이 내 대기패면 누르는 것이 곧 쯔모 화료다. 패산이 거의 바닥났으면 이번이
+    // 마지막 기회일 수 있다(W4 수정 커밋 리뷰)
+    if (o.type === "bottom_deal" && bottomDealDecisive(view, drawn)) return null;
+    augs += 1;
+  }
+  // 증강이 하나도 없으면 서버가 이미 대신 버렸다(auto) — 여기 올 일이 없지만 겹쳐 걸지 않는다
+  return augs > 0 ? discard : null;
+}
+
+/**
+ * 리치 중 밑장빼기가 **이번 순의 결정**인가 — 소프트 자동 쯔모기리가 덮으면 안 되는 경우.
+ * - 패산이 4장 이하: 한 바퀴 뒤에는 밑장이 남에게 가거나 국이 끝난다.
+ * - 보유자에게 보이는 맨 밑장(패산 줄 오른쪽 끝 = 예약하면 다음에 가져올 패)이 지금 내 대기패다.
+ * 대기를 셀 수 없으면(모양 계산 실패) 결정으로 본다 — 자동 타패는 모르면 멈춘다(fail-closed).
+ */
+function bottomDealDecisive(view: PlayerView, drawn: number): boolean {
+  const wall = view.zones["wall"];
+  const visible = wall?.tileIds ?? [];
+  if (visible.length + (wall?.hiddenCount ?? 0) <= 4) return true;
+  const bottomId = visible[visible.length - 1];
+  const bottom = bottomId !== undefined ? view.tiles[bottomId]?.kind : undefined;
+  if (bottom === undefined) return false;
+  const me = view.players.find((p) => p.id === view.playerId);
+  const full = (view.zones[`hand:${view.playerId}`]?.tileIds ?? [])
+    .map((id) => view.tiles[id]?.kind)
+    .filter((k): k is TileKind => k !== undefined);
+  const rest = (view.zones[`hand:${view.playerId}`]?.tileIds ?? [])
+    .filter((id) => id !== drawn)
+    .map((id) => view.tiles[id]?.kind)
+    .filter((k): k is TileKind => k !== undefined);
+  if (rest.length % 3 !== 1) return true;
+  try {
+    const waits = winningKinds(
+      rest,
+      view.round.byPlayer[view.playerId]?.meldCount ?? 0,
+      undefined,
+      waitDecompOptions(me, view, full),
+    );
+    return waits.some((k) => k.suit === bottom.suit && k.rank === bottom.rank);
+  } catch {
+    return true;
+  }
+}
+
+/**
  * 위 액션들을 내는 증강 id — 액션 바가 전담하므로 "✦ 액티브 증강" 쪽에서는
  * 목록·개수·안내에서 전부 뺀다(같은 증강이 두 군데서 뜨지 않게).
  */
@@ -1427,6 +1607,57 @@ const RIICHI_AUG_IDS = new Set(
     .map((t) => ACTION_AUGMENT[t])
     .filter((id): id is string => id !== undefined),
 );
+
+/**
+ * 액션 바가 전담하는 증강 id — 증강 리치(RIICHI_AUG_IDS)에 **승부수(리치 취소)** 를 더한다.
+ *
+ * 리치 취소는 되돌릴 수 없고 그 국의 재리치까지 잠그는 수인데 ✦ 메뉴 안에 이름(«승부수»)만으로
+ * 숨어 있었고, 쓸 수 있는 액티브가 그것 하나면 «✦ 액티브 증강 (1)» 한 탭에 곧바로 나갔다. 같은
+ * «리치 중에만 쓰는» 손바닥 뒤집기는 액션 바 전용 버튼이다(2026-08-16) — 리치 순간 눈이 가는
+ * 곳이 액션 바라는 2026-08-08 결정을 리치 취소에도 적용해 [리치] 자리로 옮긴다(2026-09-25,
+ * docs/59 U51). ✦ 버튼의 목록·개수·안내에서는 이 집합을 뺀다(같은 증강이 두 군데서 뜨지 않게).
+ * ⚠ cancel_riichi 자체는 AUGMENT_ACTION_TYPES에 그대로 둔다 — 빼면 후로 줄(rawButtons)에 샌다.
+ */
+const ACTIONBAR_AUG_IDS = new Set([...RIICHI_AUG_IDS, "last_stand"]);
+
+/**
+ * 증강 리치 ⚡ 버튼의 보조 줄 — 이 버튼이 **리치를 거는** 것이라는 말과 무엇이 더 붙는지.
+ *
+ * 본문은 카드 이름(«위압감»·«모 아니면 도»)이라 pill과 이어지지만, 리치 계열이라는 것이 자리와 ⚡에만
+ * 기대 «위압감»이 리치 버튼인지 한눈에 안 읽혔다. 올인은 타가 화료 때 잃는 판돈을 모른 채 걸었다
+ * (2026-09-25, docs/59 U53). 이름에 이미 «리치»가 있는 것(오픈·스텔스)은 덧붙는 효과만 적는다.
+ * 증강 규칙이 바뀌면 그 증강 파일(content/src/augments/*)의 description과 대조한다.
+ */
+const RIICHI_AUG_SUB: Record<string, (view: PlayerView) => string> = {
+  all_in_riichi: (view) => {
+    // content all_or_nothing.ts의 allInAmount와 **같은 식**이다(현재 점수 절반, 1000 단위 내림).
+    // 서버 공식이 바뀌면 여기도 함께 바꾼다 — 선언 전이라 서버가 실어 주는 값이 아직 없다.
+    const score = view.players.find((p) => p.id === view.playerId)?.score ?? 0;
+    const amount = Math.max(0, Math.floor(score / 2 / 1000) * 1000);
+    return `리치 · 판돈 ${amount.toLocaleString()}점`;
+  },
+  no_retreat_riichi: () => "리치 · 공탁 면제",
+  intimidate_riichi: () => "리치 · 타가 1순 쯔모기리",
+  soul_strike: () => "리치",
+  flip_riichi: () => "리치 유지 · 다른 패 버리기",
+  open_riichi: () => "손패 공개",
+  stealth_riichi: () => "상대에게 숨김",
+};
+
+function riichiAugSub(view: PlayerView, type: string): string {
+  return RIICHI_AUG_SUB[type]?.(view) ?? "";
+}
+
+/**
+ * 손패를 **태우거나 바꾸는** 선언 — «두 번 눌러 버리기»(tapTwiceToDiscard)가 켜져 있으면 첫 탭은
+ * 미리보기(사라질 패를 손패에 고정해 짚기)만 하고, 한 번 더 눌러야 발동한다.
+ *
+ * 재료 짚기(doomedTileIdsOf, 2026-09-07 사용자 요청 «누르기 전에 사라질 패를 짚는다»)는 hover·focus
+ * 전용이라, 폰에서는 탭이 곧 focus이자 click이어서 짚는 순간 이미 제출됐다(2026-09-25, docs/59 U61).
+ * 새 확인창은 만들지 않는다(§2 원칙 5) — 손패 버리기의 두 번 누르기 설정을 그대로 쓴다. 마우스는
+ * 설정이 꺼져 있는 한 지금처럼 hover 미리보기 + 한 번 클릭이다.
+ */
+const PREVIEW_FIRST_TYPES = new Set(["bluff_pon", "dragons_will", "even_world_flip"]);
 
 /**
  * 무장 안내 문구 — 무엇을 클릭하면 **무슨 일이 생기는지**. 안내 줄은 `{증강 이름}: {문구}`다.
@@ -1451,6 +1682,8 @@ const ARM_PROMPT: Record<string, string> = {
   frame_discard: "심을 손패를 클릭한 뒤, 놓을 상대의 바닥을 클릭하세요",
   ura_swap: "뒷도라 표시패 자리로 보낼 손패를 클릭하세요. 지금 표시패는 내 손으로 옵니다",
   red_touch: "적도라로 만들 숫자의 패를 누르세요. 게임 끝까지 그 숫자는 내 적도라입니다",
+  // 순서를 강제하지 않는다 — 손패를 먼저 눌러도, 위에 펼친 왕패 칸을 먼저 눌러도 된다(docs/59 U04)
+  dw_swap: "내 손패와 위의 왕패 칸을 하나씩 눌러 맞바꿀 짝을 정하세요",
   // 옛 모달 문구를 옮겼다 — 나머지 두 장의 행방은 누르기 전에 알아야 한다(docs/59 U03)
   future_exchange:
     "빛나는 3장 중 바닥에 버릴 패를 클릭하세요. 나머지 2장은 패산 맨 밑으로 가고, 패산 위 3장이 손에 들어옵니다",
@@ -1598,7 +1831,8 @@ const MODAL_PICK_TYPES = new Set<string>([
   // 2026-07-22 (52차) 신규 — 전부 "무엇을 고르는지 패로 보여야 하는" 액션이다
   // (정적의 손 silent_take는 실제 바닥패 클릭[opp-river]으로 전환 — 여기서 제외)
   // (예지 foresight_order는 2026-07-25 발동[reveal]→드래그 재배열 전용 흐름으로 전환 — 여기서 제외)
-  "dw_swap", // 왕패 14장 ↔ 내 손패 1장
+  // (왕패의 주인 dw_swap은 2026-09-25 실제 손패 클릭 + 손패 위 왕패 도킹 패널[DeadWallDock]로 전환 —
+  //  여기서 제외. 판에 없는 왕패만 패널로 펴고 내 손패는 다시 그리지 않는다, docs/59 U04)
   // (붉은 손길·이면투시 바꿔치기는 2026-09-25 실제 손패 클릭[ARM_MODE hand]으로 전환 — 여기서 제외.
   //  판에 보이는 내 손패를 모달에 다시 그리지 않는다, docs/59 §2 원칙 2)
   "picky_unify", // 편식 — 단색 세계와 같은 무늬 선택 모달
@@ -1783,6 +2017,12 @@ interface Settings {
   showSafeTiles: boolean;
   /** 우클릭 쯔모기리 — 판 어디서든 오른쪽 버튼을 누르면 쯔모한 패를 그대로 버린다. */
   rightClickTsumogiri: boolean;
+  /**
+   * 리치 중 자동 쯔모기리 — 선택형 액티브(승부수 등) 때문에 서버 자동이 꺼진 순에도 잠시 뒤
+   * 쯔모패를 대신 버린다(App `tryRiichiSoftAuto`, 2026-09-25 docs/59 U52). 기본 켬 — 서버
+   * 자동과 같은 편안함이 기본이고, 매 순 직접 보고 싶은 사람만 끈다.
+   */
+  riichiSoftAuto: boolean;
   /** 도라 반짝임 — 도라인 패를 금빛(전용 도라는 보랏금)으로 반짝이게 한다. */
   doraFx: boolean;
   /** 화면 효과 — 화료·리치 때 화면 흔들림·플래시·파티클 연출. */
@@ -1834,6 +2074,7 @@ const DEFAULT_SETTINGS: Settings = {
   showSafeTiles: true,
   // 우클릭 쯔모기리는 기본 꺼짐 — 판 전체가 대상이라 모르고 켜져 있으면 실수로 패가 나간다.
   rightClickTsumogiri: false,
+  riichiSoftAuto: true,
   doraFx: true,
   screenFx: true,
   prodSpeed: 1,
@@ -1962,6 +2203,44 @@ interface SelectionCtx {
   oppAugArmable: (pid: string) => boolean;
   /** own-meld(파혼): 내 i번째 후로가 지금 무장 액션의 대상이면 그 옵션(아니면 undefined). */
   meldOptionFor: (meldIndex: number) => ActionOption | undefined;
+  /**
+   * 왕패의 주인(dw_swap) — 짝을 지을 손패·왕패 칸과 예약한 쌍. 손패(OwnArea)와 왕패 도킹 패널
+   * (DeadWallDock)이 한 상태를 봐야 해서 여기 둔다(2026-09-25, docs/59 U04). 순서를 강제하지 않으므로
+   * 먼저 누른 쪽 하나만 서 있다: 들어 올린 손패(dwHand) 또는 먼저 누른 왕패 칸(dwDead, deadIndex).
+   */
+  dwHand: number | null;
+  dwDead: number | null;
+  /** 예약한 교환 쌍 — [이대로 교환]에서 dwConfirm이 프롬프트마다 하나씩 보낸다 */
+  dwPairs: readonly DwPair[];
+  /** 이번 국 남은 교환 횟수(예약 상한) */
+  dwRemaining: number;
+  /**
+   * 손패·왕패 칸 누르기 — 예약한 쪽이면 그 쌍을 빼고, 반대쪽이 서 있으면 짝을 짓고, 아니면 이쪽을 세운다.
+   * 못 누르는 까닭을 돌려준다: "full"(남은 횟수만큼 다 골랐다) · "none"(후보가 아니다) ·
+   * "mismatch"(후보지만 먼저 고른 반대쪽과 짝이 안 된다 — 화면에서 흐리게 그려진 것) · null(처리됨).
+   */
+  dwClickHand: (id: number) => DwClickResult;
+  dwClickDead: (idx: number) => DwClickResult;
+  /** 예약한 쌍을 교환 큐로 넘기고 무장을 푼다 */
+  dwConfirm: () => void;
+  /**
+   * 후로 고르기(docs/59 U56) — 액션 바의 [치 ×3] 같은 묶음 버튼을 누르면 선다. 무장(armedType)과
+   * **따로 둔다**: armedType이 서면 ✦ 버튼이 켜짐(.aug-btn-armed)으로 그려지고, 튜토리얼의 무장 선택자가
+   * 반응하고, ✦ 클릭이 무장 해제로 가로챈다 — 후로는 증강이 아니다. 둘은 동시에 서지 않는다
+   * (무장하면 풀리고, 이걸 세우면 무장·리치 모드가 풀린다).
+   */
+  callPick: CallPick | null;
+  /** 이 종류로 고르기 시작 — 이미 그 종류를 고르는 중이면 푼다(토글) */
+  toggleCallPick: (type: string, options: ActionOption[]) => void;
+  cancelCallPick: () => void;
+  /** 이 손패가 지금 후로 고르기에서 누를 수 있는 패인가(이미 고른 패 포함) */
+  callPickArmable: (id: number) => boolean;
+  /** 손패 누르기 — 고르기/빼기, 하나로 정해지면 그 서버 옵션을 낸다. 대상이 아니면 false */
+  callPickClick: (id: number) => boolean;
+  /** 가깡: 내 퐁 후로(패 id들) 누르기 — 고르기/풀기, 정해지면 그 서버 옵션을 낸다. 대상이 아니면 false */
+  callPickMeldClick: (meldTileIds: readonly number[]) => boolean;
+  /** 키보드 ←→ — 남은 후보를 하나씩 짚는다(callPick.cursor). 칩이 없는 많은 후보에서 쓴다 */
+  stepCallPick: (delta: number) => void;
 }
 
 /**
@@ -1997,6 +2276,20 @@ const NO_SELECTION: SelectionCtx = {
   riverTargetOptionFor: () => undefined,
   oppAugArmable: () => false,
   meldOptionFor: () => undefined,
+  dwHand: null,
+  dwDead: null,
+  dwPairs: [],
+  dwRemaining: 0,
+  dwClickHand: () => null,
+  dwClickDead: () => null,
+  dwConfirm: () => {},
+  callPick: null,
+  toggleCallPick: () => {},
+  cancelCallPick: () => {},
+  callPickArmable: () => false,
+  callPickClick: () => false,
+  callPickMeldClick: () => false,
+  stepCallPick: () => {},
 };
 
 const SelectionContext = createContext<SelectionCtx>(NO_SELECTION);
@@ -3159,20 +3452,50 @@ function deadWallSlotInfo(
   idx: number,
   flipped: number,
   size: number,
-): { label: string; cls: string } {
+): { label: string; short: string; cls: string } {
   const first = size - INDICATOR_BLOCK; // 표시패 블록 시작 = 남은 영상패 장수
+  /*
+   * `short`는 칸 안에 상시로 붙는 짧은 이름표다(영상1 / 도라1✓ / 도라2 / 뒷1). 예전엔 자리의 정체가
+   * `title` 툴팁에만 있어 터치에서는 어느 칸이 도라 표시패인지 볼 길이 없었다(2026-09-25, docs/59 U05).
+   * **자리 이름만** 적는다 — 가려진 도라가 걸린 판에서 표시패의 정체를 글자로 새게 하지 않는다.
+   */
   if (idx < first) {
-    return { label: idx === 0 ? "다음 영상패" : `${idx + 1}번째 영상패`, cls: "rinshan" };
+    return {
+      label: idx === 0 ? "다음 영상패" : `${idx + 1}번째 영상패`,
+      short: `영상${idx + 1}`,
+      cls: "rinshan",
+    };
   }
   const off = idx - first;
   if (off % 2 === 0) {
     const n = off / 2 + 1;
     return n <= flipped
-      ? { label: `도라 표시 ${n} (공개됨)`, cls: "dora-open" }
-      : { label: `도라 표시 ${n} (깡 ${n - 1}회 후 공개)`, cls: "dora" };
+      ? { label: `도라 표시 ${n} (공개됨)`, short: `도라${n}✓`, cls: "dora-open" }
+      : { label: `도라 표시 ${n} (깡 ${n - 1}회 후 공개)`, short: `도라${n}`, cls: "dora" };
   }
   const n = (off - 1) / 2 + 1;
-  return { label: `뒷도라 ${n}`, cls: "ura" };
+  return { label: `뒷도라 ${n}`, short: `뒷${n}`, cls: "ura" };
+}
+
+/** 왕패의 주인 — 교환 한 쌍(내 손패 ↔ 왕패 자리). 서버 payload와 같은 모양이다. */
+interface DwPair {
+  handTileId: number;
+  deadIndex: number;
+}
+
+/** 왕패의 주인 손패·왕패 칸 누르기의 결과 — null이면 처리됨, 아니면 못 누른 까닭 */
+type DwClickResult = "full" | "none" | "mismatch" | null;
+
+/**
+ * 왕패의 주인 — 이번 국에 남은 교환 횟수, 한 번에 예약할 수 있는 쌍의 상한이다.
+ * ⚠ 값이 없을 때의 기본은 **2**(발동 1회 = 최대 2장)다. 예전 기본값 1은,
+ * 이번 국의 ROUND_STARTED 리액션이 아직 이 채널을 싣지 않은 화면(증강을 방금
+ * 받은 국·재접속 직후)에서 «2장까지»를 조용히 1장으로 깎았다. 후보가 떠 있다는
+ * 것 자체가 서버가 교환을 허락했다는 뜻이고, 상한의 최종 판정은 서버 validate다.
+ */
+function dwRemainingOf(view: PlayerView): number {
+  const v = view.augmentView[`dead_wall_master:remaining:${view.playerId}`];
+  return typeof v === "number" ? v : 2;
 }
 
 /**
@@ -4052,9 +4375,31 @@ export function App(): JSX.Element {
    * 이미 접힌 프롬프트에 답을 쏘게 된다. 방을 떠날 때도 같이 걷는다.
    */
   const autoRespondTimers = useRef<Map<string, number>>(new Map());
+  /**
+   * 위 타이머 가운데 **리치 소프트 자동 쯔모기리**(docs/59 U52)인 것 — 좌석과 그 타이머 id.
+   * 자동응답과 같은 맵을 쓰므로 promptCancel·방 나가기·다른 자동응답이 함께 걷는다.
+   * 따로 기억하는 까닭은 하나다: 손이 닿아 걷을 때 **이것만** 걷어야 한다 — 자동버림이 걸어 둔
+   * 타이머는 프롬프트를 이미 접었으므로, 그걸 걷으면 그 순이 시간 초과까지 멈춘다.
+   */
+  const riichiSoftAutoRef = useRef<{ seat: string; timer: number } | null>(null);
+  /** 손패의 쯔모패 위 게이지를 그리는 값 — 걸린 시각(게이지를 새로 시작시키는 key로도 쓴다) */
+  const [riichiSoftAutoAt, setRiichiSoftAutoAt] = useState<number | null>(null);
+  /**
+   * 걸렸던 소프트 자동이 사람 손에 걷혔다 — 쯔모패 아래에 «직접 버리세요»를 남긴다. 걸린 상태와
+   * 멈춘 상태가 화면에서 구분되지 않으면 멈춘 줄 모르고 기다리다 서버 시간 초과로 넘어간다
+   * (W4 통합 리뷰 interaction-3). 새 프롬프트가 오면 내린다.
+   */
+  const [riichiSoftAutoStopped, setRiichiSoftAutoStopped] = useState(false);
+  /** 사람이 증강을 쓴 순의 열쇠(`riichiSoftAutoTurnKey`) — 그 순의 뒤따르는 프롬프트에는 다시 걸지 않는다 */
+  const riichiSoftAutoHandTurnRef = useRef<string | null>(null);
   /** 이 좌석에 걸린 자동응답 대기를 걷는다 (없으면 아무 일도 없다). */
   const cancelAutoRespond = (seat?: string): void => {
     const timers = autoRespondTimers.current;
+    const soft = riichiSoftAutoRef.current;
+    if (soft !== null && (seat === undefined || soft.seat === seat)) {
+      riichiSoftAutoRef.current = null;
+      setRiichiSoftAutoAt(null);
+    }
     if (seat === undefined) {
       for (const t of timers.values()) window.clearTimeout(t);
       timers.clear();
@@ -4067,15 +4412,27 @@ export function App(): JSX.Element {
     }
   };
   /**
+   * 리치 소프트 자동 쯔모기리만 걷는다 — 사람이 손을 댔다(docs/59 U52). 같은 좌석에 걸린 것이
+   * 다른 자동응답이면 건드리지 않는다(위 `riichiSoftAutoRef` 주석).
+   */
+  const cancelRiichiSoftAuto = (seat?: string): void => {
+    const soft = riichiSoftAutoRef.current;
+    if (soft === null || (seat !== undefined && soft.seat !== seat)) return;
+    if (autoRespondTimers.current.get(soft.seat) === soft.timer) cancelAutoRespond(soft.seat);
+    riichiSoftAutoRef.current = null;
+    setRiichiSoftAutoAt(null);
+  };
+  /**
    * 자동응답을 **한 박자 뒤에** 보낸다. 프롬프트는 (호출부에서) 즉시 접히므로
    * 화면에 버튼이 깜빡이지 않고, 패는 사람이 둔 것과 같은 속도로 내려간다.
+   * (리치 소프트 자동만 더 긴 `RIICHI_SOFT_AUTO_MS`를 넘기고 프롬프트를 띄워 둔다.)
    */
-  const scheduleAutoRespond = (seat: string, fire: () => void): void => {
+  const scheduleAutoRespond = (seat: string, fire: () => void, ms: number = AUTO_RESPOND_MS): void => {
     cancelAutoRespond(seat); // 같은 좌석에 두 개가 겹치지 않게
     const t = window.setTimeout(() => {
       autoRespondTimers.current.delete(seat);
       fire();
-    }, AUTO_RESPOND_MS);
+    }, ms);
     autoRespondTimers.current.set(seat, t);
   };
   const [catalog, setCatalog] = useState<Record<string, AugmentCatalogEntry>>({});
@@ -4692,6 +5049,58 @@ export function App(): JSX.Element {
   }
 
   /**
+   * **리치 중 소프트 자동 쯔모기리**를 건다(2026-09-25, docs/59 U52 — 조건은 `riichiSoftAutoOption`).
+   *
+   * 자동응답과 달리 프롬프트를 **접지 않는다** — ✦ 액티브와 [리치 취소]는 그대로 눌린다.
+   * `RIICHI_SOFT_AUTO_MS` 안에 손이 닿으면(아래 effect) 걷히고 예전처럼 직접 둔다.
+   * 타이머는 자동응답과 같은 맵(`scheduleAutoRespond`)이라 promptCancel·방 나가기가 함께 걷는다.
+   * 튜토리얼·증강 테스트·관전에서는 걸지 않는다 — 앞 둘은 직접 둬 보려고 들어온 자리다(tryAutoRespond 주석).
+   */
+  function tryRiichiSoftAuto(p: PromptMessage["prompt"]): void {
+    if (coachOnRef.current || sandboxRef.current !== null || spectatingRef.current) return;
+    // 설정에서 끈 사람은 예전처럼 매 순 직접 둔다(설정 «리치 중 자동 쯔모기리»)
+    if (!settingsRef.current.riichiSoftAuto) return;
+    const disc = riichiSoftAutoOption(p, prevViewRef.current);
+    if (disc === null) return;
+    const seat = p.player;
+    // 이 순에 사람이 이미 증강을 썼다 — 뒤따르는 프롬프트(예지 재배열 등)는 그 사람이 마저 둔다
+    const turnKey = riichiSoftAutoTurnKey(prevViewRef.current, seat);
+    // 멈춘 줄 모르고 기다리지 않게 «자동 멈춤 · 직접 버리세요»를 남긴다(W4 수정 커밋 리뷰)
+    if (turnKey !== null && riichiSoftAutoHandTurnRef.current === turnKey) {
+      setRiichiSoftAutoStopped(true);
+      return;
+    }
+    scheduleAutoRespond(
+      seat,
+      () => {
+        riichiSoftAutoRef.current = null;
+        setRiichiSoftAutoAt(null);
+        // 발사 직전에 한 번 더 본다 — 고르기 창은 걸린 뒤 다음 커밋에야 그려진다(W4 통합 리뷰)
+        if (document.querySelector(RIICHI_SOFT_AUTO_BUSY_SELECTOR) !== null) {
+          setRiichiSoftAutoStopped(true);
+          return;
+        }
+        // 끊겨 있으면 조용히 프롬프트만 남긴다 — send()는 실패를 «다시 연결된 뒤에 눌러 주세요»로
+        // 알리는데, 이건 사람이 누른 게 아니다. 버림 소리·진동도 나가지 않은 버림에 울리면 거짓말이다
+        // (autoDiscard는 프롬프트를 접는 즉시 자동이라 그대로 둔다. B16 리뷰 라운드 2)
+        if (wsRef.current?.readyState !== WebSocket.OPEN) {
+          setRiichiSoftAutoStopped(true);
+          return;
+        }
+        sfx.discard();
+        haptics.discard();
+        rememberOwnDiscard(disc.payload);
+        if (send({ type: "action", actionType: disc.type, payload: disc.payload, seat })) dropPrompt(seat);
+      },
+      RIICHI_SOFT_AUTO_MS,
+    );
+    const timer = autoRespondTimers.current.get(seat);
+    if (timer === undefined) return;
+    riichiSoftAutoRef.current = { seat, timer };
+    setRiichiSoftAutoAt(Date.now());
+  }
+
+  /**
    * 자동화료·후로없음·자동버림 설정에 맞으면 프롬프트를 자동 처리한다(처리했으면 true).
    * 프롬프트 '도착' 시(handleServerMessage)와 설정 '토글' 시(아래 useEffect) 양쪽에서
    * 쓴다 — 론/후로 버튼이 이미 뜬 뒤 설정을 켜도 즉시 반영되도록.
@@ -4967,6 +5376,72 @@ export function App(): JSX.Element {
     if (prompt !== null && tryAutoRespond(prompt, settings)) dropPrompt(prompt.player);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings, prompt]);
+
+  /*
+   * **리치 소프트 자동 쯔모기리는 손이 닿으면 걷힌다** (2026-09-25, docs/59 U52).
+   *
+   * 위험은 하나다 — ✦ 메뉴를 열려는 순간 타이머가 먼저 터져 쓰려던 증강의 순을 잃는 것.
+   * 그래서 감지를 넓게 잡는다:
+   * - 어디든 누르기(pointerdown, 캡처) — ✦ 열기·[리치 취소]·쯔모패 들어 올리기·무장(sel.arm)은
+   *   전부 누르기로 시작하고, 판 밖을 눌러도 «지금 손을 쓰는 중»이다.
+   * - 아무 키(수식키만 빼고) — 키보드 무장·Tab 이동도 같다. 초점(focusin)은 보지 않는다:
+   *   화면이 스스로 옮기는 초점까지 사람의 손으로 읽게 된다.
+   * - ✦ 버튼·메뉴와 액션 바 위로 올라가기(pointerover) — 누르기 직전에 걷어야 클릭과 만료가
+   *   엇갈리지 않는다. 손패 위 hover는 보지 않는다: 리치 중 손은 대개 방금 버린 자리(손패)에
+   *   머물러 있어, 조금만 흔들려도 매 순 걷히면 자동이 없는 것과 같다. 걸린 직후 짧은 틈도
+   *   흘려 보낸다 — 버튼이 제자리에 가만히 있는 포인터 밑으로 나타날 때도 over가 난다.
+   *   다만 그 틈에 **움직여서** 올라간 포인터까지 버리면, 거기 가만히 멈춰 메뉴를 고민하는
+   *   사이 타이머가 터진다 — 틈이 끝날 때 한 번, 틈 동안 움직였고 지금 그 위에 있으면 걷는다.
+   * - ✦ 메뉴가 이미 열린 채로 걸렸으면 곧바로 걷는다 — 지난 순에 메뉴를 연 채 시간이 끝나면
+   *   메뉴 상태가 남아 다음 순에 열린 채로 다시 뜬다. 가장 분명한 «고민 중» 신호다.
+   *   프롬프트가 바뀌어도 남는 무장(sel.arm)도 같다 — 안내 줄(.arm-hint)·왕패 도킹(.dw-dock)이
+   *   서 있으면 이미 손을 쓰는 중이다. 이 둘은 무장·강제 선택·영상패 다시 열기에만 서고, 뒤의
+   *   둘은 애초에 소프트 자동을 걸지 않는 프롬프트라 리치 중 매 순 걷힐 일은 없다.
+   *   (걸 때(tryRiichiSoftAuto)는 아직 새 프롬프트를 그리기 전이라 여기, 그린 뒤에 본다.)
+   * (틈·열린 메뉴 처리는 2026-09-25 B16 리뷰 라운드 1, 남은 무장은 라운드 2)
+   */
+  useEffect(() => {
+    if (riichiSoftAutoAt === null) return;
+    const since = performance.now();
+    // 손이 닿아 걷혔다 — 게이지 자리에 «직접 버리세요»를 남긴다(W4 통합 리뷰 interaction-3)
+    const stop = (): void => {
+      cancelRiichiSoftAuto();
+      setRiichiSoftAutoStopped(true);
+    };
+    if (document.querySelector(RIICHI_SOFT_AUTO_BUSY_SELECTOR) !== null) {
+      stop();
+      return;
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Shift" || e.key === "Control" || e.key === "Alt" || e.key === "Meta") return;
+      stop();
+    };
+    const onOver = (e: PointerEvent): void => {
+      if (performance.now() - since < RIICHI_SOFT_AUTO_HOVER_GRACE_MS) return;
+      const t = e.target;
+      if (t instanceof Element && t.closest(".aug-btn, .aug-menu, .action-bar") !== null) stop();
+    };
+    let movedInGrace = false;
+    const onMove = (): void => {
+      movedInGrace = true;
+    };
+    const graceEnd = window.setTimeout(() => {
+      document.removeEventListener("pointermove", onMove, true);
+      if (movedInGrace && document.querySelector(".aug-btn:hover, .aug-menu:hover, .action-bar:hover") !== null) stop();
+    }, RIICHI_SOFT_AUTO_HOVER_GRACE_MS);
+    document.addEventListener("pointerdown", stop, true);
+    document.addEventListener("keydown", onKey, true);
+    document.addEventListener("pointerover", onOver, true);
+    document.addEventListener("pointermove", onMove, true);
+    return () => {
+      window.clearTimeout(graceEnd);
+      document.removeEventListener("pointerdown", stop, true);
+      document.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("pointerover", onOver, true);
+      document.removeEventListener("pointermove", onMove, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [riichiSoftAutoAt]);
 
   /*
    * 잠금 통보 프롬프트 — 잠깐 보여 준 뒤 스스로 패스한다.
@@ -5776,6 +6251,11 @@ export function App(): JSX.Element {
     }
     if (msg.type === "gamePaused") {
       if (msg.paused) {
+        // 정지 중에 2초 타이머가 터져 쯔모기리가 나가지 않게 — 재개 뒤에는 사람이 직접 둔다(W4 수정 커밋 리뷰)
+        if (riichiSoftAutoRef.current !== null) {
+          cancelRiichiSoftAuto();
+          setRiichiSoftAutoStopped(true);
+        }
         pausedAt.current = { epoch: Date.now(), perf: performance.now() };
         setPause({
           ...(msg.reason !== undefined ? { reason: msg.reason } : {}),
@@ -5896,8 +6376,12 @@ export function App(): JSX.Element {
        * 탈출구는 새로고침뿐이었고 안내는 그 말을 하지 않았다 (감사 §2-4).
        *
        * 지우는 편이 항상 안전하다: 서버가 정말 기다리는 중이면 곧바로 다시 보낸다.
+       *
+       * 걸려 있던 자동응답(리치 소프트 자동 포함)도 함께 걷는다 — 화면에 없는 프롬프트의
+       * 답이 끊긴 사이 나가면 서버가 거절한다. 다시 온 프롬프트에 새로 걸린다(2026-09-25, B16 리뷰).
        */
       setPrompts({});
+      cancelAutoRespond();
       setDraft(null);
       setDraftPicked(false);
       draftPickedRef.current = false;
@@ -6085,6 +6569,9 @@ export function App(): JSX.Element {
       ) {
         setIntro(false);
       }
+      // 같은 좌석의 새 프롬프트다 — 앞 프롬프트에 걸어 둔 리치 소프트 자동은 낡았다(docs/59 U52)
+      cancelRiichiSoftAuto(msg.prompt.player);
+      setRiichiSoftAutoStopped(false);
       // 자동 화료·후로없음·자동버림 — 설정에 맞으면 프롬프트를 그리지 않고 즉시 처리한다.
       if (tryAutoRespond(msg.prompt, settingsRef.current)) {
         dropPrompt(msg.prompt.player);
@@ -6136,6 +6623,8 @@ export function App(): JSX.Element {
       setDraft(null);
       setDraftPicked(false);
       setRiichiMode(false);
+      // 리치 중인데 선택형 액티브 때문에 서버 자동이 꺼진 순 — 띄운 채로 잠시 뒤 쯔모기리(U52)
+      tryRiichiSoftAuto(msg.prompt);
       return;
     }
     if (msg.type === "promptCancel") {
@@ -7219,6 +7708,9 @@ export function App(): JSX.Element {
     }
     // 어느 좌석의 결정인가 — 봇 좌석을 조종 중이면 그 좌석(view.playerId)으로 답한다.
     const seat = view?.playerId;
+    // 사람이 직접 골랐다 — 걸어 둔 리치 소프트 자동 쯔모기리가 뒤따라 나가지 않게 걷는다.
+    // 증강을 쓴 뒤 같은 순의 새 프롬프트에 낡은 쯔모기리가 떨어지면 안 된다(docs/59 U52)
+    cancelRiichiSoftAuto(seat);
     // 전송에 실패했으면(소켓이 닫혀 있었으면) **프롬프트를 그대로 둔다** — action은
     // VOLATILE이라 큐에 담기지 않고 버려진다(resendPolicy ①). 여기서 프롬프트를 내리면
     // 액티브 증강 발동이나 론/치·펑이 아무 흔적 없이 사라지고 다시 누를 수도 없다.
@@ -7230,6 +7722,11 @@ export function App(): JSX.Element {
       ...(seat !== undefined ? { seat } : {}),
     } as ActionMessage);
     if (!sent) return false;
+    // 버림이 아닌 수(증강 발동 등)를 사람이 골랐다 — 이 순의 뒤따르는 프롬프트엔 소프트 자동을 다시 걸지
+    // 않는다. 예지 발동 뒤 재배열 창을 읽는 2초 사이에 쯔모기리가 나가면 안 된다(W4 통합 리뷰 interaction-2)
+    if (seat !== undefined && !DISCARD_LIKE.has(option.type)) {
+      riichiSoftAutoHandTurnRef.current = riichiSoftAutoTurnKey(prevViewRef.current, seat);
+    }
     /*
      * 프롬프트를 걷는 것은 **방금 보낸 수가 지금 떠 있는 그 프롬프트의 것일 때만**이다.
      *
@@ -7517,7 +8014,13 @@ export function App(): JSX.Element {
     () => new Set((prompt?.options ?? []).map((o) => o.type)),
     [prompt],
   );
-  /** 그중 액티브 증강 발동이 있는가 — 액션 바의 색 판정(`act-aug`)과 같은 기준 */
+  /**
+   * 그중 액티브 증강 발동이 있는가 — 라벨 없는 타입과 AUGMENT_ACTION_TYPES만 센다.
+   * ⚠ 액션 바의 버튼 색(`act-aug`)과는 **일부러 다르다**: 버튼 색은 증강이 만든 콜
+   * (ACTION_AUGMENT — 허장성세·묵계·우는 국사 퐁)까지 증강 색으로 칠하지만, 여기에 넣으면
+   * 퐁이 뜨는 순간마다 튜토리얼 코치가 «증강을 써 보세요» 강의로 새어 나간다. 두 판정을
+   * «맞추지» 마라(2026-09-25, docs/59 U59).
+   */
   const promptHasAugment = useMemo(
     () =>
       (prompt?.options ?? []).some(
@@ -7790,6 +8293,8 @@ export function App(): JSX.Element {
           prompt={prompt}
           promptSeq={promptSeq}
           promptDeadline={promptDeadline}
+          riichiSoftAutoAt={riichiSoftAutoAt}
+          riichiSoftAutoStopped={riichiSoftAutoStopped}
           riichiMode={riichiMode}
           catalog={catalog}
           scoreFx={scoreFx}
@@ -8347,6 +8852,10 @@ export function App(): JSX.Element {
       ) : null}
       {/* 연출 텍스트를 보조기술에 읽어 주는 유일한 통로. 리치·후로·화료·증강 발동이
           전부 이 큐를 지나므로, 여기 한 곳만 live로 열어 두면 게임 사건 전체가 들린다. */}
+      {/* 리치 소프트 자동 쯔모기리 — 걸릴 때 한 번 읽어 준다(게이지·글은 aria-hidden, W4 통합 리뷰 regression-3) */}
+      <div className="sr-only" aria-live="polite" aria-atomic="true">
+        {riichiSoftAutoAt !== null ? "잠시 뒤 쯔모패를 자동으로 버립니다. 아무 키나 누르거나 화면을 누르면 멈춥니다" : ""}
+      </div>
       <div className="sr-only" aria-live="polite" aria-atomic="true">
         {activeProd !== null
           ? `${activeProd.text}${activeProd.who !== undefined ? `, ${activeProd.who}` : ""}${activeProd.sub !== undefined ? `. ${activeProd.sub}` : ""}`
@@ -15292,7 +15801,7 @@ function doraFxOf(view: PlayerView, enabled: boolean): DoraFx {
   return { common, personal };
 }
 
-/** 두 DoraFx가 같은 내용인가 — 값이 그대로면 객체도 이 창 유지 위한 비교. */
+/** 두 DoraFx가 같은 내용인가 — 값이 그대로면 객체도 그대로 두기 위한 비교. */
 function sameDoraFx(a: DoraFx, b: DoraFx): boolean {
   if (a === b) return true;
   const sameSet = (x: Set<string>, y: Set<string>): boolean => {
@@ -15456,6 +15965,10 @@ const GameTable = memo(function GameTable(props: {
   promptSeq: number;
   /** 초읽기(time_pressure)가 걸린 국의 결정 마감 시각(epoch ms). 평소에는 null */
   promptDeadline?: number | null;
+  /** 리치 소프트 자동 쯔모기리가 걸린 시각 — 쯔모패 위 게이지(docs/59 U52). 없으면 null */
+  riichiSoftAutoAt?: number | null;
+  /** 걸렸던 소프트 자동이 사람 손에 걷혔다 — 쯔모패 아래 «직접 버리세요»(W4 통합 리뷰 interaction-3) */
+  riichiSoftAutoStopped?: boolean;
   riichiMode: boolean;
   catalog: Record<string, AugmentCatalogEntry>;
   scoreFx: Record<string, number>;
@@ -15874,6 +16387,41 @@ const GameTable = memo(function GameTable(props: {
     // 위 pointerdown과 같은 이유로 armedType이 바뀔 때만 재구독한다
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selection.armedType]);
+  /*
+   * 후로 고르기(docs/59 U56)의 빠져나가기 — 무장과 같은 규칙이다(§2 원칙 7): 펠트의 빈 곳이나 Esc면 풀고
+   * 풀렸다고 말한다. 대상 영역(data-arm-zone)은 손패·액션 바·안내 줄이 있는 .own-area뿐이다 — 판 가운데·
+   * 강·이름표는 무장 중에만 data-arm-zone이 붙으므로 여기서는 «바깥»이라, 누르면 풀린다. 이름표 pill처럼
+   * 컨트롤을 눌러 풀렸을 때도 조용히 넘기지 않고 알린다: 리액션 도중 증강 설명을 확인하다 고르던 것을
+   * 모르고 잃었다(2026-09-25, B17 리뷰 R2).
+   * 무장과 동시에 서지 않으므로(SelectionCtx.callPick) 위 두 리스너와 겹치지 않는다.
+   */
+  const callPickType = selection.callPick?.type ?? null;
+  useEffect(() => {
+    if (callPickType === null) return;
+    const name = actionLabel(callPickType, catalog);
+    const onDown = (e: PointerEvent): void => {
+      if (e.button !== 0 || e.ctrlKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t === null || tableRef.current?.contains(t) !== true) return;
+      if (t.closest("[data-arm-zone]") !== null || t.closest(".icon-btn") !== null) return;
+      selection.cancelCallPick();
+      props.onToast?.(`${name} 고르기를 취소했습니다`);
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== "Escape" || e.defaultPrevented || isTypingTarget(e.target)) return;
+      if (document.querySelector(ESC_OWNER_SELECTOR) !== null) return;
+      selection.cancelCallPick();
+      props.onToast?.(`${name} 고르기를 취소했습니다`);
+    };
+    document.addEventListener("pointerdown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+    // cancelCallPick은 상태를 비우기만 하므로 스테일해도 결과가 같다(위 무장 리스너와 같은 이유)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callPickType]);
 
   /**
    * 우클릭 쯔모기리 — **판 어디서든** 오른쪽 버튼이면 방금 쯔모한 패를 그대로 버린다.
@@ -15889,6 +16437,8 @@ const GameTable = memo(function GameTable(props: {
    * 네 자리에서는 듣지 않는다. 앞의 셋은 **오른쪽 버튼이 이미 다른 뜻인** 상황이다:
    *  - 리치할 패를 고르는 중: 손이 미끄러지면 고르려던 패가 아닌 것으로 리치가 나간다.
    *  - 증강 무장 중: 지금 클릭은 '버리기'가 아니라 '증강의 대상 고르기'다.
+   *    후로 고르기(SelectionCtx.callPick)도 같다 — 내 차례에 안깡·가깡을 고르다 오른쪽 버튼이 미끄러지면
+   *    쯔모패가 되돌릴 수 없이 나갔다(2026-09-25, B17 리뷰. 왼쪽 클릭은 후로 분기가 타패보다 앞이다).
    *  - 관전·리플레이: 낼 패가 없다.
    *  - 글자를 치는 칸: 붙여넣기 같은 표준 수단 자리다 (contextMenu.ts가 메뉴를 살려 두는 자리).
    */
@@ -15896,7 +16446,7 @@ const GameTable = memo(function GameTable(props: {
     e.preventDefault();
     if (!props.settings.rightClickTsumogiri) return;
     if (props.spectator === true || view.playerId === SPECTATOR_ID) return;
-    if (props.riichiMode || selection.armedType !== null) return;
+    if (props.riichiMode || selection.armedType !== null || selection.callPick !== null) return;
     // 같은 누름이 방금 무장을 풀었다 — 그 누름으로 쯔모패까지 버리지 않는다(위 armReleasedAtRef)
     if (Date.now() - armReleasedAtRef.current < 600) return;
     /*
@@ -16193,6 +16743,8 @@ const GameTable = memo(function GameTable(props: {
         prompt={prompt}
         promptSeq={props.promptSeq}
         promptDeadline={props.promptDeadline ?? null}
+        riichiSoftAutoAt={props.riichiSoftAutoAt ?? null}
+        riichiSoftAutoStopped={props.riichiSoftAutoStopped === true}
         riichiMode={props.riichiMode}
         catalog={catalog}
         autoSort={props.settings.autoSort}
@@ -16326,13 +16878,27 @@ const GameTable = memo(function GameTable(props: {
 function useSelection(
   view: PlayerView,
   prompt: PromptMessage["prompt"] | null,
-  onSubmit: (o: ActionOption) => void,
+  onSubmit: (o: ActionOption) => boolean | void,
   onRiichiMode: (v: boolean) => void,
 ): SelectionCtx {
   const [armedState, setArmedType] = useState<string | null>(null);
   const [handPicks, setHandPicks] = useState<number[]>([]);
   // 누명 2단계 — 손패를 고른 뒤 상대 바닥을 고른다
   const [frameTile, setFrameTile] = useState<number | null>(null);
+  // 왕패의 주인 — 먼저 누른 쪽(손패 또는 왕패 칸)과 예약한 쌍(SelectionCtx.dwHand 주석)
+  const [dwHand, setDwHand] = useState<number | null>(null);
+  const [dwDead, setDwDead] = useState<number | null>(null);
+  const [dwPairs, setDwPairs] = useState<DwPair[]>([]);
+  // 후로 고르기(docs/59 U56) — 세운 프롬프트를 함께 기억해, 프롬프트가 바뀐 첫 렌더에도 옛 후보가 새지 않게 한다
+  const [callPickState, setCallPickState] = useState<{
+    prompt: unknown;
+    type: string;
+    options: ActionOption[];
+    picks: number[];
+    cursor: number | null;
+    /** 가깡에서 누른 내 퐁(CallPick.meld) */
+    meld: number | null;
+  } | null>(null);
 
   const myPrompt = prompt !== null && prompt.player === view.playerId ? prompt : null;
   /*
@@ -16366,7 +16932,9 @@ function useSelection(
       setArmedType(null);
       setHandPicks([]);
       setFrameTile(null);
+      clearDw();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [armedState, myPrompt]);
 
   // 강제 선택이 시작되면 그 전에 걸어 둔 무장과 리치 모드를 걷는다 — 강제 무장이 끝난 뒤
@@ -16384,8 +16952,16 @@ function useSelection(
   //  ARM_MODE.swap3가 "opp"라 도달할 수 없었고, 넘길 3장은 OwnArea의 swapGiveInHand가 맡는다 — docs/59 U11)
   useEffect(() => {
     if (armedType !== "frame_discard") setFrameTile(null);
+    if (armedType !== "dw_swap") clearDw();
     setHandPicks([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [armedType]);
+
+  function clearDw(): void {
+    setDwHand(null);
+    setDwDead(null);
+    setDwPairs([]);
+  }
 
   const exitRiichiMode = (): void => onRiichiMode(false);
 
@@ -16398,13 +16974,237 @@ function useSelection(
     setArmedType((cur) => (type === null ? null : cur === type ? null : type));
     setHandPicks([]);
     setFrameTile(null);
+    clearDw();
+    // 무장·[리치](arm(null) 뒤 리치 모드)는 손패 클릭의 뜻을 새로 정한다 — 후로 고르기와 함께 서지 않는다
+    setCallPickState(null);
   };
 
-  const submit = (o: ActionOption): void => {
-    onSubmit(o);
+  /** 보냈으면 true — 끊겨 있어 못 보냈으면 false(submitOption). 무장 정리는 결과와 상관없이 한다. */
+  const submit = (o: ActionOption): boolean => {
+    const sent = onSubmit(o) !== false;
     setArmedType(null);
     setHandPicks([]);
     setFrameTile(null);
+    clearDw();
+    setCallPickState(null);
+    return sent;
+  };
+
+  // ── 후로 고르기(docs/59 U56) — 묶음 버튼 → 손패 클릭으로 좁혀 서버 옵션 그대로 낸다 ──
+  const callPick = useMemo<CallPick | null>(() => {
+    if (callPickState === null || myPrompt === null || callPickState.prompt !== myPrompt) return null;
+    return {
+      type: callPickState.type,
+      options: callPickState.options,
+      picks: callPickState.picks,
+      remaining: callPickRemaining(view, callPickState.options, callPickState.picks, callPickState.meld),
+      cursor: callPickState.cursor,
+      meld: callPickState.meld,
+    };
+  }, [callPickState, myPrompt, view]);
+  // 순이 넘어가면(남의 론·퐁, 시간 초과) 고르던 것을 버린다 — 위 prompt 대조가 첫 렌더를 막고, 이건 뒷정리다
+  useEffect(() => {
+    setCallPickState(null);
+  }, [myPrompt]);
+
+  const toggleCallPick = (type: string, options: ActionOption[]): void => {
+    if (myPrompt === null) return;
+    if (callPickState !== null && callPickState.prompt === myPrompt && callPickState.type === type) {
+      setCallPickState(null);
+      return;
+    }
+    // 증강 무장·리치 모드와 함께 서지 않는다(SelectionCtx.callPick 주석). arm()을 거치지 않는 것은
+    // arm이 후로 고르기를 비우기 때문이다 — 강제 선택 중에는 액션 바가 후로를 내지 않는다(forcedPick)
+    setArmedType(null);
+    setHandPicks([]);
+    setFrameTile(null);
+    clearDw();
+    exitRiichiMode();
+    setCallPickState({ prompt: myPrompt, type, options, picks: [], cursor: null, meld: null });
+  };
+  const cancelCallPick = (): void => setCallPickState(null);
+
+  const callPickArmable = (id: number): boolean =>
+    callPick !== null && callPickArmableIn(view, callPick, id);
+
+  /*
+   * 손패 누르기 — 하나로 정해지면(남은 후보가 손패로는 모두 같은 수여도) 곧바로 낸다. [확인]은 없다:
+   * 파괴적인 수가 아니고 리액션 타이머가 돈다. 낼 때는 **서버 옵션 객체 그대로**다(callPick.ts 머리말 —
+   * 누른 id로 payload를 다시 만들면 서버의 완전일치 대조에 걸린다).
+   */
+  const callPickClick = (id: number): boolean => {
+    if (callPick === null || callPickState === null) return false;
+    const r = resolveCallPick(view, callPick, id);
+    if (r === null) return false;
+    if (r.submit !== null) {
+      submit(r.submit);
+      return true;
+    }
+    // 남은 후보가 바뀌었으니 ←→로 짚던 자리는 버린다(다른 후보를 가리키게 되므로)
+    setCallPickState({ ...callPickState, picks: r.picks, cursor: null });
+    return true;
+  };
+  /*
+   * 가깡의 퐁 누르기 — «어느 퐁에 붙이나»는 판의 실물 퐁을 눌러 고른다(docs/59 U56 3단계 · §2 원칙 1).
+   * 손패 한 장이 퐁 둘에 붙을 때 손패만으로는 못 가르던 것을 안내 줄 칩 없이 가른다(2026-09-25, B17 리뷰 R2).
+   * 정해지면 손패 누르기와 같이 서버 옵션 그대로 낸다.
+   */
+  const callPickMeldClick = (meldTileIds: readonly number[]): boolean => {
+    if (callPick === null || callPickState === null) return false;
+    const r = resolveCallPickMeld(view, callPick, meldTileIds);
+    if (r === null) return false;
+    if (r.submit !== null) {
+      submit(r.submit);
+      return true;
+    }
+    setCallPickState({ ...callPickState, meld: r.meld, cursor: null });
+    return true;
+  };
+  /*
+   * 키보드 ←→ — 남은 후보를 하나씩 짚는다. 칩(숫자 1..N)은 후보가 CALL_PICK_CHIP_MAX 이하일 때만 서므로,
+   * 무너진 국경의 치 22개 같은 판에서 키보드 사용자가 특정 후보를 고를 길이 이것이다(docs/59 U56 5단계).
+   * 짚은 후보는 안내 줄에 칩 하나로 서고 숫자 1로 낸다. 처음 → 는 첫 후보, 처음 ← 는 끝 후보.
+   */
+  const stepCallPick = (delta: number): void => {
+    if (callPick === null || callPickState === null) return;
+    const n = callPick.remaining.length;
+    if (n === 0) return;
+    const cur = callPick.cursor;
+    const next = cur === null ? (delta > 0 ? 0 : n - 1) : (((cur + delta) % n) + n) % n;
+    setCallPickState({ ...callPickState, cursor: next });
+  };
+
+  // ── 왕패의 주인 — 여러 쌍을 한 번에 고른 뒤 차례로 제출한다 ──
+  // (2026-09-25, docs/59 U04: ActiveAugmentControl의 모달에서 옮겨 왔다. 손패와 도킹 패널이 함께
+  //  예약을 쌓고, 확정도 패널이 하므로 큐가 두 곳이 보는 이 훅에 있어야 한다. 동작은 그대로다.)
+  // 서버는 교환 1회 = 액션 1개라, 고른 쌍을 **프롬프트가 갱신될 때마다 하나씩** 보낸다.
+  // (연달아 보내면 두 번째가 갱신 전 프롬프트에 실려 거부된다 — 보낸 프롬프트를 ref로 기억해 막는다.
+  //  봇 중복 컷인 대응 2026-08-07 — 같은 순의 dw_swap 2개가 한 번에 나가지 않는다.)
+  const dwRemaining = dwRemainingOf(view);
+  const [dwQueue, setDwQueue] = useState<DwPair[]>([]);
+  const dwSentPromptRef = useRef<unknown>(null);
+  /**
+   * 큐를 확정한 순(`round.turnCount`) — 남은 쌍은 **그 순의** 프롬프트에만 이어 싣는다. 끊겼다 붙는
+   * 사이 서버가 시간 초과로 순을 넘기면 다음 내 차례에 지시하지 않은 교환이 나갔다
+   * (W4 통합 리뷰 lifecycle-4).
+   */
+  const dwQueueTurnRef = useRef<string | null>(null);
+  /*
+   * «내 이 순»의 열쇠 — `turnCount`는 친이 쯔모한 횟수라 후로로 친의 쯔모가 건너뛰면 내 다음 차례에도
+   * 같은 값이다. 내 버림 수를 붙이면 내가 한 번 버린 뒤로는 반드시 달라진다(W4 수정 커밋 리뷰).
+   */
+  const dwTurnKey = `${view.round.turnCount}|${view.zones[`discards:${view.playerId}`]?.tileIds.length ?? 0}`;
+  useEffect(() => {
+    if (dwQueue.length === 0) return;
+    if (myPrompt === null) return;
+    if (dwSentPromptRef.current === myPrompt) return; // 이 프롬프트에는 이미 보냈다
+    if (dwQueueTurnRef.current !== dwTurnKey) {
+      setDwQueue([]);
+      return;
+    }
+    const head = dwQueue[0]!;
+    const opt = myPrompt.options.find((o) => {
+      if (o.type !== "dw_swap") return false;
+      const p = o.payload as { handTileId?: unknown; deadIndex?: unknown };
+      return p.handTileId === head.handTileId && p.deadIndex === head.deadIndex;
+    });
+    if (opt === undefined) {
+      // 남은 교환이 없거나 상황이 바뀌어 더는 못 보낸다 — 조용히 접는다.
+      setDwQueue([]);
+      return;
+    }
+    dwSentPromptRef.current = myPrompt;
+    if (!submit(opt)) {
+      // 끊겨 있어 못 보냈다 — 남은 쌍을 다시 붙은 뒤 사용자 손 없이 보내지 않는다. send()가 이미
+      // «다시 연결된 뒤에 눌러 주세요»를 띄웠으니 큐를 통째로 접는다(W4 통합 리뷰 lifecycle-4)
+      setDwQueue([]);
+      return;
+    }
+    setDwQueue((cur) => cur.slice(1));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dwQueue, myPrompt]);
+  /*
+   * **국이 넘어가면 큐를 비운다.**
+   *
+   * 큐를 접는 조건이 «프롬프트가 왔는데 그 쌍이 후보에 없다» 하나뿐이라, 남은 채로
+   * `myPrompt`가 null이 되면(턴 종료·국 전환) 그대로 살아남았다. 다음 국의 프롬프트에
+   * 우연히 같은 `handTileId`/`deadIndex` 쌍이 서면 **지시하지 않은 교환이 자동으로
+   * 나간다.** 실제로 그 우연이 닿는지는 타일 id 재사용에 달렸는데, «닿지 않기를
+   * 바라는» 것은 방어가 아니다 — 국 경계에서 확실히 끊는다.
+   */
+  const dwRoundKey = `${view.round.prevalentWind}-${view.round.roundNumber}-${view.round.honba}`;
+  useEffect(() => {
+    setDwQueue([]);
+    dwSentPromptRef.current = null;
+  }, [dwRoundKey]);
+
+  /** 이 쌍이 실제 후보로 와 있는가 (합법성 최종 판정은 서버 validate) */
+  const dwHasOpt = (handTileId: number, deadIndex: number | null): boolean =>
+    armedType === "dw_swap" &&
+    armedOptions.some((o) => {
+      const p = o.payload as { handTileId?: unknown; deadIndex?: unknown };
+      return p.handTileId === handTileId && (deadIndex === null || p.deadIndex === deadIndex);
+    });
+  const dwHasDeadOpt = (deadIndex: number): boolean =>
+    armedType === "dw_swap" &&
+    armedOptions.some((o) => (o.payload as { deadIndex?: unknown }).deadIndex === deadIndex);
+  /*
+   * 순서를 강제하지 않는다(2026-09-25, docs/59 U04). 예전 모달은 손패를 고르기 전까지 왕패 14칸을
+   * 전부 disabled로 흐려 두어, 이 증강의 핵심 판단 재료(무엇을 가져올지)가 처음에 흐리게 떴다.
+   * 이제 어느 쪽을 먼저 눌러도 되고, 반대쪽이 서 있으면 그 자리에서 짝이 지어진다.
+   */
+  const dwClickHand = (id: number): DwClickResult => {
+    if (armedType !== "dw_swap") return "none";
+    if (dwPairs.some((p) => p.handTileId === id)) {
+      setDwPairs((cur) => cur.filter((p) => p.handTileId !== id));
+      return null;
+    }
+    if (dwPairs.length >= dwRemaining) return "full";
+    if (dwDead !== null) {
+      /*
+       * 먼저 고른 왕패 칸이 서 있으면 그 칸과 짝이 되는 손패만 빛난다(dwHandArmable). 흐린 패를
+       * 눌렀을 때 칸을 몰래 버리고 그 패를 들어 올리면 화면(흐림·«이 칸과 바꿀 내 손패») 과
+       * 동작이 어긋난다 — 대상 아님으로 답한다. 칸을 바꾸려면 그 칸을 다시 눌러 뺀다(B13 리뷰).
+       */
+      if (!dwHasOpt(id, dwDead)) return dwHasOpt(id, null) ? "mismatch" : "none";
+      setDwPairs((cur) => [...cur, { handTileId: id, deadIndex: dwDead }]);
+      setDwDead(null);
+      setDwHand(null);
+      return null;
+    }
+    if (!dwHasOpt(id, null)) return "none";
+    setDwHand((cur) => (cur === id ? null : id));
+    setDwDead(null);
+    return null;
+  };
+  const dwClickDead = (idx: number): DwClickResult => {
+    if (armedType !== "dw_swap") return "none";
+    if (dwPairs.some((p) => p.deadIndex === idx)) {
+      setDwPairs((cur) => cur.filter((p) => p.deadIndex !== idx));
+      return null;
+    }
+    if (dwPairs.length >= dwRemaining) return "full";
+    if (dwHand !== null) {
+      // 손패 쪽과 같은 규칙 — 들어 올린 손패와 짝이 안 되는 칸은 흐리게 그려진다(DeadWallDock의 off)
+      if (!dwHasOpt(dwHand, idx)) return dwHasDeadOpt(idx) ? "mismatch" : "none";
+      setDwPairs((cur) => [...cur, { handTileId: dwHand, deadIndex: idx }]);
+      setDwHand(null);
+      setDwDead(null);
+      return null;
+    }
+    if (!dwHasDeadOpt(idx)) return "none";
+    setDwDead((cur) => (cur === idx ? null : idx));
+    setDwHand(null);
+    return null;
+  };
+  // [이대로 교환] — 큐로 넘기고 무장을 푼다. 강제 선택 가드(arm)는 거치지 않는다: dw_swap이 무장돼
+  // 있다는 것 자체가 강제 선택 중이 아니라는 뜻이다(강제 선택이 시작되면 위 effect가 무장을 걷는다)
+  const dwConfirm = (): void => {
+    if (armedType !== "dw_swap" || dwPairs.length === 0) return;
+    dwQueueTurnRef.current = dwTurnKey;
+    setDwQueue(dwPairs);
+    setArmedType(null);
+    clearDw();
   };
 
   // 누명: 고른 손패를 이 상대의 바닥에 놓는 옵션 — 손패를 아직 안 골랐으면 없다.
@@ -16545,6 +17345,20 @@ function useSelection(
     setFrameTile,
     riverTargetOptionFor,
     oppAugArmable,
+    dwHand,
+    dwDead,
+    dwPairs,
+    dwRemaining,
+    dwClickHand,
+    dwClickDead,
+    dwConfirm,
+    callPick,
+    toggleCallPick,
+    cancelCallPick,
+    callPickArmable,
+    callPickClick,
+    callPickMeldClick,
+    stepCallPick,
     meldOptionFor,
   };
 }
@@ -16986,7 +17800,9 @@ function SettingsPanel(props: {
     {
       key: "tapTwiceToDiscard",
       label: "두 번 눌러 버리기",
-      desc: "패를 한 번 누르면 들어 올려지고, 한 번 더 눌러야 버려집니다. 다른 패를 누르면 그 패가 대신 선택됩니다. 휴대폰에서는 패 사이가 좁아 옆 패를 잘못 누르기 쉬우므로 기본으로 켜져 있습니다",
+      // 버리기만이 아니라 되돌릴 수 없는 발동까지 이 설정이 맡는다 — 손패 무장(U16)과 손패를 태우거나
+      // 바꾸는 선언(PREVIEW_FIRST_TYPES, U61). 이름은 저장 키와 익숙함 때문에 그대로 둔다(2026-09-25)
+      desc: "패를 한 번 누르면 들어 올려지고, 한 번 더 눌러야 버려집니다. 다른 패를 누르면 그 패가 대신 선택됩니다. 손패를 쓰거나 바꾸는 되돌릴 수 없는 발동(허장성세 퐁·삼원의 의지·짝수의 세계 등)도 첫 번째 누름은 미리보기만 하고, 한 번 더 눌러야 발동합니다. 휴대폰에서는 패 사이가 좁아 옆 패를 잘못 누르기 쉬우므로 기본으로 켜져 있습니다",
     },
     {
       key: "showMyWaits",
@@ -17002,6 +17818,13 @@ function SettingsPanel(props: {
       key: "rightClickTsumogiri",
       label: "우클릭 쯔모기리",
       desc: "게임 화면 어디서든 마우스 오른쪽 버튼을 누르면 방금 쯔모한 패를 바로 버립니다. 리치할 패를 고르는 중이거나 증강을 선택하는 중에는 동작하지 않습니다",
+    },
+    // 빠른 토글(QuickToggles)이 아니라 여기다 — 그 넷은 «매 국 옵션 초기화»로 되돌아가는 판 위
+    // 스위치이고, 이건 한 번 정하면 두는 취향이다(2026-09-25, docs/59 U52 리뷰)
+    {
+      key: "riichiSoftAuto",
+      label: "리치 중 자동 쯔모기리",
+      desc: "리치 중 쓸 수 있는 액티브 증강(승부수 등)이 있어 자동 쯔모기리가 멈추는 순에도, 2초 뒤 쯔모한 패를 대신 버립니다. 그 사이 화면이나 키를 누르거나 ✦ 버튼·액션 바에 마우스를 올리면 멈추고 직접 고를 수 있습니다",
     },
     { key: "doraFx", label: "도라 반짝임", desc: "도라인 패를 금빛으로 반짝이게 합니다. 나만의 도라는 보랏빛 금색으로 표시합니다" },
     { key: "screenFx", label: "화면 효과", desc: "화료나 리치 때 화면 흔들림, 번쩍임, 파티클 효과를 보여 줍니다. 멀미가 나거나 빛에 민감하면 꺼 주세요" },
@@ -21785,8 +22608,17 @@ function InfoNote(props: {
  * 그대로 가져온다.
  *
  * 마감이 없으면(평시 국) 아무것도 그리지 않는다.
+ *
+ * `fallback` — 시간이 다 되면 **실제로** 일어나는 일. 예전엔 모든 창이 «시간이 지나면 자동으로
+ * 선택됩니다»를 적었지만 서버가 대신 골라 주는 것은 등가교환(FORCED_ACTION_TYPES)뿐이고, 나머지는
+ * pass가 없어 마지막 후보인 버림이 나가 증강이 발동하지 않는다(HumanAgent.safeFallbackOption).
+ * 기본 문구가 그 대다수를 말하고, 다른 창만 제 문구를 넘긴다(2026-09-25, docs/59 U49).
+ * ⚠ `deadline`은 늘 첫 속성으로 쓴다 — 패널 수와 타이머 수를 `<PickTimer deadline=`로 센다.
  */
-function PickTimer(props: { deadline: number | null }): JSX.Element | null {
+const PICK_TIMER_FALLBACK = "시간이 다 되면 패 한 장이 자동으로 버려지고 이 증강은 사용되지 않습니다";
+/** 예지 재배열 탭 — 공개는 이미 끝났고, ORDER는 공개한 그 순에만 열린다(content foresight) */
+const FORESIGHT_TIMER_FALLBACK = "시간이 다 되면 패 한 장이 자동으로 버려지고 재배열 기회도 함께 사라집니다";
+function PickTimer(props: { deadline: number | null; fallback?: string }): JSX.Element | null {
   const { deadline } = props;
   const paused = useContext(PausedContext);
   const [left, setLeft] = useState<number | null>(
@@ -21812,11 +22644,69 @@ function PickTimer(props: { deadline: number | null }): JSX.Element | null {
       aria-live="off"
     >
       ⏳ 남은 시간 <strong>{Math.ceil(left / 1000)}</strong>초
+      {/* 구두점을 따로 둔다 — 좁은 화면에서는 안내문이 제 줄로 내려가 줄 머리의 «. »가 어색하다(styles.css 9-3) */}
       <span className="pick-timer-note">
-        {urgent ? ". 시간이 다 되면 자동으로 선택됩니다" : ". 시간이 지나면 자동으로 선택됩니다"}
+        <span className="pick-timer-sep">. </span>
+        {props.fallback ?? PICK_TIMER_FALLBACK}
       </span>
     </div>
   );
+}
+
+/**
+ * 고르기 창(`.rinshan-pick-overlay`)이 떠 있을 때 **Esc 앞에서 비켜설** 표면 — ESC_OWNER_SELECTOR에서
+ * 고르기 창 자신만 뺀 것. 연출 건너뛰기(`.prod-skip`)가 특히 그렇다: 연출 중 Esc는 window keydown으로
+ * 컷인을 넘기는데, 여기서 함께 받으면 컷인을 넘기려다 창까지 닫힌다(2026-09-25, docs/59 U46).
+ */
+const MODAL_ESC_YIELD_SELECTOR =
+  '[role="dialog"]:not(.coach-layer):not(.auglog):not(.settings-panel), [aria-modal="true"], .prod-skip, .aug-pill-pinned';
+
+/**
+ * 닫기 단추가 있는 고르기 창의 Esc = 그 닫기 (2026-09-25, docs/59 U46).
+ *
+ * 같은 파일의 시트·오버레이는 전부 Esc로 닫히는데 고르기 창만 keydown이 없어 키보드 사용자에게
+ * 출구가 없었다. **닫기가 있는 창에만** 건다 — 등가교환 take는 «닫기 없음»(2026-08-02 사용자 지시)이라
+ * Esc도 없다. ActionHotkeys 안에 두지 않는다(그쪽은 Esc를 쓰지 않는다 — a11yPerfGuards).
+ * `onClose`는 ref로 들고 있어 창이 떠 있는 동안 다시 구독하지 않는다(재배열 탭은 매 렌더 새 함수다).
+ */
+function useModalEsc(onClose: () => void, enabled: boolean): void {
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    if (!enabled) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== "Escape" || e.defaultPrevented || isTypingTarget(e.target)) return;
+      if (document.querySelector(MODAL_ESC_YIELD_SELECTOR) !== null) return;
+      e.preventDefault();
+      closeRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [enabled]);
+}
+
+/**
+ * 재배열 칸(예지 탭·영상 정찰)의 ←/→ — 포커스한 칸을 한 자리 옮기고 초점도 따라간다.
+ * 드래그는 마우스 전용이고 탭-탭(Enter/Space 두 번)은 두 칸을 오가야 해서, 칸마다 ◀▶ 단추를
+ * 달았던 것을 키 하나로 대신한다 — 칸당 단추 수를 줄인다(2026-09-25, docs/59 U44·U45).
+ * 칸은 `data-reorder-pos`로 자리를 들고 같은 부모 아래 형제로 선다.
+ */
+function reorderArrowKey(
+  e: React.KeyboardEvent<HTMLElement>,
+  pos: number,
+  count: number,
+  move: (from: number, to: number) => void,
+): void {
+  const step = e.key === "ArrowLeft" ? -1 : e.key === "ArrowRight" ? 1 : 0;
+  if (step === 0) return;
+  const to = pos + step;
+  if (to < 0 || to >= count) return;
+  e.preventDefault();
+  const row = e.currentTarget.parentElement;
+  move(pos, to);
+  requestAnimationFrame(() => {
+    row?.querySelector<HTMLElement>(`[data-reorder-pos="${to}"]`)?.focus();
+  });
 }
 
 /**
@@ -21831,6 +22721,166 @@ function foresightPeekOf(av: Record<string, unknown>): TileKind[] {
   return Array.isArray(raw)
     ? (raw as string[]).map(parseKindKey).filter((k): k is TileKind => k !== null)
     : [];
+}
+
+/** 왕패의 주인 — 남은 횟수만큼 짝을 다 고른 뒤 더 누를 때의 안내(손패·왕패 칸 공통) */
+const DW_FULL_HINT = "남은 교환 횟수만큼 골랐습니다. [이대로 교환]을 누르거나 고른 패를 다시 눌러 빼세요";
+/**
+ * 왕패의 주인 — 먼저 고른 왕패 칸과 짝이 안 되는(흐린) 손패를 눌렀을 때.
+ * 다른 왕패 칸을 누르면 고른 칸이 그리로 옮겨 가므로(dwClickDead) 되돌리는 길만 적지 않는다(B13 리뷰).
+ */
+const DW_MISMATCH_HAND_HINT = "고른 왕패 칸과 바꿀 수 없는 패입니다. 다른 왕패 칸을 고르거나 그 칸을 다시 눌러 빼세요";
+/** 왕패의 주인 — 들어 올린 손패와 짝이 안 되는(흐린) 왕패 칸을 눌렀을 때. 다른 손패를 누르면 그 패로 바뀐다(dwClickHand) */
+const DW_MISMATCH_DEAD_HINT = "들어 올린 손패와 바꿀 수 없는 자리입니다. 다른 손패를 고르거나 그 손패를 다시 눌러 내리세요";
+
+/**
+ * 왕패의 주인 — 손패 위 **비차단** 도킹 패널. 판에 없는 왕패 14칸만 여기 펴고, 내 손패는 판에서
+ * 직접 누른다(2026-09-25, docs/59 U04 · §2 원칙 2). 예전 전면 모달은 판 손패의 복제(«내 손패» 줄)와
+ * 왕패를 함께 그려 누를 패가 약 28개였고, 블러가 실제 손패를 가렸다.
+ *
+ * - 실제 왕패 배치를 흉내 낸다: 영상패 칸과 표시패 칸을 각각 2단(열 우선)으로 쌓는다. 표시패 블록은
+ *   짝수째가 도라 표시, 그다음이 짝이 되는 뒷도라라 열 우선 2단이면 **도라가 위, 뒷도라가 아래**에 선다.
+ *   자리는 deadWallSlotInfo가 **뒤에서부터** 센다 — 상수 인덱스를 쓰지 않는다(docs/10).
+ * - 깡으로 빠진 영상패는 빈 칸으로 남겨 원래 14칸 배열을 유지한다(rinshanSpentOf, docs/10 규약).
+ * - 칸마다 짧은 자리 이름(영상1·도라1✓·뒷1)을 상시로 붙인다 — title만으로는 터치·스크린리더에서
+ *   읽히지 않았다(U05). 자리 이름만 적고 패 그림은 뷰가 준 것만 그린다(가려진 도라가 새지 않게).
+ * - 순서를 강제하지 않는다: 왕패 칸을 먼저 누르면 그 칸과 짝이 되는 손패만 빛난다.
+ * - 예약 쌍·남은 횟수·[이대로 교환]·[취소]가 여기 있다. 확정 뒤 프롬프트마다 하나씩 보내는 큐는
+ *   useSelection이 맡는다(docs/10 «여러 쌍을 한 번에», 2026-08-07 봇 중복 컷인 대응).
+ *
+ * 무장 중 판 바깥 pointerdown이 무장을 풀므로 data-arm-zone을 단다(.own-area 안이라 겹쳐도 무해).
+ */
+function DeadWallDock(props: {
+  view: PlayerView;
+  /** 증강 이름(augActionName) */
+  name: string;
+  onToast?: ((msg: string) => void) | undefined;
+}): JSX.Element {
+  const { view, name } = props;
+  const sel = useContext(SelectionContext);
+  const deadWallIds = view.zones["deadWall"]?.tileIds ?? [];
+  const size = deadWallSizeOf(view);
+  const flipped = flippedIndicatorCount(view);
+  const first = size - INDICATOR_BLOCK; // 표시패 블록 시작 = 남은 영상패 장수
+  const remaining = sel.dwRemaining;
+  const pairs = sel.dwPairs;
+  const full = pairs.length >= remaining;
+  const stagedDead = new Set(pairs.map((p) => p.deadIndex));
+  // 후보가 서 있는 왕패 자리 · 들어 올린 손패와 짝이 되는 자리
+  const deadCands = new Set<number>();
+  const pairOk = new Set<number>();
+  for (const o of sel.armedOptions) {
+    const p = o.payload as { handTileId?: unknown; deadIndex?: unknown };
+    if (typeof p.deadIndex !== "number") continue;
+    deadCands.add(p.deadIndex);
+    if (sel.dwHand !== null && p.handTileId === sel.dwHand) pairOk.add(p.deadIndex);
+  }
+  const answer = (r: DwClickResult): void => {
+    if (r === null) {
+      sfx.pick();
+      return;
+    }
+    haptics.reject();
+    props.onToast?.(
+      r === "full"
+        ? DW_FULL_HINT
+        : r === "mismatch"
+          ? DW_MISMATCH_DEAD_HINT
+          : `이 자리는 ${name} 대상이 아닙니다`,
+    );
+  };
+  const hint = full
+    ? "고를 수 있는 만큼 다 골랐습니다. [이대로 교환]을 누르세요"
+    : sel.dwHand !== null
+      ? `${formatTile(view.tiles[sel.dwHand])}와(과) 바꿀 왕패 칸을 누르세요. 도라 표시패 자리를 고르면 도라가 바뀝니다`
+      : sel.dwDead !== null
+        ? "이 칸과 바꿀 내 손패를 누르세요"
+        : (ARM_PROMPT["dw_swap"] ?? "");
+  const cell = (tileId: number, idx: number): JSX.Element => {
+    const slot = deadWallSlotInfo(idx, flipped, size);
+    const staged = stagedDead.has(idx);
+    const on = sel.dwDead === idx;
+    // 누를 수는 있지만 지금 짝이 안 되는 칸 — 흐림만(예전처럼 disabled로 막지 않는다, U04)
+    const off =
+      !staged && !on && (full || !deadCands.has(idx) || (sel.dwHand !== null && !pairOk.has(idx)));
+    const tile = view.tiles[tileId];
+    return (
+      <button
+        key={tileId}
+        type="button"
+        className={`aug-pick-tile rinshan-slot-${slot.cls}${on ? " aug-pick-tile-on" : ""}${
+          staged ? " aug-pick-tile-staged" : ""
+        }${off ? " dw-dock-off" : ""}`}
+        aria-pressed={on || staged}
+        aria-label={`${slot.label}${tile !== undefined ? ` ${formatTile(tile)}` : ""}${
+          staged ? ". 교환 예약됨, 누르면 취소" : on ? ". 선택됨, 바꿀 손패를 누르세요" : ""
+        }`}
+        title={staged ? `${slot.label}: 교환 예약됨. 누르면 취소합니다` : slot.label}
+        onClick={() => answer(sel.dwClickDead(idx))}
+      >
+        <TileImg tile={tile} size="mini" />
+        <span className="aug-pick-slot-label">{slot.short}</span>
+      </button>
+    );
+  };
+  return (
+    <div className="dw-dock" data-arm-zone="1" role="group" aria-label={`${name}: 왕패`}>
+      <div className="dw-dock-text">
+        <b>🏯 {name}</b> 남은 교환 {remaining}회 · {hint}
+      </div>
+      <div className="dw-dock-body">
+        <div className="dw-dock-wall">
+          <div className="dw-dock-block">
+            <span className="dw-dock-tag">영상패</span>
+            <div className="dw-dock-grid">
+              {/* 깡으로 빠져나간 영상패 자리 — 빈 칸으로 남겨 원래 14칸 배열을 유지한다 */}
+              {Array.from({ length: rinshanSpentOf(view) }, (_v, i) => (
+                <span
+                  key={`spent-${i}`}
+                  className="aug-pick-tile aug-pick-tile-spent"
+                  title="깡으로 사용된 영상패 자리 (보충되지 않습니다)"
+                  aria-hidden="true"
+                />
+              ))}
+              {deadWallIds.map((tileId, idx) => (idx < first ? cell(tileId, idx) : null))}
+            </div>
+          </div>
+          <div className="dw-dock-block">
+            <span className="dw-dock-tag">도라 표시 · 뒷도라</span>
+            <div className="dw-dock-grid">
+              {deadWallIds.map((tileId, idx) => (idx >= first ? cell(tileId, idx) : null))}
+            </div>
+          </div>
+        </div>
+        <div className="dw-dock-side">
+          {pairs.length > 0 ? (
+            <div className="dw-dock-pairs" aria-label="교환 예약">
+              {pairs.map((p) => (
+                <span key={p.handTileId} className="aug-pick-pair">
+                  <TileImg tile={view.tiles[p.handTileId]} size="mini" />
+                  <span className="aug-morph-arrow" aria-hidden="true">→</span>
+                  <TileImg tile={view.tiles[deadWallIds[p.deadIndex] ?? -1]} size="mini" />
+                </span>
+              ))}
+            </div>
+          ) : null}
+          <div className="dw-dock-actions">
+            <button
+              type="button"
+              className="arm-hint-confirm"
+              disabled={pairs.length === 0}
+              onClick={sel.dwConfirm}
+            >
+              이대로 교환 ({pairs.length}장)
+            </button>
+            <button type="button" className="arm-hint-cancel" onClick={() => sel.arm(null)}>
+              취소
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -22028,6 +23078,10 @@ function OwnArea(props: {
   promptSeq: number;
   /** 초읽기가 걸린 국의 결정 마감 시각(epoch ms). 평소에는 null */
   promptDeadline: number | null;
+  /** 리치 소프트 자동 쯔모기리가 걸린 시각(App `tryRiichiSoftAuto`) — 쯔모패 위 게이지를 그린다 */
+  riichiSoftAutoAt?: number | null;
+  /** 걸렸던 소프트 자동이 사람 손에 걷혔다 — 쯔모패 아래에 «직접 버리세요»를 남긴다 */
+  riichiSoftAutoStopped?: boolean;
   riichiMode: boolean;
   catalog: Record<string, AugmentCatalogEntry>;
   autoSort: boolean;
@@ -22289,6 +23343,54 @@ function OwnArea(props: {
    */
   const hand3Picking = sel.armMode === "hand3";
   const handPicks = sel.handPicks;
+  // 후로 고르기(docs/59 U56) — 액션 바의 묶음 버튼([치 ×3])을 누르면 선다. 관전에는 프롬프트가 없다
+  const callPicking = !isSpectator && sel.callPick !== null;
+  const callPickName = sel.callPick !== null ? actionLabel(sel.callPick.type, props.catalog) : "";
+  // 가깡 고르기 — 내 퐁 후로도 누를 대상이다(후로 줄의 meldPicking 분기)
+  const meldPicking = callPicking && sel.callPick?.type === "shouminkan";
+  /*
+   * 후로 고르기 안내 줄의 후보 칩 하나 — 그 후보가 쓰는 손패, 가깡이면 **붙일 퐁**까지 그린다. 가깡 칩이
+   * 둘 서는 것은 손패 한 장이 퐁 둘에 붙을 때뿐인데, 손패(payload.tileId)만 그리면 두 칩이 그림도
+   * 이름도 똑같아 어느 퐁에 붙는지 알 수 없었다(2026-09-25, B17 리뷰). 퐁은 몇 번째 후로인지도 이름에
+   * 싣는다 — 두 퐁의 패 그림까지 같아도 자리로는 갈린다. note는 ←→로 짚은 칩의 «3/22» 같은 자리 표시다.
+   */
+  const callPickChip = (o: ActionOption, key: string, hot: string, note = ""): JSX.Element => {
+    const target = (o.payload as { targetMeldTileId?: unknown } | undefined)?.targetMeldTileId;
+    const melds = view.round.byPlayer[view.playerId]?.melds ?? [];
+    const meldIdx = typeof target === "number" ? melds.findIndex((m) => m.tileIds.includes(target)) : -1;
+    const meld = meldIdx >= 0 ? melds[meldIdx] : undefined;
+    const handName = (callPickTileIds(o) ?? []).map((t) => formatTile(view.tiles[t])).join(", ");
+    const meldName =
+      meld !== undefined
+        ? ` → ${meldIdx + 1}번째 후로(${meld.tileIds.map((t) => formatTile(view.tiles[t])).join("·")})에`
+        : "";
+    return (
+      <button
+        key={key}
+        className="call-pick-chip"
+        title={`${callPickName} 이 조합으로${meldName} (단축키 ${hot})`}
+        aria-label={`${callPickName}: ${handName}${meldName}${note !== "" ? ` (후보 ${note})` : ""}`}
+        onClick={() => sel.submit(o)}
+      >
+        <ActionTiles view={view} option={o} />
+        {meld !== undefined ? (
+          <>
+            <span className="act-tiles-arrow" aria-hidden="true">→</span>
+            <span className="act-tiles">
+              {meld.tileIds.map((t) => (
+                <TileImg key={t} tile={view.tiles[t]} size="mini" />
+              ))}
+            </span>
+          </>
+        ) : null}
+        {note !== "" ? (
+          <span className="act-group-count" aria-hidden="true">
+            {note}
+          </span>
+        ) : null}
+      </button>
+    );
+  };
   const hand3Pool = useMemo(() => {
     const pool = new Set<number>();
     if (!hand3Picking) return pool;
@@ -22391,6 +23493,31 @@ function OwnArea(props: {
     }
     return map;
   }, [armedAug, myPrompt, rawHand, view.tiles]);
+
+  /*
+   * 왕패의 주인 — 손패 id → 짝이 되는 왕패 자리들. armedByTile로 풀지 않는다(손패당 후보 14개라
+   * armSub로 샌다 — armTileIdsOf 주석). 손패 클릭은 아래 무장 분기보다 먼저 가로채 들어 올리기만 하고,
+   * 짝은 손패 위 도킹 패널(DeadWallDock)에서 짓는다(2026-09-25, docs/59 U04).
+   */
+  const dwArmed = armedAug === "dw_swap";
+  const dwHandCands = useMemo(() => {
+    const map = new Map<number, Set<number>>();
+    if (!dwArmed) return map;
+    for (const o of sel.armedOptions) {
+      const p = o.payload as { handTileId?: unknown; deadIndex?: unknown };
+      if (typeof p.handTileId !== "number" || typeof p.deadIndex !== "number") continue;
+      const cur = map.get(p.handTileId) ?? new Set<number>();
+      cur.add(p.deadIndex);
+      map.set(p.handTileId, cur);
+    }
+    return map;
+  }, [dwArmed, sel.armedOptions]);
+  const dwStagedHand = new Set(sel.dwPairs.map((p) => p.handTileId));
+  /** 지금 누를 수 있는 손패 — 예약한 패(누르면 취소)·먼저 누른 왕패 칸과 짝이 되는 패, 칸이 없으면 후보 전부 */
+  const dwHandArmable = (id: number): boolean =>
+    dwStagedHand.has(id) ||
+    (sel.dwPairs.length < sel.dwRemaining &&
+      (sel.dwDead !== null ? dwHandCands.get(id)?.has(sel.dwDead) === true : dwHandCands.has(id)));
 
   /*
    * 손패 무장 게이트의 «둘째 탭»인가 — 들어 올린 그 패를 다시 눌렀을 때. 종류 지목형(스파이·소환)은
@@ -22714,7 +23841,8 @@ function OwnArea(props: {
       // ⚠ 이 목록은 styles.css 의 `order: -1` 목록과 **같아야 한다**.
       // 등가교환 참고 줄(.swap3-reveal-strip)도 상대 지정~교환 끝까지만 뜨는 줄이다 — 빼지 않으면
       // 뜨고 질 때마다 보드가 그 높이만큼 줄었다 커진다(W2 regression-1).
-      if (!el.matches(".action-bar, .prompt-timer, .arm-hint, .swap3-reveal-strip")) continue;
+      // 왕패의 주인 도킹 패널(.dw-dock)도 그 국 첫 순의 무장 동안만 뜬다(docs/59 U04)
+      if (!el.matches(".action-bar, .prompt-timer, .arm-hint, .swap3-reveal-strip, .dw-dock")) continue;
       /*
        * 흐름 밖으로 나간 줄은 **빼면 안 된다** — `area.offsetHeight`에 애초에 들어
        * 있지 않으므로 한 번 더 빼면 띠가 그만큼 얇아지고, 그만큼 보드가 아래로 자라
@@ -22750,7 +23878,7 @@ function OwnArea(props: {
       root.style.setProperty("--own-band-full", `${bandFull}px`);
       /*
        * body 에도 같은 값을 올린다 — 이 띠를 피해야 하는 것 중에 **body 포털**이
-       * 있다(`.rinshan-reopen` 「영상패 가져오기」 등, §FIXED_SURFACE_NOTE).
+       * 있다(§FIXED_SURFACE_NOTE — 예전의 절벽 위 꽃 재열기 알약이 그 예였다).
        * 그것들은 `.game-root` 의 후손이 아니라 형제라 여기서 올린 변수를 상속받지
        * 못하고, 고정 px 로 서 있다가 액션 바가 뜨면 손패 위에 얹혔다.
        */
@@ -23156,6 +24284,15 @@ function OwnArea(props: {
     setArmedTileId(null);
   }, [props.riichiMode]);
   /*
+   * **후로 고르기에 들어가거나 나올 때도 내린다** (W4 통합 리뷰 interaction-4 · regression-4).
+   * 패 A를 한 번 탭해 들어 올린 뒤 [안깡 ×2]를 누르면 A가 «한 번 더» 뱃지와 «한 번 더 누르면 버림»
+   * 이름을 단 채 남았다 — 정작 누르면 후로 고르기가 받아 «이 패는 안깡에 쓰이지 않습니다»로 거절하거나
+   * 재료로 담는다. 화면이 하는 말과 동작이 어긋난다. 리치 모드 전환과 같은 규칙이다.
+   */
+  useEffect(() => {
+    setArmedTileId(null);
+  }, [callPicking]);
+  /*
    * 3장 고르기는 **선택만** 바꾼다 — 제출은 [확정] 버튼(submitSwap3)이 한다 (2026-09-25, docs/59 U10).
    * 예전엔 3장째를 누르는 순간 이 업데이터 안에서 교환이 나갔다. 가지치기(hand3)는 [확인]이
    * 있는데 같은 «3장 고르기»가 여기선 없었고, 폰에서 3번째 탭을 옆 패로 짚으면 되돌릴 수 없는
@@ -23184,11 +24321,15 @@ function OwnArea(props: {
   // 응답 없이 지나가면(시간 초과 등) 모달이 남아 판을 가리므로 뷰 기준으로도 닫는다.
   const canPickRinshan =
     rinshanOptions.size > 0 && isMyTurn && view.round.phase === "turn.act";
+  // 절벽 위 꽃 창의 «지금 패» 칸 — 영상패와 맞바뀔 쯔모패. 손에 없으면(관전 등) 칸을 세우지 않는다(U47)
+  const bloomDrawnTile = hasDrawn && drawnId !== null ? view.tiles[drawnId] : undefined;
   // 절벽 위 꽃(bloom)은 깡 직후의 강제 선택이라 자동으로 뜬다.
   const [rinshanDismissed, setRinshanDismissed] = useState(false);
   useEffect(() => {
     setRinshanDismissed(false);
   }, [props.promptSeq]);
+  // Esc = [지금 패 그대로 두기] — 창만 접고, 손패 위 안내 줄에서 다시 연다(docs/59 U46·U48)
+  useModalEsc(() => setRinshanDismissed(true), canPickRinshan && !rinshanDismissed);
   // 내 턴 버림 프롬프트인가 — 봉인 패 클릭 안내는 실제로 버릴 차례일 때만 띄운다
   const promptHasDiscard =
     myPrompt?.options.some(
@@ -23425,6 +24566,12 @@ function OwnArea(props: {
     // 등가교환 교환 중(give·take) — 끌어 버리기가 강제 선택을 건너뛰는 길이 된다(docs/59 U07)
     if (swap3Pending) return;
     if (armedAug !== null && !DRAG_DISCARD_ARM_TYPES.has(armedAug) && armedAug !== "future_exchange") return;
+    /*
+     * 후로 고르기 중에도 막는다 — 고르는 동안 손패 누르기는 «고르기»다(§2 원칙 7). 터치 탭이 조금만
+     * 흔들려도 재정렬 드래그가 되어 그 탭의 고르기 클릭이 삼켜졌고, 내 차례 안깡 고르기에서는
+     * «안깡에 쓰이지 않는 패»로 흐려진 패를 바닥으로 끌어 버릴 수 있었다(2026-09-25, B17 리뷰 R2).
+     */
+    if (callPicking) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
     const container = handRef.current;
     if (container === null) return;
@@ -23611,6 +24758,12 @@ function OwnArea(props: {
                 부른다(2026-09-25, docs/59 U03 리뷰) */}
             {armedAug === "future_exchange"
               ? "🀫 여기에 놓으면 이 패를 버리고 교환"
+              : armedAug !== null && DRAG_DISCARD_ARM_TYPES.has(armedAug)
+                ? // 증강 리치는 버튼(⚡ 증강 이름)·평범한 리치 드롭존(⚡ … 리치)과 같은 말로 부른다.
+                  // 손바닥 뒤집기는 리치를 거는 게 아니고, 이름에 이미 «리치»가 있으면 두 번 쓰지 않는다(U55)
+                  armedAug === "flip_riichi" || armName.includes("리치")
+                  ? `⚡ 여기에 놓으면 ${armName}`
+                  : `⚡ 여기에 놓으면 ${armName} 리치`
               : armedAug !== null
                 ? `✦ 여기에 놓으면 ${armName} 발동`
                 : props.riichiMode
@@ -23665,6 +24818,7 @@ function OwnArea(props: {
                 catalog={props.catalog}
                 promptDeadline={props.promptDeadline}
                 forcedPick={forcedPick}
+                tapTwiceToDiscard={props.tapTwiceToDiscard}
                 foresightReorderable={foresightReorderable}
                 foresightTabOpen={foresightTab}
                 onForesightTab={setForesightTab}
@@ -23775,6 +24929,46 @@ function OwnArea(props: {
               취소
             </button>
           </div>
+        ) : callPicking && sel.callPick !== null ? (
+          /*
+            후로 고르기(docs/59 U56) — 손패에서 함께 쓸 패를 누른다. [확인]은 없다: 하나로 정해지는 순간
+            나간다(파괴적인 수가 아니고 리액션 타이머가 돈다). [취소]는 고르기만 접고 프롬프트는 남긴다 —
+            [패스]·다른 후로는 액션 바에 그대로 있다. 남은 후보가 적으면 칩으로도 고른다: 손패로는 못
+            가르는 드문 경우(가깡의 퐁이 둘)와 키보드(숫자 1..N)의 길이다.
+          */
+          <div className="arm-hint arm-swap arm-call">
+            <span
+              className="arm-hint-text"
+              title={
+                sel.callPick.remaining.length > CALL_PICK_CHIP_MAX
+                  ? "키보드: ←→로 후보를 하나씩 짚고 1로 냅니다"
+                  : undefined
+              }
+            >
+              {/* 가깡은 붙일 퐁을 판에서 눌러도 정해진다(후로 줄의 meldPicking) — 한 줄로 말해 폰에서 접히지 않게 */}
+              {meldPicking ? (
+                <>{callPickName}: 붙일 퐁이나 손패를 클릭하세요</>
+              ) : (
+                <>{callPickName}: 함께 쓸 손패를 클릭하세요</>
+              )}
+              {sel.callPick.picks.length > 0 ? ` (${sel.callPick.picks.length}장 고름)` : ""}
+            </span>
+            {/* 후보가 적으면 전부 칩(숫자 1..N), 많으면 ←→로 짚은 하나만 칩(숫자 1) — 키보드로도 특정
+                후보를 고를 길(docs/59 U56 5단계). 짚기 전에는 칩 없이 손패로 좁힌다 */}
+            {sel.callPick.remaining.length <= CALL_PICK_CHIP_MAX
+              ? sel.callPick.remaining.map((o, i) => callPickChip(o, String(i), String(i + 1)))
+              : sel.callPick.cursor !== null && sel.callPick.remaining[sel.callPick.cursor] !== undefined
+                ? callPickChip(
+                    sel.callPick.remaining[sel.callPick.cursor]!,
+                    "cursor",
+                    "1 · ←→ 다른 후보",
+                    `${sel.callPick.cursor + 1}/${sel.callPick.remaining.length}`,
+                  )
+                : null}
+            <button className="arm-hint-cancel" onClick={() => sel.cancelCallPick()}>
+              취소
+            </button>
+          </div>
         ) : armedAug === "frame_discard" && sel.frameTile !== null ? (
           <div className="arm-hint arm-swap">
             <span className="arm-hint-text">
@@ -23818,13 +25012,35 @@ function OwnArea(props: {
               취소
             </button>
           </div>
-        ) : armedAug !== null ? (
+        ) : armedAug === "dw_swap" ? (
+          // 왕패의 주인 — 안내·[이대로 교환]·[취소]는 도킹 패널(DeadWallDock)이 함께 든다(docs/59 U04)
+          null
+        ) : armedAug !== null && !DRAG_DISCARD_ARM_TYPES.has(armedAug) ? (
+          /* 증강 리치(DRAG형) 무장은 액션 바가 평범한 리치 모드와 같은 한 줄로 안내·[취소]를 든다 —
+             여기까지 세우면 안내가 두 줄, 취소 수단이 둘이 된다(2026-09-25, docs/59 U55) */
           <div className="arm-hint">
             <span className="arm-hint-text">
               {armName}: {uraSwapPreview ?? armPromptText(sel.armMode, armedAug, props.tapTwiceToDiscard)}
             </span>
             <button className="arm-hint-cancel" onClick={() => sel.arm(null)}>
               취소
+            </button>
+          </div>
+        ) : armedAug !== null ? (
+          /* 증강 리치 무장 중 — 안내는 액션 바 한 줄이 든다. 여기서 아래 영상패 다시 열기로 흘러내리면
+             안내가 다시 두 줄이 되고, 무장 도중에 모달 입구가 선다(2026-09-25, docs/59 U55 리뷰) */
+          null
+        ) : canPickRinshan && rinshanDismissed ? (
+          /*
+            절벽 위 꽃 창을 접은 뒤 다시 여는 자리 — 예전엔 body 포털의 플로팅 알약(.rinshan-reopen)이라
+            액션 바·손패와 자리를 다퉈 --own-band-full 보정까지 필요했다. 무장 안내가 서는 이 줄로 옮긴다
+            (2026-09-25, docs/59 U48). 재진입 수단은 그대로다(docs/10 §1 «닫으면 다시 연다», 52차 사용자
+            확정) — 자리만 바뀐다. 다른 무장이 걸려 있으면 그 안내가 먼저다(위 분기들).
+          */
+          <div className="arm-hint arm-bloom">
+            <span className="arm-hint-text">🌸 {augActionName(props.catalog, "bloom_pick")}: 영상패를 고를 수 있습니다</span>
+            <button className="arm-hint-confirm" onClick={() => setRinshanDismissed(false)}>
+              영상패 고르기
             </button>
           </div>
         ) : null}
@@ -23886,8 +25102,8 @@ function OwnArea(props: {
                 {/* 손패 바로 위라 `.own-area`의 PromptTimer·무장 안내 줄을 **덮는다** — 1280×800
                     실측에서 팝오버가 타이머 막대 위에 섰다. 초읽기 국(5~10초)에 남은 시간을
                     못 본 채 고르게 두면 안 되므로 모달 때처럼 머리에 한 번 더 세운다
-                    (2026-09-25, docs/59 U12 리뷰). 알림 문구는 CSS에서 숨긴다 — 시간이 다 되면
-                    고르는 게 아니라 쯔모패를 버리므로 «자동으로 선택»은 틀린 말이다. */}
+                    (2026-09-25, docs/59 U12 리뷰). 알림 문구는 CSS에서 숨긴다 — 좁은 머리 줄이라
+                    시간만 둔다(문구 자체는 이제 실제 폴백을 말한다, docs/59 U49). */}
                 <PickTimer deadline={props.promptDeadline} />
                 <button
                   className="arm-sub-pop-close"
@@ -23950,6 +25166,7 @@ function OwnArea(props: {
               riichiMode={props.riichiMode}
               catalog={props.catalog}
               forcedPick={forcedPick}
+              tapTwiceToDiscard={props.tapTwiceToDiscard}
               onRiichiMode={props.onRiichiMode}
               onSubmit={props.onSubmit}
               onDoomedHint={(ids) => setDoomedHint(ids === null ? null : new Set(ids))}
@@ -23979,6 +25196,12 @@ function OwnArea(props: {
               }
             />
           </>
+        ) : null}
+        {/* 왕패의 주인 — 판에 없는 왕패만 손패 위에 편다. 잠깐 뜨는 줄이라 --own-band 실측에서 빼고
+            CSS order:-1로 이름표 줄 위에 선다(등가교환 참고 줄과 같은 규약 — 뜨고 질 때 보드가 출렁이지
+            않게). 전면 모달이 아니라 판·손패가 그대로 보이고 눌린다(2026-09-25, docs/59 U04) */}
+        {dwArmed && !isSpectator ? (
+          <DeadWallDock view={view} name={armName} onToast={props.onToast} />
         ) : null}
         {/* 패산 정보 — 예지·삼세 예지·밑장빼기를 손패 위 한 줄에 모은다(2026-09-25, docs/59 U50).
             셋 다 «패산에서 곧 나올 패»인데 자리·모양·순서 표기가 제각각이었다. */}
@@ -24049,15 +25272,23 @@ function OwnArea(props: {
             // 누명의 심을 패도 «고른 패» 강조로 — 들어 올림(armedTileId)은 «한 번 더 누르면 나간다»는
             // 신호라 다음 행동이 상대 바닥 클릭인 누명에는 맞지 않는다(2026-09-25, docs/59 U21)
             // 등가교환 넘길 3장(swapGiveInHand)도 가지치기처럼 고른 패를 들어 올려 강조한다(docs/59 U07)
+            // 왕패의 주인도 같다 — 짝을 기다리는 패·예약한 패를 들어 올려 둔다(docs/59 U04)
+            const dwStaged = dwArmed && dwStagedHand.has(id);
             const swapChosen =
               (swapGiveInHand && swap3Sel.includes(id)) ||
               (hand3Picking && handPicks.includes(id)) ||
+              (dwArmed && (sel.dwHand === id || dwStaged)) ||
+              (callPicking && sel.callPick?.picks.includes(id) === true) ||
               (armedAug === "frame_discard" && sel.frameTile === id);
             const armable = swapGiveInHand
               ? swap3Pick.pool.includes(id)
-              : hand3Picking
+              : callPicking
+                ? sel.callPickArmable(id)
+                : hand3Picking
                 ? hand3Pool.has(id)
-                : armedAug !== null && armedByTile.has(id);
+                : dwArmed
+                  ? dwHandArmable(id)
+                  : armedAug !== null && armedByTile.has(id);
             /*
              * 튜토리얼 대본이 이 패를 막고 있는가 (`CoachLockContext`).
              * 코치가 꺼져 있으면 언제나 false라 실대국 판정은 종전과 같다.
@@ -24068,10 +25299,11 @@ function OwnArea(props: {
               hasDrawn && id === drawnId,
             );
             // 무장 대상도 '지금 누를 수 있는 패'다 — 커서·hover 들림을 함께 준다
+            // 후로 고르기 중에는 버림이 아니라 «함께 쓸 패» 고르기다 — 후보에 안 쓰이는 패는 누를 곳이 아니다
             const clickable =
               !coachLocked &&
               (armable ||
-                (active !== undefined && (!props.riichiMode || riichi !== undefined)));
+                (!callPicking && active !== undefined && (!props.riichiMode || riichi !== undefined)));
             // 리치 선언 후 버릴 수 없는(옵션 없는) 패 + 리치 모드에서 리치 불가 패를 어둡게
             const noDiscard = discard === undefined && freeDiscard === undefined;
             /*
@@ -24104,7 +25336,9 @@ function OwnArea(props: {
             const futureGot = futureGotMine.has(id);
             // 텐파이면 이 패를 버렸을 때의 대기패를 hover 시 표시 (리치 모드 아니어도)
             // 넘길 패를 고르는 중에도 «이 패를 버리면» 전제의 대기 툴팁은 엉뚱한 말이다(U23·U07)
-            const showWaits = hoverId === id && hoverWaits.length > 0 && !armNoDiscard && !swapGiveInHand;
+            // 후로 고르기의 클릭도 버림이 아니다(docs/59 U56)
+            const showWaits =
+              hoverId === id && hoverWaits.length > 0 && !armNoDiscard && !swapGiveInHand && !callPicking;
             // 쏘이는 패 — 관전에서만, 그리고 이 좌석이 지금 두는 사람일 때만 선다.
             const hot = hotOf(id);
             return (
@@ -24133,23 +25367,40 @@ function OwnArea(props: {
                   // 사실 기반 표시는 이름에도 실어야 한다 — 링과 바람 글자는 둘 다
                   // 눈으로만 읽힌다(화면을 못 보면 중계 해설이 통째로 사라진다).
                   hot === null ? null : hotWaitTitle(hot),
-                  swapGiveInHand && swap3Sel.includes(id)
+                  callPicking && sel.callPick?.picks.includes(id) === true
+                    ? `${callPickName}에 함께 쓸 패로 선택됨. 다시 누르면 뺍니다`
+                    : callPicking && armable
+                    ? `${callPickName}에 함께 쓸 수 있는 패`
+                    : swapGiveInHand && swap3Sel.includes(id)
                     ? "넘길 패로 선택됨. 다시 누르면 뺍니다"
-                    : armedAug === "frame_discard" && sel.frameTile === id
-                      ? "심을 패로 선택됨. 놓을 상대의 바닥을 클릭"
-                      : armedTileId === id
-                        ? armedAug !== null &&
-                          !DRAG_DISCARD_ARM_TYPES.has(armedAug) &&
-                          // 미래를 보는 자의 둘째 탭은 그 패를 바닥에 버린다(docs/59 U03)
-                          armedAug !== "future_exchange"
-                          ? "선택됨. 한 번 더 누르면 발동"
-                          : "선택됨. 한 번 더 누르면 버림"
-                        : null,
+                    : dwStaged
+                      ? "왕패와 교환 예약됨. 다시 누르면 취소"
+                      : dwArmed && sel.dwHand === id
+                        ? "교환할 패로 선택됨. 위의 왕패 칸을 누르세요"
+                        : armedAug === "frame_discard" && sel.frameTile === id
+                          ? "심을 패로 선택됨. 놓을 상대의 바닥을 클릭"
+                          : armedTileId === id
+                            ? armedAug !== null &&
+                              !DRAG_DISCARD_ARM_TYPES.has(armedAug) &&
+                              // 미래를 보는 자의 둘째 탭은 그 패를 바닥에 버린다(docs/59 U03)
+                              armedAug !== "future_exchange"
+                              ? "선택됨. 한 번 더 누르면 발동"
+                              : "선택됨. 한 번 더 누르면 버림"
+                            : null,
                   armTip?.id === id ? `${armTip.label} ${armTip.tiles.map((t) => formatTile(t)).join(", ")}` : null,
                   armSub?.tileId === id ? "바꿀 모양을 고르는 중. 위에 뜬 후보에서 고르기" : null,
                   redPreviewIds.has(id) ? "붉은 손길 미리보기: 적도라가 될 패" : null,
+                  // 게이지(.hand-soft-auto)는 aria-hidden이라 같은 말을 여기서 읽어 준다(docs/59 U52)
+                  isDrawn && myPrompt !== null && !isSpectator && props.riichiSoftAutoAt != null
+                    ? "잠시 뒤 자동으로 버림. 키를 누르거나 화면을 누르면 멈춤"
+                    : null,
                   coachLocked ? "튜토리얼 진행 중이라 지금은 누를 수 없음" : null,
-                  !clickable && !coachLocked ? "지금 버릴 수 없음" : null,
+                  // 후로 고르기 중의 클릭은 버림이 아니다 — «버릴 수 없음» 대신 고르기의 말로(B17 리뷰)
+                  !clickable && !coachLocked
+                    ? callPicking
+                      ? `${callPickName}에 쓰이지 않는 패`
+                      : "지금 버릴 수 없음"
+                    : null,
                 ]
                   .filter((x) => x !== null)
                   .join(", ")}
@@ -24177,7 +25428,7 @@ function OwnArea(props: {
                 }${lockedTile ? " hand-sealed" : ""}${armable ? " hand-armable" : ""}${
                   swapChosen ? " hand-swap-picked" : ""
                 }${coachLocked ? " hand-coach-locked" : ""}${
-                  armedAug !== null && !armable ? " hand-dimmed" : ""
+                  (armedAug !== null || callPicking) && !armable ? " hand-dimmed" : ""
                 }${
                   danger ? " hand-danger" : ""
                 }${doomed ? " hand-doomed" : ""}${safe ? " hand-safe" : ""}${futureGot ? " hand-future" : ""}${specDangerCls(id)}${hot === null ? "" : " spec-hot"}`}
@@ -24252,6 +25503,20 @@ function OwnArea(props: {
                   }
                   // 등가교환 상대 지정(ARM_MODE.swap3 = "opp")에서 손패를 누르면 아래 상대 무장의
                   // 빗나감 분기(해제 + 알림)가 그대로 맡는다 — 옛 swap3 전용 분기는 걷었다(docs/59 U11)
+                  /*
+                   * 후로 고르기(docs/59 U56) — 이 패를 함께 쓸 패로 넣고 뺀다. 하나로 정해지면 useSelection이
+                   * 서버 옵션 그대로 낸다. 타패·무장 분기보다 앞이다: 내 차례의 안깡 고르기가 버림으로 새면
+                   * 되돌릴 수 없다. 대상이 아닌 패는 대상 영역 안의 빗나감 — 풀지 않고 까닭만 말한다(§2 원칙 7).
+                   */
+                  if (callPicking) {
+                    if (sel.callPickClick(id)) {
+                      sfx.pick();
+                    } else {
+                      haptics.reject();
+                      props.onToast?.(`이 패는 ${callPickName}에 쓰이지 않습니다`);
+                    }
+                    return;
+                  }
                   // 가지치기: 이 패를 3장 선택에 넣고 뺀다 (제출은 [확인] 버튼)
                   if (hand3Picking) {
                     toggleHandPick(id);
@@ -24270,6 +25535,28 @@ function OwnArea(props: {
                     sel.setFrameTile(id);
                     setArmSub(null);
                     sfx.pick();
+                    return;
+                  }
+                  /*
+                   * 왕패의 주인 — 누명처럼 아래 무장 분기보다 먼저 가로챈다. 손패 클릭은 제출도 armSub도
+                   * 아니고 **짝을 지을 패로 들어 올리기**(먼저 누른 왕패 칸이 있으면 그 자리에서 짝)뿐이다.
+                   * 제출은 도킹 패널의 [이대로 교환]이 한다(2026-09-25, docs/59 U04). 대상이 아닌 패는
+                   * 대상 영역 안의 빗나감이라 무장을 풀지 않고 까닭만 말한다(§2 원칙 7).
+                   */
+                  if (dwArmed) {
+                    const r = sel.dwClickHand(id);
+                    if (r === null) {
+                      sfx.pick();
+                    } else {
+                      haptics.reject();
+                      props.onToast?.(
+                        r === "full"
+                          ? DW_FULL_HINT
+                          : r === "mismatch"
+                            ? DW_MISMATCH_HAND_HINT
+                            : `이 패는 ${armName} 대상이 아닙니다`,
+                      );
+                    }
                     return;
                   }
                   // 붉은 손길 — 첫 탭은 숫자 고르기(제자리 붉은 미리보기)뿐, 확정은 [확인]이나
@@ -24419,6 +25706,37 @@ function OwnArea(props: {
                     ⚠
                   </span>
                 ) : null}
+                {/*
+                  리치 소프트 자동 쯔모기리 — 이 쯔모패가 곧 스스로 나간다는 게이지(docs/59 U52).
+                  줄어드는 막대라 남은 시간이 보이고, 손이 닿아 걷히면 함께 사라진다(그때부턴 예전처럼
+                  직접 둔다). key로 걸릴 때마다 처음부터 다시 줄어들게 한다.
+                */}
+                {isDrawn && myPrompt !== null && !isSpectator && props.riichiSoftAutoAt != null ? (
+                  <span
+                    key={props.riichiSoftAutoAt}
+                    className="hand-soft-auto"
+                    style={{ "--soft-auto-ms": `${RIICHI_SOFT_AUTO_MS}ms` } as React.CSSProperties}
+                    aria-hidden="true"
+                  />
+                ) : null}
+                {/*
+                  게이지만으로는 무엇이 일어나는지·어떻게 멈추는지가 보이지 않는다 — 짧은 글을 함께 둔다.
+                  걷힌 뒤에는 «직접 버리세요»로 바꿔, 멈춘 상태와 아직 도는 상태를 화면에서 가른다
+                  (W4 통합 리뷰 interaction-3 · lifecycle-3 · regression-3). 읽어 주기는 App의 live 영역.
+                */}
+                {isDrawn && myPrompt !== null && !isSpectator && props.riichiSoftAutoAt != null ? (
+                  <span className="hand-soft-auto-note" aria-hidden="true">
+                    곧 쯔모기리 · 누르면 멈춤
+                  </span>
+                ) : isDrawn &&
+                  myPrompt !== null &&
+                  !isSpectator &&
+                  props.riichiSoftAutoStopped === true &&
+                  armedTileId !== id ? (
+                  <span className="hand-soft-auto-note is-stopped" aria-hidden="true">
+                    자동 멈춤 · 직접 버리세요
+                  </span>
+                ) : null}
                 {/* 가져온 패 — 봉인(오른쪽 위)·지뢰(왼쪽 위)·쏘이는 패(오른쪽 아래)와 안 겹치는 왼쪽 아래(U81) */}
                 {futureGot ? (
                   <span className="hand-future-badge" title="미래를 보는 자: 패산에서 가져온 패" aria-hidden="true">
@@ -24453,6 +25771,14 @@ function OwnArea(props: {
                 ) : armedAug === "frame_discard" && sel.frameTile === id ? (
                   <span className="hand-armed-badge" aria-hidden="true">
                     심을 패
+                  </span>
+                ) : dwStaged ? (
+                  <span className="hand-armed-badge" aria-hidden="true">
+                    예약
+                  </span>
+                ) : dwArmed && sel.dwHand === id ? (
+                  <span className="hand-armed-badge" aria-hidden="true">
+                    교환할 패
                   </span>
                 ) : null}
                 {armTip?.id === id ? (
@@ -24493,6 +25819,8 @@ function OwnArea(props: {
              읽혀 무장이 풀렸다. 후로 사이를 빗나가도 아무 일도 없게 한다(2026-09-25, docs/59 U25) */
           /* 강제 무장(미래를 보는 자)에서는 후로가 대상이 아니다 — 판 표면의 안내(FORCED_PICK_HINT)가 서게 뺀다 */
           {...(sel.armedType !== null && !FORCED_ARM_TYPES.has(sel.armedType) ? { "data-arm-zone": "1" } : {})}
+          /* 가깡 고르기에서도 이 줄은 대상 영역이다 — 붙일 퐁을 여기서 누른다(아래 meldPicking) */
+          {...(meldPicking ? { "data-arm-zone": "1" } : {})}
           /* 후로 개수 — CSS가 «몇 개를 이 폭에 담아야 하는지»를 알아야 타일 크기를
              줄여 덜 넘치게 할 수 있다(styles.css `.own-corner-right`의 --mt-w).
              북풍 상인의 빼놓은 北도 같은 줄에 서므로 하나로 센다. */
@@ -24503,6 +25831,40 @@ function OwnArea(props: {
           }
         >
           {myMelds.map((m, i) => {
+            if (meldPicking && sel.callPick !== null) {
+              /*
+               * 가깡 — «어느 퐁에 붙이나»를 판의 실물 퐁에서 고른다(docs/59 U56 3단계 · §2 원칙 1). 손패
+               * 한 장이 퐁 둘에 붙을 때 안내 줄 칩의 «→ n번째 후로»를 대조하던 것을 퐁 한 번으로 줄인다
+               * (2026-09-25, B17 리뷰 R2). 붙일 수 없는 후로는 흐리고, 눌러도 고르기는 그대로다(원칙 7).
+               */
+              const on = sel.callPick.meld != null && m.tileIds.includes(sel.callPick.meld);
+              const can = on || callPickMeldOptions(view, sel.callPick, m.tileIds).length > 0;
+              const brief = meldBrief(view, m);
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  className={`meld-armable${can ? "" : " meld-unpickable"}${on ? " meld-call-on" : ""}`}
+                  data-arm-zone="1"
+                  aria-disabled={!can}
+                  aria-pressed={on}
+                  aria-label={can ? `${brief}에 ${callPickName}` : `${brief} (${callPickName}할 수 없음)`}
+                  onClick={() => {
+                    if (sel.callPickMeldClick(m.tileIds)) {
+                      sfx.pick();
+                      return;
+                    }
+                    haptics.reject();
+                    props.onToast?.(`이 후로에는 ${callPickName}할 수 없습니다`);
+                  }}
+                >
+                  <MeldGroup view={view} meld={m} owner={me} layout="row" />
+                  {can ? (
+                    <span className="meld-arm-tag" aria-hidden="true">{on ? "고름" : callPickName}</span>
+                  ) : null}
+                </button>
+              );
+            }
             if (sel.armMode !== "own-meld") {
               return <MeldGroup key={i} view={view} meld={m} owner={me} layout="row" />;
             }
@@ -24549,7 +25911,8 @@ function OwnArea(props: {
       {swap3Pick.stage === "take" && !swapTakeDismissed ? createPortal(
         <div className="rinshan-pick-overlay">
           <div className="rinshan-pick-panel">
-            <PickTimer deadline={props.promptDeadline} />
+            {/* 서버가 대신 골라 주는 유일한 창이다(FORCED_ACTION_TYPES swap3_take) — docs/59 U49 */}
+            <PickTimer deadline={props.promptDeadline} fallback="시간이 다 되면 남은 조합 중 하나로 자동 교환합니다" />
             {/* 누구와 바꾸는지를 제목이 말한다 — 흐림 오버레이가 이름표의 «→ 이름» 칩과
                 🔄 관계 표식을 가린다(2026-09-25, docs/59 U09) */}
             <div className="rinshan-pick-title">
@@ -24625,11 +25988,32 @@ function OwnArea(props: {
             <div className="rinshan-pick-title">
               🌸 절벽 위에 피어난 꽃: 영상패 선택
             </div>
+            {/* bloom_pick은 고른 영상패를 손으로 가져오고 **지금 쯔모한 패**를 그 왕패 자리로 보낸다
+                (content cliff_bloom BLOOM_PICK_TAKEN). 무엇과 맞바뀌는지를 부제가 말한다(docs/59 U47) */}
             <div className="rinshan-pick-sub">
-              깡을 선언했습니다. 남은 영상패 중에서 원하는 패를 골라 가져오세요. 도라 표시패는 보이지 않습니다.
+              깡을 선언했습니다. 고른 영상패가 지금 뽑은 패와 맞바뀝니다. 지금 패를 두려면{" "}
+              {/* «지금 패» 칸은 쯔모패가 보일 때만 선다 — 없으면 아래 대체 단추를 가리킨다(docs/59 U47 리뷰) */}
+              {bloomDrawnTile !== undefined ? "그 칸을" : "[지금 패 그대로 두기]를"} 누르세요 — 창만
+              닫히고, 버릴 패는 손패에서 고릅니다. 도라 표시패는 보이지 않습니다.
             </div>
             {/* 고를 수 있는 것은 **영상패뿐**이라 그것만 늘어놓는다 */}
             <div className="rinshan-pick-tiles">
+                {/*
+                  지금 뽑은 패 — 건너뛰기는 곧 «이 패를 그대로 둔다»는 선택인데 그 패가 흐림 뒤 손패에만
+                  있어 무엇을 두는지 볼 수 없었다. 칸 자체가 [그대로 두기]다 — 하단의 따로 선 단추
+                  («가져오지 않고 진행» — 실제로는 닫기만 하고 버림은 따로 해야 했다)를 대신한다
+                  (2026-09-25, docs/59 U47·U48). 관전 등으로 쯔모패가 없으면 아래 대체 단추가 선다.
+                */}
+                {bloomDrawnTile !== undefined ? (
+                  <button
+                    type="button"
+                    className="rinshan-pick-tile rinshan-slot-drawn"
+                    onClick={() => setRinshanDismissed(true)}
+                  >
+                    <TileImg tile={bloomDrawnTile} size="hand" />
+                    <span className="rinshan-pick-label">지금 패 그대로 두기</span>
+                  </button>
+                ) : null}
                 {/* 깡으로 이미 빠져나간 영상패 자리 — 보충하지 않으므로 빈 칸으로 남는다(07 §2) */}
                 {Array.from({ length: rinshanSpentOf(view) }, (_v, i) => (
                   <span key={`spent-${i}`} className="rinshan-pick-tile rinshan-slot-spent">
@@ -24658,24 +26042,17 @@ function OwnArea(props: {
                   );
                 })}
             </div>
-            <button
-              className="rinshan-pick-skip"
-              onClick={() => setRinshanDismissed(true)}
-            >
-              가져오지 않고 진행
-            </button>
+            {bloomDrawnTile === undefined ? (
+              <button className="rinshan-pick-skip" onClick={() => setRinshanDismissed(true)}>
+                지금 패 그대로 두기
+              </button>
+            ) : null}
           </div>
         </div>,
         document.body,
       ) : null}
-      {/* 절벽 위 꽃: 닫은 뒤 다시 열기 */}
-      {/* 화면 고정 표면은 전부 body 포털이다 — 이유는 FIXED_SURFACE_NOTE 참고 */}
-      {canPickRinshan && rinshanDismissed ? createPortal(
-        <button className="rinshan-reopen" onClick={() => setRinshanDismissed(false)}>
-          🌸 영상패 가져오기
-        </button>,
-        document.body,
-      ) : null}
+      {/* 절벽 위 꽃을 닫은 뒤 다시 열기는 손패 위 안내 줄(arm-bloom)에 선다 — 예전 body 포털
+          플로팅 알약(.rinshan-reopen)은 액션 바·손패와 자리를 다퉜다(docs/59 U48) */}
     </>
   );
 }
@@ -26858,6 +28235,11 @@ function ActiveAugmentControl(props: {
    */
   forcedPick?: boolean;
   /**
+   * «두 번 눌러 버리기» 설정 — 켜져 있으면 손패를 태우거나 바꾸는 선언(PREVIEW_FIRST_TYPES)의
+   * 첫 탭은 미리보기만 한다(2026-09-25, docs/59 U61).
+   */
+  tapTwiceToDiscard?: boolean;
+  /**
    * 예지 재배열 탭이 열려 있는가 — 상태는 OwnArea가 쥔다. [순서 바꾸기] 버튼이 손패 위 «패산 정보»
    * 줄(WallPeekRow)로 옮겨 가 그 버튼과 이 탭이 한 상태를 봐야 한다(2026-09-25, docs/59 U50).
    */
@@ -26896,10 +28278,8 @@ function ActiveAugmentControl(props: {
   // 후보를 드롭다운 버튼으로 늘어놓지 않고 전용 모달로 고르는 타입 (docs/10 §2a-1).
   // 값은 모달을 띄울 액션 타입 — 닫히면 null.
   const [pickModal, setPickModal] = useState<string | null>(null);
-  // 모달 안에서 여러 번 클릭해 조립하는 선택 (왕패의 주인의 1단계 손패 등)
-  const [modalPick, setModalPick] = useState<number[]>([]);
-  // 왕패의 주인 — 확정 전까지 쌓아 두는 교환 쌍 (손패 ↔ 왕패 자리). 남은 횟수만큼 담긴다.
-  const [dwPairs, setDwPairs] = useState<{ handTileId: number; deadIndex: number }[]>([]);
+  // (왕패의 주인의 손패·교환 쌍·교환 큐는 2026-09-25 useSelection으로 옮겼다 — 손패와 도킹 패널이
+  //  함께 본다, docs/59 U04)
   // 예지 — 재배열 드래그 중인 순서. arr[newPos] = 원래 인덱스. null이면 손대지 않은 상태.
   const [foresightArr, setForesightArr] = useState<number[] | null>(null);
   const [foresightDragFrom, setForesightDragFrom] = useState<number | null>(null);
@@ -26915,10 +28295,25 @@ function ActiveAugmentControl(props: {
   const setForesightTab = (open: boolean): void => props.onForesightTab?.(open);
   /**
    * 영상 정찰 — 재배열 중인 순서. arr[새 자리] = 원래 인덱스. null이면 아직 안 열었다.
-   * (예지와 같은 규약이라 조작감도 같다 — 드래그 / 두 번 누르기 / 좌우 이동 버튼.)
+   * (예지와 같은 규약이라 조작감도 같다 — 드래그 / 두 번 누르기 / 포커스한 칸의 ←→ 키.)
    */
   const [rinshanArr, setRinshanArr] = useState<number[] | null>(null);
   const [rinshanDragFrom, setRinshanDragFrom] = useState<number | null>(null);
+  /**
+   * 영상 정찰 — 내 쯔모패와 맞바꾸려고 «내 쯔모패» 칸에 올려 둔 영상패의 **원래 인덱스**(없으면 null).
+   * 자리가 아니라 원래 인덱스로 든다: 교환 대상을 고른 뒤에도 순서를 더 옮길 수 있고, 그 패를
+   * 따라가야 한다. 제출할 때 재배열 후 자리(take 규약, content rinshan_preview)로 바꾼다(docs/59 U44).
+   */
+  const [rinshanTake, setRinshanTake] = useState<number | null>(null);
+  /*
+   * 미리보기 먼저(PREVIEW_FIRST_TYPES) — 첫 탭을 받은 액션 타입. 이 동안 짚은 재료는 손을 떼도
+   * 그대로 두고, 한 번 더 누르면 발동한다. 프롬프트가 바뀌거나 다른 곳을 누르면 푼다
+   * (2026-09-25, docs/59 U61).
+   */
+  const [primed, setPrimed] = useState<string | null>(null);
+  const primedRef = useRef<string | null>(null);
+  primedRef.current = primed;
+  const onDoomed = props.onDoomedHint;
   const rootRef = useRef<HTMLDivElement>(null);
   // 강제 선택이 시작되면 열린 메뉴를 접는다 — 그 메뉴의 항목이 강제 선택을 건너뛰는 길이다(docs/59 U03·U07)
   useEffect(() => {
@@ -26941,20 +28336,52 @@ function ActiveAugmentControl(props: {
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
   }, [open, onHint]);
-  // 증강 리치만 들고 있다면 이 버튼은 아예 안 뜬다 — 그건 액션 바가 맡는다.
+  // 증강 리치·승부수만 들고 있다면 이 버튼은 아예 안 뜬다 — 그건 액션 바가 맡는다(U51).
+  // 승부수만 가진 사람은 리치 전에 ✦가 사라지지만, 남은 횟수는 pill이 말한다.
   const hasActive = me.augments.some(
-    (a) => ACTIVE_AUGMENT_IDS.has(a) && !RIICHI_AUG_IDS.has(a),
+    (a) => ACTIVE_AUGMENT_IDS.has(a) && !ACTIONBAR_AUG_IDS.has(a),
   );
   const myPrompt = prompt !== null && prompt.player === view.playerId ? prompt : null;
+  // 프롬프트가 바뀌면 첫 탭을 푼다 — 지난 순의 첫 탭이 남아 한 번에 발동되지 않게(U61).
+  // 첫 탭이 고정해 둔 미리보기(pill 발광·재료 ✕)도 함께 끈다: 시간 초과 자동 타패처럼
+  // 아무 데도 안 누른 채 순이 지나가면 바깥 누르기 리스너가 안 돌아, primed만 풀리고 빛과 ✕가
+  // 판 끝까지 남았다(터치엔 hover가 없어 끌 손짓도 없다). cleanup이라 언마운트에서도 돈다
+  // (2026-09-25, docs/59 U61 리뷰).
+  useEffect(() => {
+    setPrimed(null);
+    return () => {
+      if (primedRef.current === null) return;
+      onHint?.(null);
+      onDoomed?.(null);
+    };
+  }, [myPrompt]);
+  // 첫 탭을 받은 줄·버튼 밖을 누르면 푼다 — 짚어 둔 재료 표시도 함께 끈다(U61)
+  useEffect(() => {
+    if (primed === null) return;
+    const onDown = (e: PointerEvent): void => {
+      const t = e.target as Element | null;
+      // 표식은 주인별로 다르다 — 액션 바의 첫 탭("bar")을 눌러도 이쪽 첫 탭은 풀려야 한다(U61 리뷰)
+      if (t !== null && typeof t.closest === "function" && t.closest('[data-confirm-pending="aug"]') !== null) {
+        return;
+      }
+      setPrimed(null);
+      onHint?.(null);
+      onDoomed?.(null);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [primed, onHint, onDoomed]);
   // 영상패 선택(bloom_pick)은 전용 모달이 담당하므로 이 버튼에서는 제외한다.
   // (예지 foresight_order는 byType에는 남겨 두되 아래 menuTypes에서 빼 메뉴엔 안 띄운다.)
   // 증강 리치(오픈·스텔스·올인·영혼의 일격)는 액션 바가 [리치] 옆에 전용 버튼으로
   // 세운다 — 여기까지 겹쳐 놓으면 같은 액션이 두 군데서 뜨고, 정작 이 메뉴에서만
   // 고를 수 있는 다른 액티브 증강이 개수에 묻힌다 (2026-08-08 사용자 요청).
+  // 리치 취소(승부수)도 액션 바 [리치] 자리가 맡는다(2026-09-25, docs/59 U51).
   const augOptions = (myPrompt?.options ?? []).filter(
     (o) =>
       AUGMENT_ACTION_TYPES.has(o.type) &&
       !DRAG_DISCARD_ARM_TYPES.has(o.type) &&
+      o.type !== "cancel_riichi" &&
       o.type !== "bloom_pick" &&
       o.type !== "swap3_give" &&
       o.type !== "swap3_take" &&
@@ -27025,14 +28452,48 @@ function ActiveAugmentControl(props: {
   }, [foresightReorderable, foresightArr]);
   // (재배열이 열리면 탭을 곧바로 띄우는 effect는 여닫이 상태와 함께 OwnArea로 옮겼다 — docs/59 U50)
 
+  /** 고르기 창을 닫는다 — 영상 정찰에서 옮긴 순서·집은 패·교환 대상도 함께 버린다 */
+  const closeModal = (): void => {
+    setPickModal(null);
+    setRinshanArr(null);
+    setRinshanDragFrom(null);
+    setRinshanTake(null);
+  };
+  /** 예지 재배열 탭의 [바꾸지 않고 닫기] — 옮긴 순서는 버린다(부제가 미리 말한다, docs/59 U45) */
+  const closeForesightTab = (): void => {
+    setForesightDragFrom(null);
+    setForesightArr([0, 1, 2, 3]);
+    setForesightTab(false);
+  };
+  /*
+   * Esc — 재배열 창에서는 **집은 패부터** 내려놓고, 아무것도 안 들었을 때 닫는다. 한 번의 Esc로
+   * 들고 있던 패와 창이 함께 사라지면 무엇이 취소됐는지 모른다(2026-09-25, docs/59 U46).
+   * 이 컨트롤의 창(단색 세계·편식·영상 정찰·예지 탭)은 모두 닫기가 있다.
+   */
+  useModalEsc(
+    () => {
+      if (foresightTab && foresightReorderable) {
+        if (foresightDragFrom !== null) setForesightDragFrom(null);
+        else closeForesightTab();
+        return;
+      }
+      if (pickModal === "rinshan_arrange" && rinshanDragFrom !== null) {
+        setRinshanDragFrom(null);
+        return;
+      }
+      closeModal();
+    },
+    pickModal !== null || (foresightTab && foresightReorderable),
+  );
+
   // 모달이 떠 있는 동안 그 액션이 프롬프트에서 사라지면(교환 소진·턴 종료·리치 등)
   // 탭을 자동으로 닫는다. 예전엔 남아 있어서 이미 끝난 선택창을 손으로 닫아야 했다.
   useEffect(() => {
     if (pickModal === null) return;
     if ((myPrompt?.options ?? []).some((o) => o.type === pickModal)) return;
-    setPickModal(null);
-    setModalPick([]);
-    setDwPairs([]);
+    closeModal();
+    // closeModal은 상태 설정자만 부른다 — 렌더마다 새 함수라 의존성에 넣지 않는다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickModal, myPrompt]);
 
   // 파고든 증강의 후보가 프롬프트에서 사라지면 1단계로 되돌린다 (빈 목록이 남지 않게).
@@ -27042,44 +28503,6 @@ function ActiveAugmentControl(props: {
     setMenuType(null);
   }, [menuType, myPrompt]);
 
-  // ── 왕패의 주인 — 여러 쌍을 한 번에 고른 뒤 차례로 제출한다 ──
-  // 서버는 교환 1회 = 액션 1개라, 고른 쌍을 **프롬프트가 갱신될 때마다 하나씩** 보낸다.
-  // (연달아 보내면 두 번째가 갱신 전 프롬프트에 실려 거부된다 — 보낸 프롬프트를 ref로 기억해 막는다.)
-  const [dwQueue, setDwQueue] = useState<{ handTileId: number; deadIndex: number }[]>([]);
-  const dwSentPromptRef = useRef<unknown>(null);
-  useEffect(() => {
-    if (dwQueue.length === 0) return;
-    if (myPrompt === null) return;
-    if (dwSentPromptRef.current === myPrompt) return; // 이 프롬프트에는 이미 보냈다
-    const head = dwQueue[0]!;
-    const opt = myPrompt.options.find((o) => {
-      if (o.type !== "dw_swap") return false;
-      const p = o.payload as { handTileId?: unknown; deadIndex?: unknown };
-      return p.handTileId === head.handTileId && p.deadIndex === head.deadIndex;
-    });
-    if (opt === undefined) {
-      // 남은 교환이 없거나 상황이 바뀌어 더는 못 보낸다 — 조용히 접는다.
-      setDwQueue([]);
-      return;
-    }
-    dwSentPromptRef.current = myPrompt;
-    sel.submit(opt);
-    setDwQueue((cur) => cur.slice(1));
-  }, [dwQueue, myPrompt, sel]);
-  /*
-   * **국이 넘어가면 큐를 비운다.**
-   *
-   * 큐를 접는 조건이 «프롬프트가 왔는데 그 쌍이 후보에 없다» 하나뿐이라, 남은 채로
-   * `myPrompt`가 null이 되면(턴 종료·국 전환) 그대로 살아남았다. 다음 국의 프롬프트에
-   * 우연히 같은 `handTileId`/`deadIndex` 쌍이 서면 **지시하지 않은 교환이 자동으로
-   * 나간다.** 실제로 그 우연이 닿는지는 타일 id 재사용에 달렸는데, «닿지 않기를
-   * 바라는» 것은 방어가 아니다 — 국 경계에서 확실히 끊는다.
-   */
-  const dwRoundKey = `${view.round.prevalentWind}-${view.round.roundNumber}-${view.round.honba}`;
-  useEffect(() => {
-    setDwQueue([]);
-    dwSentPromptRef.current = null;
-  }, [dwRoundKey]);
 
   if (!hasActive && menuOptions.length === 0) return null;
 
@@ -27087,7 +28510,7 @@ function ActiveAugmentControl(props: {
   // 누르면 click()이 이유(FORCED_PICK_HINT)를 말한다(2026-09-25, docs/59 U03·U07)
   const usable = menuOptions.length > 0 && props.forcedPick !== true;
   const activeIds = me.augments.filter(
-    (a) => ACTIVE_AUGMENT_IDS.has(a) && !RIICHI_AUG_IDS.has(a),
+    (a) => ACTIVE_AUGMENT_IDS.has(a) && !ACTIONBAR_AUG_IDS.has(a),
   );
   /*
    * 못 쓰는 이유 — 예전에는 `지금은 사용할 수 없습니다 — {이름들}`이 전부였다.
@@ -27171,12 +28594,27 @@ function ActiveAugmentControl(props: {
   const hintAll = (): void => {
     // 강제 선택 중에는 쓸 수 있는 것이 없다 — 버튼이 꺼져 있는데 pill만 빛나면 거짓말이 된다(U03·U07)
     if (props.forcedPick === true) return;
+    // 첫 탭을 받은 동안에는 그 하나의 재료를 짚은 채로 둔다 — 터치의 호환 mouseleave·blur가
+    // 짚은 패를 «전부»나 «없음»으로 바꿔 놓으면 미리보기가 사라진다(U61). 다른 줄에 잠깐
+    // 올렸다 떠나면 그 줄의 재료가 남지 않게 첫 탭의 것으로 되돌린다(U61 리뷰).
+    if (primed !== null) {
+      hintOne(primed);
+      return;
+    }
     props.onUsableHint?.(usableAugIds);
     props.onDoomedHint?.([...new Set(types.flatMap((t) => doomedTileIdsOf(view, t)))]);
   };
-  const hintNone = (): void => {
+  /** 발광·재료 짚기를 끈다 — 발동·제출처럼 첫 탭 상태와 무관하게 꺼야 하는 자리가 쓴다 */
+  const clearHints = (): void => {
     props.onUsableHint?.(null);
     props.onDoomedHint?.(null);
+  };
+  const hintNone = (): void => {
+    if (primed !== null) {
+      hintOne(primed);
+      return;
+    }
+    clearHints();
   };
 
   const augNameFor = (type: string): string => augActionName(props.catalog, type);
@@ -27250,29 +28688,49 @@ function ActiveAugmentControl(props: {
   const activate = (type: string): void => {
     setOpen(false);
     setMenuType(null);
+    setPrimed(null);
     // 이 버튼으로 들어온 순간 리치 모드는 끝이다 — 무장형이 아닌 발동(즉시 제출·모달)도
     // 마찬가지다. 남겨 두면 발동 뒤 다음 손패 클릭이 리치 선언으로 나간다.
     sel.exitRiichiMode();
     if (armType(type)) {
       sel.arm(type);
-      hintNone();
+      clearHints();
       return;
     }
     if (MODAL_PICK_TYPES.has(type)) {
       setPickModal(type);
-      hintNone();
+      clearHints();
       return;
     }
     const opts = byType.get(type) ?? [];
     if (opts.length === 1) {
       sel.submit(opts[0]!);
-      hintNone();
+      clearHints();
       return;
     }
     // 2단계로 파고든다 — 메뉴는 그대로 열려 있으므로 그 증강만 계속 빛낸다.
     setMenuType(type);
     setOpen(true);
     hintOne(type);
+  };
+
+  /**
+   * 이 타입의 발동이 **미리보기 먼저**인가 — 누르는 즉시 제출되는 경로(무장·모달·후보 여럿이
+   * 아닌 것)만이다. 무장·모달은 발동 전에 이미 한 단계가 있다(2026-09-25, docs/59 U61).
+   */
+  const previewFirst = (type: string): boolean =>
+    props.tapTwiceToDiscard === true &&
+    PREVIEW_FIRST_TYPES.has(type) &&
+    !armType(type) &&
+    !MODAL_PICK_TYPES.has(type) &&
+    (byType.get(type)?.length ?? 0) === 1;
+  /** 첫 탭이면 미리보기만 고정하고 true — 호출자는 발동하지 않고 돌아간다 */
+  const primeFirst = (type: string): boolean => {
+    if (!previewFirst(type) || primed === type) return false;
+    setPrimed(type);
+    props.onUsableHint?.([ACTION_AUGMENT[type] ?? type]);
+    props.onDoomedHint?.(doomedTileIdsOf(view, type));
+    return true;
   };
 
   // 버튼 옆 개수 = **지금 쓸 수 있는 액티브 증강의 수**(위 usableAugIds).
@@ -27327,6 +28785,8 @@ function ActiveAugmentControl(props: {
       return;
     }
     if (types.length === 1) {
+      // 삼원의 의지·짝수의 세계 하나뿐이면 첫 탭은 미리보기다(U61)
+      if (primeFirst(types[0]!)) return;
       activate(types[0]!);
       return;
     }
@@ -27408,7 +28868,7 @@ function ActiveAugmentControl(props: {
     rinshanArr !== null && rinshanArr.length === rinshanCount
       ? rinshanArr
       : Array.from({ length: rinshanCount }, (_v, i) => i);
-  /** from 자리의 패를 빼서 to 자리에 끼워 넣는다 (드래그·탭·이동 버튼이 함께 쓴다) */
+  /** from 자리의 패를 빼서 to 자리에 끼워 넣는다 (드래그·탭·←→ 키가 함께 쓴다) */
   const moveRinshan = (from: number, to: number): void => {
     setRinshanDragFrom(null);
     if (from === to || to < 0 || to >= rinshanCount) return;
@@ -27417,70 +28877,49 @@ function ActiveAugmentControl(props: {
     next.splice(to, 0, moved as number);
     setRinshanArr(next);
   };
-  /** 이 순서 + 교환 자리로 확정한다 (take가 null이면 순서만) */
-  const submitRinshan = (take: number | null): void => {
-    const opt = rinshanArrByKey.get(
-      `${rinshanOrder.join(",")}|${take === null ? "-" : String(take)}`,
-    );
-    if (opt !== undefined) sel.submit(opt);
-    setRinshanArr(null);
-    setRinshanDragFrom(null);
-    closeModal();
-  };
-
-  // ── 왕패의 주인 — 내 손패 ↔ 왕패를 **여러 쌍 한 번에** 고른다 ──
-  // 고른 쌍은 바로 보내지 않고 아래에 쌓아 두었다가 '확정'에서 dwQueue로 넘긴다
-  // (서버는 교환 1회 = 액션 1개라 위쪽 effect가 프롬프트마다 하나씩 흘려보낸다).
-  const dwOpts = pickModal === "dw_swap" ? (byType.get("dw_swap") ?? []) : [];
-  // 손패는 옵션 나열 순서(=Zone 순서)가 아니라 정렬해서 보여준다
-  const dwHandIds = sortTileIds(
-    [
-      ...new Set(
-        dwOpts
-          .map((o) => (o.payload as { handTileId?: unknown }).handTileId)
-          .filter((x): x is number => typeof x === "number"),
-      ),
-    ],
-    view.tiles,
-  );
-  const deadWallIds = view.zones["deadWall"]?.tileIds ?? [];
-  // 이번 국에 남은 교환 횟수 — 한 번에 고를 수 있는 쌍의 상한이다
-  // ⚠ 값이 없을 때의 기본은 **2**(발동 1회 = 최대 2장)다. 예전 기본값 1은,
-  // 이번 국의 ROUND_STARTED 리액션이 아직 이 채널을 싣지 않은 화면(증강을 방금
-  // 받은 국·재접속 직후)에서 «2장까지»를 조용히 1장으로 깎았다. 후보가 떠 있다는
-  // 것 자체가 서버가 교환을 허락했다는 뜻이고, 상한의 최종 판정은 서버 validate다.
-  const dwRemaining = (() => {
-    const v = view.augmentView[`dead_wall_master:remaining:${me.id}`];
-    return typeof v === "number" ? v : 2;
+  /*
+   * 교환 — 칸마다 붙어 있던 [이 패와 교환] 넷을 걷고 «내 쯔모패» 칸 하나로 모았다. 교환 상대인
+   * 쯔모패가 창 어디에도 없어(판은 흐림 뒤) 무엇과 바뀌는지 볼 수 없었고, 울고 난 순처럼 교환이
+   * 안 되는 때에도 비활성 단추 넷이 남아 안내문과 함께 «교환»을 권했다(2026-09-25, docs/59 U44).
+   * 교환 후보가 하나라도 있을 때만 칸을 세운다 — 후보 자체가 서버의 판정이다(canTake).
+   */
+  const rinshanDrawnId = view.round.myDrawnTile;
+  const rinshanDrawnTile =
+    rinshanDrawnId !== null && (view.zones[`hand:${me.id}`]?.tileIds ?? []).includes(rinshanDrawnId)
+      ? view.tiles[rinshanDrawnId]
+      : undefined;
+  const rinshanTakeable =
+    rinshanDrawnTile !== undefined && [...rinshanArrByKey.keys()].some((k) => !k.endsWith("|-"));
+  /** 교환 대상의 **재배열 후 자리** — take 규약(content rinshan_preview: take는 재배열 후 자리) */
+  const rinshanTakePos = (() => {
+    if (!rinshanTakeable || rinshanTake === null) return null;
+    const pos = rinshanOrder.indexOf(rinshanTake);
+    return pos >= 0 ? pos : null;
   })();
-  const dwStagedHand = new Set(dwPairs.map((p) => p.handTileId));
-  const dwStagedDead = new Set(dwPairs.map((p) => p.deadIndex));
-  const dwPending = modalPick[0];
-  /** 이 쌍이 실제 후보로 와 있는가 (합법성 최종 판정은 서버 validate) */
-  const dwHasOpt = (handTileId: number, deadIndex: number): boolean =>
-    dwOpts.some((o) => {
-      const p = o.payload as { handTileId?: unknown; deadIndex?: unknown };
-      return p.handTileId === handTileId && p.deadIndex === deadIndex;
-    });
-  /** 손패를 눌렀을 때 — 이미 짝지어진 패면 그 쌍을 취소하고, 아니면 대기 선택으로 잡는다 */
-  const dwClickHand = (id: number): void => {
-    if (dwStagedHand.has(id)) {
-      setDwPairs((cur) => cur.filter((p) => p.handTileId !== id));
-      return;
-    }
-    setModalPick((cur) => (cur[0] === id ? [] : [id]));
+  /**
+   * from 자리의 패를 교환 대상으로 올린다 — 누르기(toggle)로 이미 올린 그 패를 다시 고르면 내린다.
+   * 끌어 놓기는 «여기에 둔다»라서 토글하지 않는다 — 올린 패를 한 번 더 끌어 놓았다고 교환이 풀리면
+   * 놀랍다(2026-09-25, docs/59 U44 리뷰).
+   */
+  const markRinshanTake = (from: number, toggle = true): void => {
+    setRinshanDragFrom(null);
+    const orig = rinshanOrder[from];
+    if (orig === undefined) return;
+    setRinshanTake((cur) => (toggle && cur === orig ? null : orig));
   };
-  /** 왕패를 눌렀을 때 — 짝지어진 자리면 취소, 아니면 대기 중인 손패와 짝을 짓는다 */
-  const dwClickDead = (idx: number): void => {
-    if (dwStagedDead.has(idx)) {
-      setDwPairs((cur) => cur.filter((p) => p.deadIndex !== idx));
-      return;
-    }
-    if (dwPending === undefined) return;
-    if (dwPairs.length >= dwRemaining) return;
-    if (!dwHasOpt(dwPending, idx)) return;
-    setDwPairs((cur) => [...cur, { handTileId: dwPending, deadIndex: idx }]);
-    setModalPick([]);
+  // 손대지 않았으면(항등 + 교환 없음) 확정할 게 없다 — 국에 한 번뿐인 사용권이 효과 없이 타고
+  // «영상패 순서를 다시 짰다»가 전원에게 공개돼 사실과 다른 정보가 된다(파일 머리 정직성 원칙,
+  // 예지 탭의 foresightMoved와 같은 규칙 — docs/59 U44).
+  const rinshanMoved = rinshanOrder.some((orig, pos) => orig !== pos);
+  const rinshanChanged = rinshanMoved || rinshanTakePos !== null;
+  const rinshanConfirmOpt = rinshanArrByKey.get(
+    `${rinshanOrder.join(",")}|${rinshanTakePos === null ? "-" : String(rinshanTakePos)}`,
+  );
+  /** 이 순서(+ 교환 대상이 있으면 그 자리)로 확정한다. 교환 대상이 없으면 순서만(«선택 안 하기») */
+  const confirmRinshan = (): void => {
+    if (!rinshanChanged || rinshanConfirmOpt === undefined) return;
+    sel.submit(rinshanConfirmOpt);
+    closeModal();
   };
 
   // ⚠ 이 모달들은 반드시 **body로 포탈**해야 한다.
@@ -27488,13 +28927,7 @@ function ActiveAugmentControl(props: {
   // 자식의 `position: fixed`가 뷰포트가 아니라 그 요소를 기준으로 잡힌다 →
   // 모달이 화면 아래쪽에 붙어 잘린다. (OwnArea의 기존 모달들은 `.own-area` 바깥
   // 형제로 렌더돼 있어서 이 문제를 피해 갔다.)
-  const closeModal = (): void => {
-    setPickModal(null);
-    setModalPick([]);
-    setDwPairs([]);
-    setRinshanArr(null);
-    setRinshanDragFrom(null);
-  };
+  // (closeModal은 Esc 훅·자동 닫기 effect와 함께 쓰려고 조기 반환 위로 올렸다)
 
   return (
     <div className="own-aug" ref={rootRef}>
@@ -27512,6 +28945,7 @@ function ActiveAugmentControl(props: {
                 const suit = (o.payload as { suit?: unknown }).suit;
                 if (typeof suit !== "string") return null;
                 const preview = unifyPreview(view, myHandIds, suit as TileKind["suit"]);
+                const changed = preview.filter((p) => p.tile.attrs.conjured === true).length;
                 return (
                   <button
                     key={`${suit}-${i}`}
@@ -27521,7 +28955,11 @@ function ActiveAugmentControl(props: {
                       setPickModal(null);
                     }}
                   >
-                    <span className="aug-pick-row-label">{optionDetail(view, o)}</span>
+                    {/* 바뀌는 장수를 이름 옆에 — 석 줄의 미리보기를 눈으로 세지 않아도 무늬를 가른다(U06) */}
+                    <span className="aug-pick-row-label">
+                      {optionDetail(view, o)}
+                      {` — ${changed}장 바뀜`}
+                    </span>
                     <span className="aug-pick-row-tiles">
                       {preview.map((p) => (
                         <TileImg key={p.id} tile={p.tile} size="mini" />
@@ -27531,241 +28969,136 @@ function ActiveAugmentControl(props: {
                 );
               })}
             </div>
+            {/* 닫기 문구는 한 가지 — 아직 아무것도 내지 않았으니 «사용하지 않고»(docs/59 U46) */}
             <button className="rinshan-pick-skip" onClick={closeModal}>
-              발동하지 않고 닫기
+              사용하지 않고 닫기
             </button>
           </div>
         </div>,
         document.body,
       ) : null}
       {/*
-        영상 정찰 — 남은 영상패를 전부 펼쳐 순서를 짜고, 한 장을 고르면 쯔모패와 맞바꾼다.
+        영상 정찰 — 남은 영상패를 전부 펼쳐 순서를 짜고, 한 장을 «내 쯔모패» 칸에 올리면 확정할 때
+        쯔모패와 맞바꾼다. 영상패는 판 어디에도 없으므로 창이 맞다(docs/59 §2 원칙 2).
 
-        조작 세 갈래(예지 탭과 같은 규약):
-        ① 드래그(마우스) ② 두 자리를 차례로 누르기(터치 — 모바일 브라우저는 터치에서
-        dragstart를 아예 내지 않는다) ③ 각 칸의 ◀ ▶ 이동 버튼(키보드·스크린리더).
-        드래그만 두면 폰에서도 키보드에서도 순서를 바꿀 길이 없다.
+        조작(예지 탭과 같은 규약): ① 드래그(마우스) ② 두 자리를 차례로 누르기(터치 — 모바일
+        브라우저는 터치에서 dragstart를 아예 내지 않는다) ③ 포커스한 칸의 ←/→ 키(키보드). 칸이
+        aria-label 달린 <button>이라 Enter/Space 두 번으로도 된다 — 그래서 칸마다 달던 ◀▶ 단추를
+        걷었다(2026-09-25, docs/59 U44). 사용자 지시(2026-08-27, content rinshan_preview) 세 가지 —
+        드래그 재배열·한 장 골라 쯔모패와 교환·«선택 안 하기»는 순서만 — 는 그대로다. 교환 대상을
+        고르는 방식과 «누르는 즉시 제출 → [확정] 한 번»만 바뀌었다.
       */}
       {pickModal === "rinshan_arrange" && rinshanCount > 0 ? createPortal(
         <div className="rinshan-pick-overlay" data-arm-zone="1">
           <div className="rinshan-pick-panel aug-pick-wide">
+            {/* 시간이 다 되면 버림이 나가고 이 순의 사용은 없던 일이 된다(국에 1회는 남는다) */}
             <PickTimer deadline={props.promptDeadline ?? null} />
             <div className="rinshan-pick-title">
               🀫 {augNameFor("rinshan_arrange")}: 남은 영상패 {rinshanCount}장
             </div>
             <div className="rinshan-pick-sub">
               왼쪽부터 차례로 <b>다음 깡의 보충패</b>가 됩니다. 옮길 패를 끌어다 놓거나,
-              옮길 패와 놓을 자리를 차례로 누르세요. '이 패와 교환'을 누르면 그
-              패가 내 쯔모패와 바뀌고, 내 쯔모패는 맨 앞자리에 들어갑니다.
+              옮길 패와 놓을 자리를 차례로 누르세요(키보드는 ←/→).
+              {rinshanTakeable ? (
+                <>
+                  {" "}한 장을 <b>내 쯔모패</b> 칸으로 끌거나 집은 뒤 그 칸을 누르면, 확정할 때 그 패가
+                  내 쯔모패와 바뀌고 내 쯔모패는 그 패가 있던 자리에 들어갑니다.
+                </>
+              ) : null}
               <br />
               이 국에 한 번만 사용할 수 있으며, <b>순서만 바꿔도 영상패를 조작했다는 사실이 상대에게 공개</b>됩니다.
             </div>
             <div className="foresight-tab-row">
+              {rinshanTakeable && rinshanDrawnTile !== undefined ? (
+                <button
+                  type="button"
+                  className={`foresight-tab-cell rinshan-arr-drawn${
+                    rinshanTakePos !== null ? " rinshan-arr-drawn-on" : ""
+                  }`}
+                  title="영상패를 끌어다 놓거나, 집은 뒤 누르면 그 패와 맞바꿉니다. 다시 누르면 교환을 취소합니다"
+                  // 패 이름을 함께 읽는다 — 칸의 aria-label이 그림의 alt를 덮으므로, 이름이 없으면 듣는
+                  // 사람은 순서는 바꿔도 어느 패가 어느 패인지 모른다(2026-09-25, docs/59 U44 리뷰).
+                  aria-label={
+                    rinshanTakePos !== null
+                      ? `내 쯔모패 ${formatTile(rinshanDrawnTile)}. ${rinshanTakePos + 1}번째 영상패와 교환합니다. 누르면 취소합니다`
+                      : `내 쯔모패 ${formatTile(rinshanDrawnTile)}. 영상패를 집은 뒤 누르면 그 패와 교환합니다`
+                  }
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => {
+                    if (rinshanDragFrom === null) return;
+                    markRinshanTake(rinshanDragFrom, false);
+                  }}
+                  onClick={() => {
+                    if (rinshanDragFrom !== null) markRinshanTake(rinshanDragFrom);
+                    else setRinshanTake(null);
+                  }}
+                >
+                  <span className="foresight-tab-ord">내 쯔모패</span>
+                  <TileImg tile={rinshanDrawnTile} size="hand" />
+                  <span className="foresight-tab-label">
+                    {rinshanTakePos !== null ? `↔ ${rinshanTakePos + 1}번째와 교환` : "교환 안 함"}
+                  </span>
+                </button>
+              ) : null}
               {rinshanOrder.map((origIdx, pos) => {
                 const tileId = rinshanIds[origIdx];
                 const tile = tileId !== undefined ? view.tiles[tileId] : undefined;
                 const picked = rinshanDragFrom === pos;
+                const taken = rinshanTakePos === pos;
                 return (
-                  <div
+                  <button
                     key={pos}
-                    className={`foresight-tab-cell${picked ? " foresight-dragging" : ""}`}
+                    type="button"
+                    data-reorder-pos={pos}
+                    className={`foresight-tab-cell${picked ? " foresight-dragging" : ""}${
+                      taken ? " rinshan-arr-taken" : ""
+                    }`}
+                    title="끌거나, 두 자리를 차례로 눌러 순서 변경 (←/→ 키로도 옮깁니다)"
+                    aria-label={`${pos + 1}번째 영상패 ${formatTile(tile)}${taken ? ", 쯔모패와 교환할 패" : ""}. 누르면 집거나 놓습니다`}
+                    draggable
+                    onDragStart={() => setRinshanDragFrom(pos)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => {
+                      if (rinshanDragFrom === null) return;
+                      moveRinshan(rinshanDragFrom, pos);
+                    }}
+                    onDragEnd={() => setRinshanDragFrom(null)}
+                    onKeyDown={(e) => reorderArrowKey(e, pos, rinshanCount, moveRinshan)}
+                    onClick={() => {
+                      if (rinshanDragFrom === null) setRinshanDragFrom(pos);
+                      else moveRinshan(rinshanDragFrom, pos);
+                    }}
                   >
-                    <button
-                      type="button"
-                      className="rinshan-arr-grab"
-                      title="끌거나, 두 자리를 차례로 눌러 순서 변경"
-                      aria-label={`${pos + 1}번째 영상패. 누르면 집거나 놓습니다`}
-                      draggable
-                      onDragStart={() => setRinshanDragFrom(pos)}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={() => {
-                        if (rinshanDragFrom === null) return;
-                        moveRinshan(rinshanDragFrom, pos);
-                      }}
-                      onDragEnd={() => setRinshanDragFrom(null)}
-                      onClick={() => {
-                        if (rinshanDragFrom === null) setRinshanDragFrom(pos);
-                        else moveRinshan(rinshanDragFrom, pos);
-                      }}
-                    >
-                      <span className="foresight-tab-ord">{pos + 1}번째</span>
-                      {tile !== undefined ? <TileImg tile={tile} size="hand" /> : null}
-                      <span className="foresight-tab-label">
-                        {pos === 0 ? "★ 다음 깡" : "그다음"}
-                      </span>
-                    </button>
-                    {/* 드래그 대안 — 키보드·스크린리더 사용자도 순서를 바꿀 수 있어야 한다 */}
-                    <span className="rinshan-arr-nudge">
-                      <button
-                        type="button"
-                        aria-label={`${pos + 1}번째 패를 앞으로`}
-                        disabled={pos === 0}
-                        onClick={() => moveRinshan(pos, pos - 1)}
-                      >
-                        ◀
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={`${pos + 1}번째 패를 뒤로`}
-                        disabled={pos === rinshanCount - 1}
-                        onClick={() => moveRinshan(pos, pos + 1)}
-                      >
-                        ▶
-                      </button>
+                    <span className="foresight-tab-ord">{pos + 1}번째</span>
+                    {tile !== undefined ? <TileImg tile={tile} size="hand" /> : null}
+                    <span className="foresight-tab-label">
+                      {taken ? "↔ 쯔모패와 교환" : pos === 0 ? "★ 다음 깡" : "그다음"}
                     </span>
-                    <button
-                      type="button"
-                      className="rinshan-arr-take"
-                      disabled={
-                        rinshanArrByKey.get(`${rinshanOrder.join(",")}|${pos}`) === undefined
-                      }
-                      title="이 패를 내 쯔모패와 바꿉니다. 교환은 국에 한 번입니다"
-                      onClick={() => submitRinshan(pos)}
-                    >
-                      이 패와 교환
-                    </button>
-                  </div>
+                  </button>
                 );
               })}
             </div>
             <div className="foresight-tab-hint">
               {rinshanDragFrom !== null
-                ? "놓을 자리를 누르세요 (같은 자리를 다시 누르면 취소)"
-                : "순서를 바꾼 뒤 '이 패와 교환'을 누르거나, 아래에서 순서만 확정하세요."}
+                ? rinshanTakeable
+                  ? "놓을 자리나 '내 쯔모패' 칸을 누르세요 (같은 자리를 다시 누르면 취소)"
+                  : "놓을 자리를 누르세요 (같은 자리를 다시 누르면 취소)"
+                : !rinshanChanged
+                  ? "아직 바꾼 것이 없습니다. 옮길 패를 먼저 고르세요."
+                  : rinshanTakePos !== null
+                    ? "확정하면 영상패가 이 순서로 바뀌고, 고른 패가 내 쯔모패와 맞바뀝니다."
+                    : "확정하면 영상패가 이 순서로 바뀝니다. 교환은 하지 않습니다."}
             </div>
             <div className="foresight-tab-actions">
-              <button className="foresight-tab-confirm" onClick={() => submitRinshan(null)}>
-                선택 안 하기 (순서만 확정)
+              <button
+                className="foresight-tab-confirm"
+                disabled={!rinshanChanged || rinshanConfirmOpt === undefined}
+                onClick={confirmRinshan}
+              >
+                {rinshanTakePos !== null ? "이 순서로 확정 + 고른 패와 교환" : "이 순서로 확정"}
               </button>
               <button className="rinshan-pick-skip" onClick={closeModal}>
-                발동하지 않고 닫기
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body,
-      ) : null}
-      {/* 왕패의 주인 — 손패↔왕패 쌍을 남은 횟수만큼 골라 두었다가 한 번에 확정한다 */}
-      {pickModal === "dw_swap" ? createPortal(
-        <div className="rinshan-pick-overlay">
-          <div className="rinshan-pick-panel aug-pick-wide">
-            <PickTimer deadline={props.promptDeadline ?? null} />
-            <div className="rinshan-pick-title">
-              🏯 {augNameFor("dw_swap")}: 남은 교환 {dwRemaining}회
-            </div>
-            <div className="rinshan-pick-sub">
-              {dwPairs.length >= dwRemaining
-                ? "고를 수 있는 만큼 다 골랐습니다. 아래 '이대로 교환'을 누르세요."
-                : dwPending === undefined
-                  ? "왕패로 보낼 내 손패를 고른 뒤, 가져올 왕패를 고르세요. 남은 횟수만큼 여러 쌍을 이어서 고를 수 있습니다."
-                  : "이제 가져올 왕패를 한 장 고르세요. 고른 자리에는 내 패가 대신 들어갑니다. 도라 표시패 자리를 고르면 도라가 바뀝니다."}
-            </div>
-            <div className="aug-pick-rows">
-              <div className="aug-pick-row aug-pick-row-static">
-                <span className="aug-pick-row-label">내 손패</span>
-                <span className="aug-pick-row-tiles">
-                  {dwHandIds.map((id) => {
-                    const staged = dwStagedHand.has(id);
-                    return (
-                      <button
-                        key={id}
-                        className={`aug-pick-tile${dwPending === id ? " aug-pick-tile-on" : ""}${
-                          staged ? " aug-pick-tile-staged" : ""
-                        }`}
-                        title={staged ? "교환 예약됨. 누르면 취소합니다" : undefined}
-                        onClick={() => dwClickHand(id)}
-                      >
-                        <TileImg tile={view.tiles[id]} size="mini" />
-                      </button>
-                    );
-                  })}
-                </span>
-              </div>
-              <div className="aug-pick-row aug-pick-row-static">
-                <span className="aug-pick-row-label">왕패</span>
-                <span className="aug-pick-row-tiles">
-                  {/* 깡으로 빠져나간 영상패 자리 — 빈 칸으로 남겨 원래 14칸 배열을 유지한다 */}
-                  {Array.from({ length: rinshanSpentOf(view) }, (_v, i) => (
-                    <span
-                      key={`spent-${i}`}
-                      className="aug-pick-tile aug-pick-tile-spent"
-                      title="깡으로 사용된 영상패 자리 (보충되지 않습니다)"
-                    />
-                  ))}
-                  {deadWallIds.map((tileId, idx) => {
-                    const staged = dwStagedDead.has(idx);
-                    const slot = deadWallSlotInfo(
-                      idx,
-                      flippedIndicatorCount(view),
-                      deadWallSizeOf(view),
-                    );
-                    // 대기 중인 손패가 없고 예약도 아니면 누를 게 없다 (손패부터 고른다)
-                    const disabled =
-                      !staged &&
-                      (dwPending === undefined ||
-                        dwPairs.length >= dwRemaining ||
-                        !dwHasOpt(dwPending, idx));
-                    return (
-                      <button
-                        key={tileId}
-                        className={`aug-pick-tile rinshan-slot-${slot.cls}${
-                          staged ? " aug-pick-tile-staged" : ""
-                        }`}
-                        disabled={disabled}
-                        title={staged ? `${slot.label}: 교환 예약됨. 누르면 취소합니다` : slot.label}
-                        onClick={() => dwClickDead(idx)}
-                      >
-                        <TileImg tile={view.tiles[tileId]} size="mini" />
-                      </button>
-                    );
-                  })}
-                </span>
-              </div>
-              {dwPairs.length > 0 ? (
-                <div className="aug-pick-row aug-pick-row-static">
-                  <span className="aug-pick-row-label">교환 예약</span>
-                  <span className="aug-pick-row-tiles aug-pick-pairs">
-                    {dwPairs.map((p) => (
-                      <span key={p.handTileId} className="aug-pick-pair">
-                        <TileImg tile={view.tiles[p.handTileId]} size="mini" />
-                        <span className="aug-morph-arrow" aria-hidden="true">→</span>
-                        <TileImg tile={view.tiles[deadWallIds[p.deadIndex] ?? -1]} size="mini" />
-                      </span>
-                    ))}
-                  </span>
-                </div>
-              ) : null}
-            </div>
-            <div className="aug-modal-actions">
-              <button
-                className="rinshan-pick-tile aug-modal-confirm"
-                disabled={dwPairs.length === 0}
-                onClick={() => {
-                  setDwQueue(dwPairs);
-                  closeModal();
-                }}
-              >
-                이대로 교환 ({dwPairs.length}장)
-              </button>
-              <button
-                className="rinshan-pick-skip"
-                onClick={() => {
-                  if (dwPending !== undefined) {
-                    setModalPick([]);
-                    return;
-                  }
-                  if (dwPairs.length > 0) {
-                    setDwPairs([]);
-                    return;
-                  }
-                  closeModal();
-                }}
-              >
-                {dwPending !== undefined
-                  ? "← 손패 다시 고르기"
-                  : dwPairs.length > 0
-                    ? "← 예약 비우기"
-                    : "닫기 (바꾸지 않고 진행)"}
+                사용하지 않고 닫기
               </button>
             </div>
           </div>
@@ -27807,7 +29140,7 @@ function ActiveAugmentControl(props: {
                     sel.submit(o);
                     setOpen(false);
                     setMenuType(null);
-                    hintNone();
+                    clearHints();
                   }}
                 >
                   <strong className="aug-menu-name">
@@ -27851,8 +29184,12 @@ function ActiveAugmentControl(props: {
               return (
                 <button
                   key={type}
-                  className="aug-menu-item"
-                  onClick={() => activate(type)}
+                  className={`aug-menu-item${primed === type ? " aug-menu-item-primed" : ""}`}
+                  data-confirm-pending={primed === type ? "aug" : undefined}
+                  onClick={() => {
+                    if (primeFirst(type)) return;
+                    activate(type);
+                  }}
                   onMouseEnter={() => hintOne(type)}
                   // 줄에서 벗어나면 메뉴 전체(= 쓸 수 있는 전부)로 되돌린다.
                   // 메뉴 밖으로 나가는 경우는 위 컨테이너의 onMouseLeave가 끈다.
@@ -27867,7 +29204,11 @@ function ActiveAugmentControl(props: {
                       <span className="aug-first-badge">이번 순만</span>
                     ) : null}
                   </strong>
-                  {hint !== "" ? <span className="act-target">{hint}</span> : null}
+                  {primed === type ? (
+                    <span className="act-target">한 번 더 눌러 발동</span>
+                  ) : hint !== "" ? (
+                    <span className="act-target">{hint}</span>
+                  ) : null}
                   {!armType(type) && !MODAL_PICK_TYPES.has(type) && opts.length === 1 ? (
                     <ActionTiles view={view} option={opts[0] as ActionOption} />
                   ) : null}
@@ -27887,6 +29228,7 @@ function ActiveAugmentControl(props: {
             : ""
         }`}
         aria-disabled={!usable}
+        data-confirm-pending={single !== null && primed === single ? "aug" : undefined}
         title={
           props.forcedPick === true
             ? FORCED_PICK_HINT
@@ -27913,7 +29255,9 @@ function ActiveAugmentControl(props: {
         <span className={`aug-btn-name${single !== null ? " aug-btn-name-aug" : ""}`}>
           {single !== null ? augNameFor(single) : "액티브 증강"}
         </span>
-        {single !== null && singleSub !== "" ? (
+        {single !== null && primed === single ? (
+          <span className="aug-btn-sub">· 한 번 더 눌러 발동</span>
+        ) : single !== null && singleSub !== "" ? (
           <span className="aug-btn-sub">· {singleSub}</span>
         ) : null}
         {usable && single === null ? ` (${displayCount})` : ""}
@@ -27937,12 +29281,14 @@ function ActiveAugmentControl(props: {
         ? createPortal(
             <div className="rinshan-pick-overlay" data-arm-zone="1">
               <div className="rinshan-pick-panel foresight-tab">
-                <PickTimer deadline={props.promptDeadline ?? null} />
+                {/* 발동(공개)은 이미 끝났다 — 시간이 다 되면 잃는 것은 이 순의 재배열이다(ORDER는 공개한
+                    그 순에만 열린다, content foresight). docs/59 U49 */}
+                <PickTimer deadline={props.promptDeadline ?? null} fallback={FORESIGHT_TIMER_FALLBACK} />
                 <div className="rinshan-pick-title">🔮 예지: 다음 한 바퀴 쯔모 순서 정하기</div>
                 <div className="rinshan-pick-sub">
                   왼쪽부터 차례로 뽑힙니다. 옮길 패를 끌어다 놓거나, 옮길 패와 놓을 자리를
-                  차례로 누르세요. <b>재배열은 이 국에 한 번만 할 수 있습니다.</b> 바꾸지 않고
-                  닫아도 발동은 취소되지 않습니다.
+                  차례로 누르세요(키보드는 ←/→). <b>재배열은 이 국에 한 번만 할 수 있습니다.</b> 바꾸지 않고
+                  닫아도 발동은 취소되지 않습니다. 닫으면 옮긴 순서는 버려집니다.
                 </div>
                 <div className="foresight-tab-row">
                   {foresightOrder.map((origIdx, pos) => {
@@ -27954,6 +29300,7 @@ function ActiveAugmentControl(props: {
                       <button
                         key={pos}
                         type="button"
+                        data-reorder-pos={pos}
                         className={`foresight-tab-cell${isMine ? " foresight-mine" : ""}${
                           picked ? " foresight-dragging" : ""
                         }`}
@@ -27972,6 +29319,7 @@ function ActiveAugmentControl(props: {
                           moveForesight(from, pos);
                         }}
                         onDragEnd={() => setForesightDragFrom(null)}
+                        onKeyDown={(e) => reorderArrowKey(e, pos, foresightOrder.length, moveForesight)}
                         onClick={() => {
                           // 첫 번째 누름 = 집기, 두 번째 = 놓기. 같은 자리면 집기 취소.
                           if (foresightDragFrom === null) setForesightDragFrom(pos);
@@ -28006,15 +29354,10 @@ function ActiveAugmentControl(props: {
                   >
                     이 순서로 확정
                   </button>
-                  <button
-                    className="rinshan-pick-skip"
-                    onClick={() => {
-                      setForesightDragFrom(null);
-                      setForesightArr([0, 1, 2, 3]);
-                      setForesightTab(false);
-                    }}
-                  >
-                    이 창 유지 (닫기)
+                  {/* 발동(공개)은 이미 끝났으니 이 창만 «바꾸지 않고». 1504e1b(#501)의 일괄 치환이 원래
+                      «그대로 두기 (닫기)»를 자기모순인 «이 창 유지 (닫기)»로 바꿨었다(docs/59 U45) */}
+                  <button className="rinshan-pick-skip" onClick={closeForesightTab}>
+                    바꾸지 않고 닫기
                   </button>
                 </div>
               </div>
@@ -28041,6 +29384,11 @@ function ActionBar(props: {
    * 쿨다운»도 생기지 않는다 (2026-09-25, docs/59 U03·U07).
    */
   forcedPick?: boolean;
+  /**
+   * «두 번 눌러 버리기» 설정 — 켜져 있으면 손패를 태우는 콜(PREVIEW_FIRST_TYPES, 허장성세 퐁)도
+   * 첫 탭은 재료를 짚기만 한다(2026-09-25, docs/59 U61).
+   */
+  tapTwiceToDiscard?: boolean;
   onRiichiMode: (v: boolean) => void;
   onSubmit: (o: ActionOption) => void;
 }): JSX.Element | null {
@@ -28050,7 +29398,60 @@ function ActionBar(props: {
       ? { ...props.prompt, options: props.prompt.options.filter((o) => o.type === "win") }
       : props.prompt;
   const sel = useContext(SelectionContext);
+  /*
+   * 두 번 눌러 확정하는 버튼의 «첫 탭» 상태 — 리치 취소(U51)와 미리보기 먼저인 콜(U61).
+   *
+   * 프롬프트가 바뀌면(순이 넘어감·다른 선택지) 푼다 — 지난 순의 첫 탭이 남아 있으면 무심코 한 번
+   * 누른 것이 곧바로 확정된다(손패 두 번 누르기의 promptSeq 리셋과 같은 이유). 다른 곳을 눌러도
+   * 푼다. 훅이라 아래 early-null보다 위에 있어야 한다.
+   */
+  const [cancelArmed, setCancelArmed] = useState(false);
+  const [primedKey, setPrimedKey] = useState<string | null>(null);
+  const doomedHintRef = useRef(props.onDoomedHint);
+  doomedHintRef.current = props.onDoomedHint;
+  const primedKeyRef = useRef<string | null>(null);
+  primedKeyRef.current = primedKey;
+  useEffect(() => {
+    setCancelArmed(false);
+    setPrimedKey(null);
+    // 첫 탭이 고정해 둔 재료 ✕도 함께 끈다 — 반응 시간이 다 돼 자동 패스되거나 남의 론·퐁이 창을
+    // 닫으면 아무 데도 안 눌러 바깥 누르기 리스너가 안 돌고, 이 바는 언마운트된다. 그러면 사라지지
+    // 않을 손패에 «이 패가 사라진다»가 판 끝까지 남았다. cleanup이라 언마운트에서도 돈다
+    // (2026-09-25, docs/59 U61 리뷰).
+    return () => {
+      if (primedKeyRef.current !== null) doomedHintRef.current?.(null);
+    };
+  }, [props.prompt]);
+  // 리치 취소의 첫 탭은 3초만 산다 — 한참 뒤의 탭 한 번이 되돌릴 수 없는 취소가 되지 않게
+  useEffect(() => {
+    if (!cancelArmed) return;
+    const t = window.setTimeout(() => setCancelArmed(false), 3000);
+    return () => window.clearTimeout(t);
+  }, [cancelArmed]);
+  useEffect(() => {
+    if (!cancelArmed && primedKey === null) return;
+    const onDown = (e: PointerEvent): void => {
+      const t = e.target as Element | null;
+      // 첫 탭을 받은 그 버튼을 다시 누르는 것은 확정이다 — 여기서 풀면 click이 첫 탭으로 되돌아간다.
+      // 표식은 주인별로 다르다 — ✦의 첫 탭("aug")을 눌러도 이쪽 첫 탭은 풀려야 한다(U61 리뷰)
+      if (t !== null && typeof t.closest === "function" && t.closest('[data-confirm-pending="bar"]') !== null) {
+        return;
+      }
+      setCancelArmed(false);
+      if (primedKey !== null) {
+        setPrimedKey(null);
+        doomedHintRef.current?.(null);
+      }
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [cancelArmed, primedKey]);
   const hasRiichi = prompt.options.some((o) => o.type === "riichi");
+  /*
+   * 승부수(리치 취소) — 리치 중 매 순 후보가 서므로 [리치] 자리에 선다(리치 중이라 [리치]와
+   * 동시에 뜨지 않는다). ✦ 메뉴에서는 뺐다(ACTIONBAR_AUG_IDS, 2026-09-25, docs/59 U51).
+   */
+  const cancelRiichiOpt = prompt.options.find((o) => o.type === "cancel_riichi");
   const isMyTurn = view.round.phase === "turn.act";
   /*
    * 증강 리치(오픈 리치·스텔스 리치·올인 리치·영혼의 일격)를 **[리치] 바로 옆**에 띄운다.
@@ -28067,6 +29468,24 @@ function ActionBar(props: {
   ];
   const armedRiichiAug =
     sel.armedType !== null && DRAG_DISCARD_ARM_TYPES.has(sel.armedType) ? sel.armedType : null;
+  /*
+   * 리치 모드처럼 그리는가 — 평범한 리치 모드이거나 증강 리치로 무장했을 때.
+   *
+   * 증강 리치 무장은 여태 액션 바를 평상시대로 두고([리치][⚡A(켜짐)][⚡B]…) 손패 위에 안내 줄을
+   * 따로 세웠다. 같은 «리치할 패 고르기»인데 평범한 리치(액션 바 한 줄)와 안내 자리·모양이
+   * 달랐고 취소 수단이 둘(켜진 ⚡, 안내 줄 [취소])이었다. 무장도 액션 바 한 줄로 맞춘다 —
+   * 손패 위 안내 줄은 DRAG형에 한해 그리지 않는다(OwnArea, 2026-09-25, docs/59 U55).
+   */
+  const riichiLike = props.riichiMode || armedRiichiAug !== null;
+  // 증강 리치 무장 중에 바꿔 탈 ⚡ — 무장한 것은 이미 안내 줄 이름이 말한다
+  const switchAugTypes = riichiAugTypes.filter((t) => t !== armedRiichiAug);
+  /*
+   * 증강 리치가 둘 이상이면 [리치]와 ⚡들을 한 테두리(`.riichi-group`)로 묶어 «리치 계열 한 덩어리»로
+   * 읽히게 한다. 접어서([리치 ▾]) 숨기지 않는다 — 2026-08-08 결정(리치 순간 한눈에)을 약하게 만든다.
+   * 셋 이상이면 폭을 아끼려고 ⚡ 보조 줄(U53)을 생략한다(2026-09-25, docs/59 U54).
+   */
+  const groupRiichi = riichiAugTypes.length >= 2;
+  const showAugSub = riichiAugTypes.length < 3;
   // 타일 클릭으로 처리되는 액션과 액티브 증강(전용 버튼)은 액션 바에서 제외
   const rawButtons = prompt.options.filter(
     (o) =>
@@ -28084,12 +29503,53 @@ function ActionBar(props: {
    * 삐져나가 **맨 끝의 [패스]가 화면 밖에 있어 누를 수 없었다**(2026-09-19 사용자
    * 보고. 1280×800 실측: 버튼 22개일 때 바 폭 2068px, 패스 x=1615~1662).
    * 서버가 주는 순서(론 → 후로 → 패스)와 같으므로 평소 화면과 단축키 순서는 그대로다.
+   *
+   * 그리고 **같은 종류의 후로는 버튼 하나로 접는다**(2026-09-25, docs/59 U56) — [치 ×5]를 누르면
+   * 손패에서 함께 쓸 패를 눌러 좁힌다(SelectionCtx.callPick). 22개가 서던 판이 [론][치][퐁][깡][패스]가
+   * 된다. 세 무리와 스크롤 상자는 안전망으로 남긴다(묶지 않는 증강 선언이 많이 서는 판) — 2026-09-19
+   * 결정(패스·론이 늘 제자리)의 목적은 버튼 수 자체가 줄어 더 단단해진다.
+   * 묶음의 대표는 그 종류의 첫 옵션이다(서버 순서). 쓰는 패가 손패에 다 보이지 않는 후보(서명을 못
+   * 만드는 것)는 묶지 않고 예전처럼 제 버튼을 둔다 — 손패로 고를 수 없는 것을 손패로 고르게 하지 않는다.
    */
+  const callGroups = new Map<ActionOption, ActionOption[]>();
+  const foldedButtons: ActionOption[] = [];
+  {
+    const headOf = new Map<string, ActionOption>();
+    for (const o of rawButtons) {
+      if (CALL_PICK_TYPES.has(o.type) && callPickSigs(view, o) !== null) {
+        const head = headOf.get(o.type);
+        if (head !== undefined) {
+          const group = callGroups.get(head)!;
+          // 손패로는 같은 수(서명·나머지 payload가 같다)는 한 벌만 — 어느 쪽을 내도 결과가 같다
+          if (!group.some((g) => sameCallChoice(view, g, o))) group.push(o);
+          continue;
+        }
+        headOf.set(o.type, o);
+        callGroups.set(o, [o]);
+      }
+      foldedButtons.push(o);
+    }
+  }
+  /** 이 버튼이 여러 후보를 품은 묶음인가 — 누르면 곧바로 내지 않고 손패 고르기로 들어간다 */
+  const groupOf = (o: ActionOption): ActionOption[] | null => {
+    const g = callGroups.get(o);
+    return g !== undefined && g.length > 1 ? g : null;
+  };
   const buttons = [
-    ...rawButtons.filter((o) => o.type === "win"),
-    ...rawButtons.filter((o) => o.type !== "win" && o.type !== "pass"),
-    ...rawButtons.filter((o) => o.type === "pass"),
+    ...foldedButtons.filter((o) => o.type === "win"),
+    ...foldedButtons.filter((o) => o.type !== "win" && o.type !== "pass"),
+    ...foldedButtons.filter((o) => o.type === "pass"),
   ];
+  /**
+   * 후로 고르기 중 안내 줄에 칩으로 선 남은 후보(OwnArea와 같은 기준) — 숫자 1..N이 이 순서를 따른다.
+   * 이 바의 묶음 종류를 고르는 중일 때만(다른 프롬프트의 잔재는 useSelection이 이미 걸렀다).
+   */
+  const pickChips =
+    sel.callPick !== null &&
+    buttons.some((o) => o.type === sel.callPick?.type) &&
+    sel.callPick.remaining.length <= CALL_PICK_CHIP_MAX
+      ? sel.callPick.remaining
+      : null;
   const locked = prompt.locked ?? [];
   /** 고를 것이 패스뿐이라 잠시 뒤 스스로 넘어가는 통보인가 (버튼이 시간을 그린다) */
   const autoPassing = isLockNoticeOnly(prompt);
@@ -28097,7 +29557,8 @@ function ActionBar(props: {
     buttons.length === 0 &&
     locked.length === 0 &&
     !hasRiichi &&
-    riichiAugTypes.length === 0
+    riichiAugTypes.length === 0 &&
+    cancelRiichiOpt === undefined
   ) {
     return null;
   }
@@ -28107,6 +29568,32 @@ function ActionBar(props: {
     props.onRiichiMode(false);
     sel.arm(sel.armedType === type ? null : type);
   };
+  /** 평범한 리치로 — 증강 리치로 무장 중이었다면 풀고 리치 모드로 */
+  const enterRiichi = (): void => {
+    sel.arm(null);
+    props.onRiichiMode(true);
+  };
+  /**
+   * 리치 취소는 **언제나** 두 번 눌러 확정한다 — 국당 1회이고 되돌릴 수 없으며 그 국의 재리치까지
+   * 잠근다. 손패 두 번 누르기 설정(tapTwiceToDiscard)에 묶지 않는다: 그 설정은 오타패 방지이고,
+   * 이 수는 마우스로 눌러도 잘못 누르면 되돌릴 길이 없다(2026-09-25, docs/59 U51).
+   */
+  const pressCancelRiichi = (): void => {
+    if (cancelRiichiOpt === undefined) return;
+    if (!cancelArmed) {
+      setCancelArmed(true);
+      return;
+    }
+    setCancelArmed(false);
+    props.onSubmit(cancelRiichiOpt);
+  };
+  // 무장 분기의 [취소] — 무장만 푼다(리치 모드는 이미 꺼져 있다)
+  const cancelRiichiLike = (): void => {
+    if (armedRiichiAug !== null) sel.arm(null);
+    else props.onRiichiMode(false);
+  };
+  // 무장 분기에서도 [론·쯔모]는 남긴다 — 무장 중 쯔모하려고 먼저 [취소]할 필요가 없게(U55)
+  const winButtons = buttons.filter((o) => o.type === "win");
 
   /*
    * 단축키 — 여태 게임을 키보드로 두는 길이 아예 없었다(포커스 표시조차 없었다).
@@ -28120,153 +29607,353 @@ function ActionBar(props: {
    * 대신 title(툴팁)이 그대로 알려 준다.
    */
   const keyed: { key: string; run: () => void }[] = [];
-  if (props.riichiMode) {
-    keyed.push({ key: "1", run: () => props.onRiichiMode(false) });
+  /**
+   * 선택지 버튼 한 번 누르기 — 클릭과 숫자 단축키가 **같은 길**을 탄다. 미리보기 먼저
+   * (PREVIEW_FIRST_TYPES, 허장성세 퐁 등)는 첫 번째는 재료를 짚기만 하고 두 번째에 낸다 —
+   * 단축키만 곧장 내면 키보드로 두는 사람에게는 게이트가 없는 셈이다(리치 취소 단축키가
+   * pressCancelRiichi를 타는 것과 같다. 2026-09-25, docs/59 U61 리뷰).
+   * key는 `${type}-${선택지 버튼 순번}` 꼴이다(아래 renderButton의 key와 같아야 한다).
+   */
+  const pressOption = (o: ActionOption, key: string): void => {
+    // 후로 묶음 — 곧바로 내지 않고 손패 고르기로(다시 누르면 푼다). 후보가 하나면 아래 평소 길(docs/59 U56)
+    const group = groupOf(o);
+    if (group !== null) {
+      setPrimedKey(null);
+      sel.toggleCallPick(o.type, group);
+      return;
+    }
+    const previewFirst = props.tapTwiceToDiscard === true && PREVIEW_FIRST_TYPES.has(o.type);
+    if (previewFirst && primedKey !== key) {
+      setPrimedKey(key);
+      props.onDoomedHint?.(doomedTileIdsOf(view, o.type));
+      return;
+    }
+    setPrimedKey(null);
+    props.onSubmit(o);
+  };
+  /** 단축키 줄 끝에 이어 붙는 선택지 버튼 — 글자 단축키(R/P)가 이 목록에서 자리를 찾는다 */
+  let hotButtons: ActionOption[];
+  if (riichiLike) {
+    keyed.push({ key: "1", run: cancelRiichiLike });
+    // 증강 리치 무장 중에는 평범한 리치로 돌아가는 길도 둔다
+    if (armedRiichiAug !== null && hasRiichi) {
+      keyed.push({ key: String(keyed.length + 1), run: enterRiichi });
+    }
     // 리치 모드에서도 증강 리치로 갈아탈 수 있게 — 취소하고 다시 찾을 필요가 없다.
-    for (const t of riichiAugTypes) {
+    for (const t of switchAugTypes) {
       keyed.push({ key: String(keyed.length + 1), run: () => armRiichiAug(t) });
     }
+    hotButtons = armedRiichiAug !== null ? winButtons : [];
   } else {
     // 버튼과 같게 무장을 먼저 푼다 — 안 풀면 ✦ 무장(이면투시 바꿔치기 등)이 리치 모드와 함께 남아
     // 리치하려던 손패 클릭이 무장 분기로 먼저 빠져 증강이 그 자리에서 나간다(W2 interaction-1).
     if (hasRiichi) keyed.push({ key: "1", run: () => { sel.arm(null); props.onRiichiMode(true); } });
+    // 리치 취소도 버튼과 같게 두 번 눌러야 나간다
+    if (cancelRiichiOpt !== undefined) {
+      keyed.push({ key: String(keyed.length + 1), run: pressCancelRiichi });
+    }
     for (const t of riichiAugTypes) {
       keyed.push({ key: String(keyed.length + 1), run: () => armRiichiAug(t) });
     }
-    for (const o of buttons) keyed.push({ key: String(keyed.length + 1), run: () => props.onSubmit(o) });
+    hotButtons = buttons;
   }
-  const hotIndex = (i: number): string =>
-    String((hasRiichi ? 1 : 0) + riichiAugTypes.length + i + 1);
+  hotButtons.forEach((o, i) => {
+    /*
+     * 한 글자 숫자만 누를 수 있다 — 리스너는 e.key 완전일치라 «10»은 영영 맞지 않는데 툴팁은
+     * «단축키 12»라고 적었다(2026-09-25, docs/59 U57). 항목은 빼지 않고 키만 비운다: ActionHotkeys의
+     * R/P 폴백이 keyed 끝자리를 buttons 순서로 찾는다(빼면 P가 엉뚱한 버튼을 누른다).
+     */
+    const n = keyed.length + 1;
+    keyed.push({ key: n <= 9 ? String(n) : "", run: () => pressOption(o, `${o.type}-${i}`) });
+  });
+  /*
+   * 후로 고르기 중에는 바의 숫자를 **늘** 비운다 — 후보 수에 따라 «2»가 칩이었다가 바의 [퐁]이었다가
+   * 하면, 치를 고르던 키보드 사용자가 경고 없이 다른 후로를 내 버린다(2026-09-25, B17 리뷰). 글자
+   * 단축키(R·P)는 keyed 끝자리를 쓰므로 그대로 산다. 그 자리에 고르기 키를 맨 앞에 끼운다:
+   * 후보가 적으면 숫자 1..N이 안내 줄의 칩을 순서대로, 많으면(칩 없음) ←→가 후보를 하나씩 짚고 숫자 1이
+   * 짚은 후보를 낸다 — 키보드로 특정 치를 고르는 길이다(docs/59 U56 5단계).
+   */
+  const pickingHere = sel.callPick !== null && buttons.some((o) => o.type === sel.callPick?.type);
+  if (pickingHere) for (const k of keyed) k.key = "";
+  if (pickChips !== null) {
+    keyed.unshift(...pickChips.map((o, i) => ({ key: String(i + 1), run: () => sel.submit(o) })));
+  } else if (pickingHere && sel.callPick !== null) {
+    const cp = sel.callPick;
+    const pointed = cp.cursor !== null ? cp.remaining[cp.cursor] : undefined;
+    keyed.unshift(
+      { key: "ArrowLeft", run: () => sel.stepCallPick(-1) },
+      { key: "ArrowRight", run: () => sel.stepCallPick(1) },
+      ...(pointed !== undefined ? [{ key: "1", run: () => sel.submit(pointed) }] : []),
+    );
+  }
+  /** 선택지 버튼 앞에 선 리치 계열 버튼 수 — 선택지 버튼의 단축키 번호가 여기서 이어진다 */
+  const hotBase = keyed.length - hotButtons.length;
+  const hotIndex = (i: number): string => String(hotBase + i + 1);
+  /*
+   * 리치 무리(리치·리치 취소·⚡)의 툴팁 단축키 — 후로 고르기 중에는 바의 숫자가 전부 비고 1..N이
+   * 칩 차지라, «리치 (단축키 1)»을 믿고 1을 누르면 깡 후보가 되돌릴 수 없이 나간다. 그동안은 숫자를
+   * 적지 않는다(2026-09-25, B17 리뷰 R2 — 선택지 버튼의 hotBound와 같은 규칙, docs/59 U57).
+   */
+  const riichiHotTip = (hot: number): string => (pickingHere ? "" : ` (단축키 ${hot})`);
+
+  /** ⚡ 증강 리치 버튼 하나 — 평상시와 리치 모드·무장 분기가 같은 모양을 쓴다(U53) */
+  const riichiAugButton = (t: string, hot: number, title: string): JSX.Element => {
+    const sub = showAugSub ? riichiAugSub(view, t) : "";
+    return (
+      <button
+        key={t}
+        className="act act-riichi-aug"
+        onClick={() => armRiichiAug(t)}
+        title={`${title}${riichiHotTip(hot)}`}
+      >
+        ⚡ {augActionName(props.catalog, t)}
+        {sub !== "" ? <span className="act-target">{sub}</span> : null}
+      </button>
+    );
+  };
+  /** 리치 계열 버튼 무리 — 증강 리치가 둘 이상이면 한 테두리로 묶는다(U54). 순서·단축키는 그대로다 */
+  const riichiCluster = (nodes: JSX.Element[]): JSX.Element | JSX.Element[] =>
+    groupRiichi && nodes.length >= 2 ? (
+      <div className="riichi-group" role="group" aria-label="리치">
+        {nodes}
+      </div>
+    ) : (
+      nodes
+    );
+
+  /** 콜 버튼에서 손을 뗐을 때 — 첫 탭을 받은 콜이 있으면 그 재료로, 없으면 짚기를 끈다(U61 리뷰) */
+  const restoreDoomed = (): void => {
+    // primedKey는 `${type}-${i}` 꼴이다(아래 renderButton의 key)
+    const primedType = primedKey === null ? null : primedKey.slice(0, primedKey.lastIndexOf("-"));
+    props.onDoomedHint?.(primedType === null ? null : doomedTileIdsOf(view, primedType));
+  };
+
+  /** 리액션에서 부르는 패 — 묶음 버튼에 그린다(U56). 내 차례(안깡·가깡)에는 없다 */
+  const calledTile =
+    !isMyTurn && view.round.lastDiscard !== null ? view.tiles[view.round.lastDiscard.tileId] : undefined;
+  const renderButton = (o: ActionOption, i: number): JSX.Element => {
+    const label =
+      o.type === "win" ? (isMyTurn ? "쯔모" : "론") : actionLabel(o.type, props.catalog);
+    /*
+     * 증강이 만든 콜(허장성세·묵계·우는 국사 퐁)도 증강 색이다 — 손패 한 장을 태우는 국당 1회
+     * 증강이 평범한 [퐁]과 같은 파랑이라 무심코 쓰기 쉬웠다. ACTION_AUGMENT 매핑이 곧 «증강이 만든
+     * 액션»이다. ⚠ 이 타입들을 AUGMENT_ACTION_TYPES에 넣지 않는다 — 위 rawButtons가 그 집합을
+     * 액션 바에서 빼 버려 콜 버튼이 사라진다(2026-09-25, docs/59 U59).
+     */
+    const fromAugment = ACTION_AUGMENT[o.type] !== undefined;
+    const tone =
+      o.type === "win"
+        ? "act-win"
+        : o.type === "pass"
+          ? "act-pass"
+          : ACTION_LABEL[o.type] === undefined || AUGMENT_ACTION_TYPES.has(o.type) || fromAugment
+            ? "act-aug"
+            : "act-call";
+    const detail = optionDetail(view, o);
+    const key = `${o.type}-${i}`;
+    // 미리보기 먼저 — 첫 탭은 재료를 손패에 고정해 짚기만 한다(U61). 판정은 pressOption 한 곳
+    const primed = primedKey === key;
+    // 툴팁의 숫자는 실제로 걸린 키일 때만 적는다 — 10번째부터·후로 고르기 중에는 키가 비어 있다(U57)
+    const hotBound = keyed[hotBase + i]?.key === hotIndex(i);
+    // 후로 묶음(U56) — 누르면 손패 고르기로 들어가고, 그 중이면 눌린 채로 그린다
+    const group = groupOf(o);
+    const picking = group !== null && sel.callPick?.type === o.type;
+    const groupTip =
+      group === null
+        ? ""
+        : picking
+          ? ` — 고르는 중 (다시 누르면 취소)`
+          : ` — 후보 ${group.length}개, 누른 뒤 함께 쓸 손패를 클릭${
+              group.length > CALL_PICK_CHIP_MAX ? "(키보드는 ←→로 짚고 1)" : ""
+            }`;
+    return (
+      <button
+        key={key}
+        className={`act ${tone}${primed ? " act-primed" : ""}${group !== null ? " act-group" : ""}${
+          picking ? " act-group-on" : ""
+        }`}
+        data-confirm-pending={primed ? "bar" : undefined}
+        {...(group !== null ? { "aria-pressed": picking } : {})}
+        onClick={() => pressOption(o, key)}
+        /* 누르면 사라지는 패를 손패에서 짚는다 — 마우스·키보드 둘 다 (감사 §6-10) */
+        onMouseEnter={() => props.onDoomedHint?.(doomedTileIdsOf(view, o.type))}
+        // 첫 탭을 받은 동안은 손을 떼도(터치의 호환 mouseleave·blur) 짚은 패를 그대로 둔다(U61).
+        // 이 버튼이 아니라 **바 전체**의 첫 탭을 본다 — 옆 버튼을 스쳐 지나가면 그 버튼의 재료가
+        // 아니라 첫 탭을 받은 콜의 재료로 되돌린다(U61 리뷰)
+        onMouseLeave={restoreDoomed}
+        onFocus={() => props.onDoomedHint?.(doomedTileIdsOf(view, o.type))}
+        onBlur={restoreDoomed}
+        title={
+          hotBound
+            ? o.type === "win"
+              ? `${label}${groupTip} (단축키 ${hotIndex(i)} 또는 R)`
+              : o.type === "pass"
+                ? `${label}${groupTip} (단축키 ${hotIndex(i)} 또는 P)`
+                : `${label}${groupTip} (단축키 ${hotIndex(i)})`
+            : o.type === "win"
+              ? `${label} (단축키 R)`
+              : o.type === "pass"
+                ? `${label} (단축키 P)`
+                : `${label}${groupTip}`
+        }
+      >
+        {fromAugment ? "✦ " : ""}
+        {label}
+        {primed ? (
+          <span className="act-target">한 번 더 눌러 발동</span>
+        ) : detail !== "" && group === null ? (
+          <span className="act-target">{detail}</span>
+        ) : null}
+        {group !== null ? (
+          /* 묶음은 부른 패(리액션이면 방금 버려진 패) + 후보 수만 — 몸통은 손패에서 고른다(U56) */
+          <span className="act-tiles">
+            {calledTile !== undefined ? <TileImg tile={calledTile} size="mini" /> : null}
+            <span className="act-group-count" aria-hidden="true">×{group.length}</span>
+          </span>
+        ) : (
+          <ActionTiles view={view} option={o} />
+        )}
+      </button>
+    );
+  };
+
+  /*
+   * 잠긴 선언 — 증강이 막은 론/쯔모. 누를 수 없지만 **자리를 지킨다**:
+   * 여기서 사라지면 당한 사람은 왜 화료가 안 되는지 알 길이 없다.
+   * 고를 것이 패스뿐이면 스스로 넘어가므로, 남은 시간을 버튼이 직접 보여 준다.
+   * 증강 리치 무장 중에도 [쯔모] 옆에 그대로 선다 — 무장 분기가 따로 생기면서(U55) 잠긴 선언이
+   * 무장하는 순간 사라지던 것을 막는다(2026-09-25, B15 리뷰 R2). 평범한 리치 모드는 예전처럼
+   * 선언 버튼 없이 [취소]와 안내만 둔다.
+   */
+  const lockedButtons = locked.map((l) => {
+    // core 계약상 지금은 win뿐이지만, 늘어나도 내부 type이 조용히 서지 않게
+    // actionLabel 한 경로로 떨어뜨린다(2026-09-25, docs/59 U62)
+    const label =
+      l.type === "win" ? (isMyTurn ? "쯔모" : "론") : actionLabel(l.type, props.catalog);
+    return (
+      <button
+        key={`locked-${l.type}-${l.reason}`}
+        className={`act act-win act-locked${autoPassing ? " act-locked-timed" : ""}`}
+        type="button"
+        disabled
+        aria-disabled="true"
+        title={
+          autoPassing
+            ? `${lockedReasonText(l)}. 잠시 뒤 자동으로 넘어갑니다.`
+            : lockedReasonText(l)
+        }
+      >
+        🔒 {label}
+        <span className="act-target">{lockedReasonShort(l)}</span>
+      </button>
+    );
+  });
+
+  if (riichiLike) {
+    const hint =
+      armedRiichiAug !== null
+        ? `${augActionName(props.catalog, armedRiichiAug)}: ${
+            armedRiichiAug === "flip_riichi" ? "버릴 패" : "리치할 패"
+          }를 바닥으로 끌어 놓거나 클릭하세요`
+        : "리치할 패를 바닥으로 끌어 놓거나 클릭하세요";
+    const plainRiichiBack = armedRiichiAug !== null && hasRiichi;
+    const switchNodes: JSX.Element[] = [];
+    if (plainRiichiBack) {
+      switchNodes.push(
+        <button key="riichi" className="act act-riichi" onClick={enterRiichi} title="평범한 리치로 바꾸기 (단축키 2)">
+          리치
+        </button>,
+      );
+    }
+    switchAugTypes.forEach((t, i) => {
+      switchNodes.push(
+        riichiAugButton(
+          t,
+          2 + (plainRiichiBack ? 1 : 0) + i,
+          `${augActionName(props.catalog, t)}(으)로 바꿔서 리치`,
+        ),
+      );
+    });
+    return (
+      <div className="action-bar">
+        <ActionHotkeys keyed={keyed} buttons={hotButtons} riichiMode={props.riichiMode} />
+        <span className="action-hint">{hint}</span>
+        <button className="act act-cancel" onClick={cancelRiichiLike} title="취소 (단축키 1)">
+          취소
+        </button>
+        {/* 그냥 리치를 걸려던 손을 여기서 한 번 더 붙잡는다 — 증강 리치가 있다는 걸
+            가장 늦게 알려 줄 수 있는 자리다. */}
+        {riichiCluster(switchNodes)}
+        {armedRiichiAug !== null ? lockedButtons : null}
+        {armedRiichiAug !== null ? winButtons.map((o, i) => renderButton(o, i)) : null}
+      </div>
+    );
+  }
+
+  // 평상시 — [리치][리치 취소][⚡…] 순. 단축키 번호도 이 순서다(keyed와 같다)
+  const riichiNodes: JSX.Element[] = [];
+  if (hasRiichi) {
+    riichiNodes.push(
+      <button
+        key="riichi"
+        className="act act-riichi"
+        onClick={() => {
+          sel.arm(null); // 증강 리치로 무장 중이었다면 풀고 평범한 리치로
+          props.onRiichiMode(true);
+        }}
+        title={`리치${riichiHotTip(1)}`}
+      >
+        리치
+      </button>,
+    );
+  }
+  if (cancelRiichiOpt !== undefined) {
+    const hot = (hasRiichi ? 1 : 0) + 1;
+    riichiNodes.push(
+      <button
+        key="cancel_riichi"
+        className={`act act-riichi-cancel${cancelArmed ? " act-riichi-cancel-armed" : ""}`}
+        data-confirm-pending={cancelArmed ? "bar" : undefined}
+        onClick={pressCancelRiichi}
+        title={`${augActionName(props.catalog, "cancel_riichi")}: 리치를 취소하고 리치봉을 돌려받습니다. 이 국에는 다시 리치를 걸 수 없습니다. 두 번 눌러 확정${riichiHotTip(hot)}`}
+      >
+        {/* 이름은 증강 이름 하나(§2 원칙 6) — 무엇을 하는지는 부제가 말한다. 첫 탭 뒤에는
+            무엇이 남았는지를 본문이 말한다. 리치봉 환급은 title에만 두면 터치에서 안 보인다(U51 리뷰) —
+            폰 가로 알약 줄에서는 두 줄로 접는다(styles.css .act-riichi-cancel .act-target) */}
+        {cancelArmed ? "한 번 더 눌러 확정" : augActionName(props.catalog, "cancel_riichi")}
+        <span className="act-target">리치 취소 · 리치봉 환급 · 재리치 불가</span>
+      </button>,
+    );
+  }
+  const augLead = (hasRiichi ? 1 : 0) + (cancelRiichiOpt !== undefined ? 1 : 0);
+  riichiAugTypes.forEach((t, i) => {
+    riichiNodes.push(
+      riichiAugButton(
+        t,
+        augLead + i + 1,
+        `${augActionName(props.catalog, t)}: ${t === "flip_riichi" ? "버릴 패" : "리치할 패"}를 바닥으로 끌어 놓거나 클릭하세요`,
+      ),
+    );
+  });
+  // buttons 는 [론·쯔모 … 후로 … 패스] 순이다 — 가운데 무리만 스크롤 상자에 넣는다
+  const winEnd = buttons.findIndex((o) => o.type !== "win");
+  const wins = winEnd === -1 ? buttons : buttons.slice(0, winEnd);
+  const passStart = buttons.findIndex((o) => o.type === "pass");
+  const calls = buttons.slice(wins.length, passStart === -1 ? buttons.length : passStart);
+  const passes = passStart === -1 ? [] : buttons.slice(passStart);
 
   return (
     <div className="action-bar">
-      <ActionHotkeys keyed={keyed} buttons={buttons} riichiMode={props.riichiMode} />
-      {props.riichiMode ? (
-        <>
-          <span className="action-hint">리치할 패를 바닥으로 끌어 놓거나 클릭하세요</span>
-          <button className="act act-cancel" onClick={() => props.onRiichiMode(false)} title="취소 (단축키 1)">
-            취소
-          </button>
-          {/* 그냥 리치를 걸려던 손을 여기서 한 번 더 붙잡는다 — 증강 리치가 있다는 걸
-              가장 늦게 알려 줄 수 있는 자리다. */}
-          {riichiAugTypes.map((t, i) => (
-            <button
-              key={t}
-              className="act act-riichi-aug"
-              onClick={() => armRiichiAug(t)}
-              title={`${augActionName(props.catalog, t)}(으)로 바꿔서 리치 (단축키 ${i + 2})`}
-            >
-              ⚡ {augActionName(props.catalog, t)}
-            </button>
-          ))}
-        </>
-      ) : (
-        <>
-          {hasRiichi ? (
-            <button
-              className="act act-riichi"
-              onClick={() => {
-                sel.arm(null); // 증강 리치로 무장 중이었다면 풀고 평범한 리치로
-                props.onRiichiMode(true);
-              }}
-              title="리치 (단축키 1)"
-            >
-              리치
-            </button>
-          ) : null}
-          {riichiAugTypes.map((t, i) => (
-            <button
-              key={t}
-              className={`act act-riichi-aug${armedRiichiAug === t ? " act-riichi-aug-on" : ""}`}
-              onClick={() => armRiichiAug(t)}
-              title={`${augActionName(props.catalog, t)}: 버릴 패를 바닥으로 끌어 놓거나 클릭하세요 (단축키 ${(hasRiichi ? 1 : 0) + i + 1})`}
-            >
-              ⚡ {augActionName(props.catalog, t)}
-            </button>
-          ))}
-          {/* 잠긴 선언 — 증강이 막은 론/쯔모. 누를 수 없지만 **자리를 지킨다**:
-              여기서 사라지면 당한 사람은 왜 화료가 안 되는지 알 길이 없다.
-              고를 것이 패스뿐이면 스스로 넘어가므로, 남은 시간을 버튼이 직접 보여 준다. */}
-          {locked.map((l) => {
-            // core 계약상 지금은 win뿐이지만, 늘어나도 내부 type이 조용히 서지 않게
-            // actionLabel 한 경로로 떨어뜨린다(2026-09-25, docs/59 U62)
-            const label =
-              l.type === "win" ? (isMyTurn ? "쯔모" : "론") : actionLabel(l.type, props.catalog);
-            return (
-              <button
-                key={`locked-${l.type}-${l.reason}`}
-                className={`act act-win act-locked${autoPassing ? " act-locked-timed" : ""}`}
-                type="button"
-                disabled
-                aria-disabled="true"
-                title={
-                  autoPassing
-                    ? `${lockedReasonText(l)}. 잠시 뒤 자동으로 넘어갑니다.`
-                    : lockedReasonText(l)
-                }
-              >
-                🔒 {label}
-                <span className="act-target">{lockedReasonShort(l)}</span>
-              </button>
-            );
-          })}
-          {(() => {
-            const renderButton = (o: ActionOption, i: number): JSX.Element => {
-              const label =
-                o.type === "win" ? (isMyTurn ? "쯔모" : "론") : actionLabel(o.type, props.catalog);
-              const tone =
-                o.type === "win"
-                  ? "act-win"
-                  : o.type === "pass"
-                    ? "act-pass"
-                    : ACTION_LABEL[o.type] === undefined || AUGMENT_ACTION_TYPES.has(o.type)
-                      ? "act-aug"
-                      : "act-call";
-              const detail = optionDetail(view, o);
-              return (
-                <button
-                  key={`${o.type}-${i}`}
-                  className={`act ${tone}`}
-                  onClick={() => props.onSubmit(o)}
-                  /* 누르면 사라지는 패를 손패에서 짚는다 — 마우스·키보드 둘 다 (감사 §6-10) */
-                  onMouseEnter={() => props.onDoomedHint?.(doomedTileIdsOf(view, o.type))}
-                  onMouseLeave={() => props.onDoomedHint?.(null)}
-                  onFocus={() => props.onDoomedHint?.(doomedTileIdsOf(view, o.type))}
-                  onBlur={() => props.onDoomedHint?.(null)}
-                  title={
-                    o.type === "win"
-                      ? `${label} (단축키 ${hotIndex(i)} 또는 R)`
-                      : o.type === "pass"
-                        ? `${label} (단축키 ${hotIndex(i)} 또는 P)`
-                        : `${label} (단축키 ${hotIndex(i)})`
-                  }
-                >
-                  {label}
-                  {detail !== "" ? <span className="act-target">{detail}</span> : null}
-                  <ActionTiles view={view} option={o} />
-                </button>
-              );
-            };
-            // buttons 는 [론·쯔모 … 후로 … 패스] 순이다 — 가운데 무리만 스크롤 상자에 넣는다
-            const winEnd = buttons.findIndex((o) => o.type !== "win");
-            const wins = winEnd === -1 ? buttons : buttons.slice(0, winEnd);
-            const passStart = buttons.findIndex((o) => o.type === "pass");
-            const calls = buttons.slice(wins.length, passStart === -1 ? buttons.length : passStart);
-            const passes = passStart === -1 ? [] : buttons.slice(passStart);
-            return (
-              <>
-                {wins.map((o, i) => renderButton(o, i))}
-                {calls.length > 0 ? (
-                  <div className="action-calls">
-                    {calls.map((o, i) => renderButton(o, wins.length + i))}
-                  </div>
-                ) : null}
-                {passes.map((o, i) => renderButton(o, wins.length + calls.length + i))}
-              </>
-            );
-          })()}
-        </>
-      )}
+      <ActionHotkeys keyed={keyed} buttons={hotButtons} riichiMode={props.riichiMode} />
+      {riichiCluster(riichiNodes)}
+      {lockedButtons}
+      {wins.map((o, i) => renderButton(o, i))}
+      {calls.length > 0 ? (
+        <div className="action-calls">
+          {calls.map((o, i) => renderButton(o, wins.length + i))}
+        </div>
+      ) : null}
+      {passes.map((o, i) => renderButton(o, wins.length + calls.length + i))}
     </div>
   );
 }
@@ -28344,6 +30031,24 @@ function ActionTiles({ view, option }: { view: PlayerView; option: ActionOption 
         <TileImg tile={drawn} size="mini" />
         <span className="act-tiles-arrow" aria-hidden="true">→</span>
         <TileImg tile={{ kind: drawn.kind, attrs: { conjured: true } }} size="mini" />
+      </span>
+    );
+  }
+  /*
+   * 허장성세 퐁 — [일치패] + [희생패 ✕]를 늘 그린다. 희생패는 hover·focus 때만 손패에서 짚였는데
+   * 리액션 타이머 안의 터치에서는 짚는 순간 이미 제출됐다(2026-09-25, docs/59 U61). 값은 서버가
+   * 실어 주는 재료 채널 그대로다(doomedTileIdsOf — 클라가 다시 세면 짚는 패와 타는 패가 갈린다).
+   */
+  if (option.type === "bluff_pon" && typeof p.tileId === "number") {
+    const material = doomedTileIdsOf(view, "bluff_pon")[0];
+    return (
+      <span className="act-tiles">
+        <TileImg tile={view.tiles[p.tileId]} size="mini" />
+        {material !== undefined && view.tiles[material] !== undefined ? (
+          <span className="act-tile-doomed" title="이 퐁에 쓰여 사라지는 내 패">
+            <TileImg tile={view.tiles[material]} size="mini" />
+          </span>
+        ) : null}
       </span>
     );
   }
