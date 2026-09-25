@@ -22,7 +22,14 @@ import {
   kindOf,
   handIdsOf,
 } from "@majak/core";
-import type { ActionOption, AugmentDef, GameState, PlayerId, TileId } from "@majak/core";
+import type {
+  ActionDef,
+  ActionOption,
+  AugmentDef,
+  GameState,
+  PlayerId,
+  TileId,
+} from "@majak/core";
 import { craft } from "./helpers.js";
 import { mixedTriplet } from "../src/augments/mixed_triplet.js";
 import { polarEnds } from "../src/augments/polar_ends.js";
@@ -116,6 +123,67 @@ describe("퐁 후보 넓히기 — 동수의 결속 (U58)", () => {
     expect(kans[0]).toBe("pin1,pin1,sou1");
     expect(kans).toContain("pin1,sou1,sou1");
     expect(new Set(kans).size).toBe(kans.length);
+  });
+});
+
+describe("퐁 후보 넓히기 — 적도라 × 동수의 결속 (U58)", () => {
+  /*
+   * (종류, 적도라) 서명이 후보를 가장 많이 불리는 경우(B19 리뷰 라운드 2, 2026-09-25).
+   * 5만 버림 + 손패 5통·적5통·5삭 — 앞 세 줄(firstPair)이 [5통,5삭]·[5통,적5통]을 내고,
+   * 서명 훑기가 적5통으로 5삭을 받치는 [적5통,5삭]만 더 붙여야 한다.
+   */
+  it("5만 버림 + 5통·적5통·5삭 → 첫 후보 그대로, 무늬마다 적/일반을 따로, 서명 중복 없음", () => {
+    const state = scene("55p5s234m678m99s1z2z", "5m");
+    const hand = state.zones["hand:p0"]!.tileIds;
+    // craft는 적도라를 어느 장에 둘지 정하지 않는다 — 손패 둘째 장(5통)만 적으로 못박는다
+    const tiles = { ...state.tiles };
+    hand.forEach((t, i) => {
+      tiles[t] = { ...tiles[t]!, attrs: { ...tiles[t]!.attrs, red: i === 1 } };
+    });
+    const game = start({ ...state, tiles }, [mixedTriplet]);
+    const pons = options(game, "pon").map((o) => kinds(game, o));
+    expect(pons[0]).toBe("pin5,sou5");
+    expect(pons.slice(1)).toEqual(["pin5,pin5*", "pin5*,sou5"]);
+    expect(new Set(pons).size).toBe(pons.length);
+  });
+});
+
+describe("퐁 후보 넓히기 — 검증에 막힌 짝이 서명을 차지하지 않는다 (U58)", () => {
+  /*
+   * 서명은 validate를 통과한 짝/조합으로만 차지한다(B19 리뷰 라운드 1). seen.add를 validate
+   * 앞으로 옮기면, 그 서명의 첫 짝이 막혔을 때 같은 서명의 다른 장이 영영 안 뜬다 — 그 되돌림을
+   * 잡으려고 특정 한 장이 든 payload만 거절하는 validate로 이 엔진의 액션 정의를 갈아 끼운다.
+   * (레지스트리의 정의 객체는 모듈 상수라 직접 고치면 다른 테스트로 샌다 — 새 객체로 바꾼다.)
+   */
+  function blockTile(game: Game, type: string, blocked: TileId): void {
+    const defs = (game.engine.actions as unknown as { defs: Map<string, ActionDef<unknown>> })
+      .defs;
+    const orig = defs.get(type)!;
+    defs.set(type, {
+      ...orig,
+      validate: (req, ctx) =>
+        (req.payload as { tileIds?: TileId[] }).tileIds?.includes(blocked) === true
+          ? "test: blocked"
+          : orig.validate(req, ctx),
+    });
+  }
+
+  it("퐁 — 첫 1통이 막히면 [1통,1삭]은 둘째 1통으로 선다", () => {
+    const game = start(scene("1p1s1p345m678m99s", "1m"), [mixedTriplet]);
+    const hand = handIdsOf(game.engine.state, "p0");
+    blockTile(game, "pon", hand[0]!);
+    const opts = options(game, "pon");
+    expect(opts.map((o) => kinds(game, o))).toEqual(["pin1,sou1"]);
+    expect((opts[0]!.payload as { tileIds: TileId[] }).tileIds).toContain(hand[2]!);
+  });
+
+  it("대명깡 — 첫 1통이 막히면 [1통,1삭,1삭]은 둘째 1통으로 선다", () => {
+    const game = start(scene("1p1p1s1s345m678m9s", "1m"), [mixedTriplet]);
+    const hand = handIdsOf(game.engine.state, "p0");
+    blockTile(game, "minkan", hand[0]!);
+    const opts = options(game, "minkan");
+    expect(opts.map((o) => kinds(game, o))).toEqual(["pin1,sou1,sou1"]);
+    expect((opts[0]!.payload as { tileIds: TileId[] }).tileIds).toContain(hand[1]!);
   });
 });
 
