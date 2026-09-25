@@ -63,7 +63,7 @@ function viewOf(hand: Record<number, T>, extra: Record<number, T> = {}): PlayerV
 const m = (rank: number, red = false): T => ({ suit: "man", rank, red });
 const opt = (type: string, payload: Record<string, unknown>): ActionOption => ({ type, payload }) as ActionOption;
 function pickOf(view: PlayerView, type: string, options: ActionOption[], picks: number[] = []): CallPick {
-  return { type, options, picks, remaining: callPickRemaining(view, options, picks) };
+  return { type, options, picks, remaining: callPickRemaining(view, options, picks), cursor: null };
 }
 
 describe("U56 좁히기 규칙 (src/callPick.ts)", () => {
@@ -173,12 +173,37 @@ describe("U56 액션 바 — 종류당 버튼 하나", () => {
 
   it("고르는 중에는 숫자 1..N이 남은 후보 칩 — 바의 숫자는 비우고 R·P는 끝자리로 산다", () => {
     expect(BAR).toMatch(
-      /if \(pickChips !== null\) \{\s*for \(const k of keyed\) k\.key = "";\s*keyed\.unshift\(\.\.\.pickChips\.map\(\(o, i\) => \(\{ key: String\(i \+ 1\), run: \(\) => sel\.submit\(o\) \}\)\)\);\s*\}/,
+      /if \(pickChips !== null\) \{\s*keyed\.unshift\(\.\.\.pickChips\.map\(\(o, i\) => \(\{ key: String\(i \+ 1\), run: \(\) => sel\.submit\(o\) \}\)\)\);/,
     );
     // 칩 목록은 안내 줄(OwnArea)과 같은 기준
     expect(BAR).toContain("sel.callPick.remaining.length <= CALL_PICK_CHIP_MAX");
     expect(OWN).toContain("{sel.callPick.remaining.length <= CALL_PICK_CHIP_MAX");
-    expect(OWN).toContain("title={`${callPickName} 이 조합으로 (단축키 ${i + 1})`}");
+    expect(OWN).toContain("sel.callPick.remaining.map((o, i) => callPickChip(o, String(i), String(i + 1)))");
+    expect(OWN).toContain("title={`${callPickName} 이 조합으로${meldName} (단축키 ${hot})`}");
+  });
+
+  it("고르는 중 바의 숫자는 후보 수와 상관없이 늘 비운다 — «2»가 [퐁]으로 새지 않는다(B17 리뷰)", () => {
+    // 칩 여부(pickChips)가 아니라 이 바의 종류를 고르는 중인가(pickingHere)로 비운다
+    expect(BAR).toContain("const pickingHere = sel.callPick !== null && buttons.some((o) => o.type === sel.callPick?.type);");
+    expect(BAR).toContain('if (pickingHere) for (const k of keyed) k.key = "";');
+    const blank = BAR.indexOf('if (pickingHere) for (const k of keyed) k.key = "";');
+    expect(blank).toBeLessThan(BAR.indexOf("if (pickChips !== null) {"));
+  });
+
+  it("칩이 없는 많은 후보는 ←→로 하나씩 짚고 1로 낸다 — 키보드로 특정 후보를 고를 길(5단계)", () => {
+    expect(BAR).toContain('{ key: "ArrowLeft", run: () => sel.stepCallPick(-1) },');
+    expect(BAR).toContain('{ key: "ArrowRight", run: () => sel.stepCallPick(1) },');
+    expect(BAR).toContain('...(pointed !== undefined ? [{ key: "1", run: () => sel.submit(pointed) }] : []),');
+    // 짚은 후보는 안내 줄에 칩 하나로 서고, 손패를 눌러 후보가 바뀌면 짚은 자리를 버린다
+    expect(OWN).toContain("sel.callPick.cursor !== null && sel.callPick.remaining[sel.callPick.cursor] !== undefined");
+    expect(SELECTION).toContain("setCallPickState({ ...callPickState, picks: r.picks, cursor: null });");
+    expect(SELECTION).toContain("const next = cur === null ? (delta > 0 ? 0 : n - 1) : (((cur + delta) % n) + n) % n;");
+  });
+
+  it("가깡 칩은 붙일 퐁까지 그리고 이름에 싣는다 — 퐁 둘에 붙는 한 장을 칩으로 가른다", () => {
+    expect(OWN).toContain("const target = (o.payload as { targetMeldTileId?: unknown } | undefined)?.targetMeldTileId;");
+    expect(OWN).toContain("번째 후로(");
+    expect(OWN).toContain("aria-label={`${callPickName}: ${handName}${meldName}");
   });
 });
 
@@ -228,6 +253,17 @@ describe("U56 손패 — 후보에 쓰이는 패만 밝히고, 클릭은 타패�
     expect(pick).toBeLessThan(OWN.indexOf("if (clickable && active !== undefined) {"));
     // 빗나감은 풀지 않고 까닭만(원칙 7)
     expect(OWN).toContain("props.onToast?.(`이 패는 ${callPickName}에 쓰이지 않습니다`);");
+  });
+
+  it("우클릭 쯔모기리는 고르는 중에 듣지 않는다 — 턴 중 안깡 고르기가 버림으로 새지 않게(B17 리뷰)", () => {
+    expect(APP_CODE).toContain(
+      "if (props.riichiMode || selection.armedType !== null || selection.callPick !== null) return;",
+    );
+  });
+
+  it("고르는 중 손패 이름은 버림이 아니라 고르기의 말이다(B17 리뷰)", () => {
+    expect(OWN).toContain(": callPicking && armable\n                    ? `${callPickName}에 함께 쓸 수 있는 패`");
+    expect(OWN).toContain("? `${callPickName}에 쓰이지 않는 패`\n                      : \"지금 버릴 수 없음\"");
   });
 
   it("armable·dim·고른 패 강조·클릭 가능", () => {

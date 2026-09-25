@@ -42,6 +42,11 @@ export interface CallPick {
   picks: number[];
   /** 누른 패와 어긋나지 않는 후보(options 순서 그대로) */
   remaining: ActionOption[];
+  /**
+   * 키보드 ←→로 짚은 남은 후보의 자리(remaining 인덱스). 칩이 서지 않는 많은 후보(CALL_PICK_CHIP_MAX 초과)
+   * 에서 키보드로 특정 후보를 고르는 길이다 — 누르기 전에는 null. 손패를 눌러 후보가 바뀌면 다시 null.
+   */
+  cursor: number | null;
 }
 
 /** 후로 후보가 쓰는 내 손패 id — chi·pon·깡·국사 퐁은 tileIds, 가깡은 손패 한 장(tileId) */

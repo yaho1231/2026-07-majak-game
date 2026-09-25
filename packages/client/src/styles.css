@@ -8622,6 +8622,9 @@ button {
   border-radius: 8px;
   border: 1px solid rgba(199, 188, 255, 0.6);
   background: rgba(44, 90, 136, 0.55);
+  /* 가깡 칩의 «→ 붙일 퐁»·←→로 짚은 칩의 «3/22»가 버튼 기본 글자색(어두움)에 묻혔다(B17 리뷰 실측) */
+  color: #f7f3e8;
+  gap: 3px;
   cursor: pointer;
 }
 .call-pick-chip:hover {
@@ -19286,6 +19289,23 @@ body:has(.rinshan-pick-overlay):not(.peeking) .game-root .quick-toggles {
    */
   .own-area:has(> .action-bar) > .own-top {
     padding-left: 112px;
+  }
+  /*
+   * 후로 고르기 안내 줄(docs/59 U56)은 **늘** 알약 줄과 함께 선다(리액션 프롬프트 한가운데라). 가운데
+   * 정렬로 두면 왼쪽 알약 칸에 깔려 «치: 함께 쓸 손패를…» 문구와 첫 칩이 [론]·[치] 밑으로 숨었다
+   * (2026-09-25 740×360 실측, B17 리뷰: 안내 줄 [75,173,665,226] × 알약 줄 [122,115,340,251]).
+   * 알약 칸 오른쪽(세 칸일 때 오른끝 340 = 내 영역 왼끝 70 + 270, 여유 20)으로 비켜 세우고 줄을 접는다.
+   */
+  .own-area:has(> .action-bar) > .arm-hint.arm-call {
+    align-self: flex-end;
+    max-width: calc(100% - 290px);
+    flex-wrap: wrap;
+    justify-content: center;
+    row-gap: 6px;
+  }
+  .own-area:has(> .action-bar) > .arm-hint.arm-call .arm-hint-text {
+    flex: 1 1 100%;
+    text-align: center;
   }
 }
 

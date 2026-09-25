@@ -2137,6 +2137,8 @@ interface SelectionCtx {
   callPickArmable: (id: number) => boolean;
   /** 손패 누르기 — 고르기/빼기, 하나로 정해지면 그 서버 옵션을 낸다. 대상이 아니면 false */
   callPickClick: (id: number) => boolean;
+  /** 키보드 ←→ — 남은 후보를 하나씩 짚는다(callPick.cursor). 칩이 없는 많은 후보에서 쓴다 */
+  stepCallPick: (delta: number) => void;
 }
 
 /**
@@ -2184,6 +2186,7 @@ const NO_SELECTION: SelectionCtx = {
   cancelCallPick: () => {},
   callPickArmable: () => false,
   callPickClick: () => false,
+  stepCallPick: () => {},
 };
 
 const SelectionContext = createContext<SelectionCtx>(NO_SELECTION);
@@ -16284,6 +16287,8 @@ const GameTable = memo(function GameTable(props: {
    * 네 자리에서는 듣지 않는다. 앞의 셋은 **오른쪽 버튼이 이미 다른 뜻인** 상황이다:
    *  - 리치할 패를 고르는 중: 손이 미끄러지면 고르려던 패가 아닌 것으로 리치가 나간다.
    *  - 증강 무장 중: 지금 클릭은 '버리기'가 아니라 '증강의 대상 고르기'다.
+   *    후로 고르기(SelectionCtx.callPick)도 같다 — 내 차례에 안깡·가깡을 고르다 오른쪽 버튼이 미끄러지면
+   *    쯔모패가 되돌릴 수 없이 나갔다(2026-09-25, B17 리뷰. 왼쪽 클릭은 후로 분기가 타패보다 앞이다).
    *  - 관전·리플레이: 낼 패가 없다.
    *  - 글자를 치는 칸: 붙여넣기 같은 표준 수단 자리다 (contextMenu.ts가 메뉴를 살려 두는 자리).
    */
@@ -16291,7 +16296,7 @@ const GameTable = memo(function GameTable(props: {
     e.preventDefault();
     if (!props.settings.rightClickTsumogiri) return;
     if (props.spectator === true || view.playerId === SPECTATOR_ID) return;
-    if (props.riichiMode || selection.armedType !== null) return;
+    if (props.riichiMode || selection.armedType !== null || selection.callPick !== null) return;
     // 같은 누름이 방금 무장을 풀었다 — 그 누름으로 쯔모패까지 버리지 않는다(위 armReleasedAtRef)
     if (Date.now() - armReleasedAtRef.current < 600) return;
     /*
@@ -16739,6 +16744,7 @@ function useSelection(
     type: string;
     options: ActionOption[];
     picks: number[];
+    cursor: number | null;
   } | null>(null);
 
   const myPrompt = prompt !== null && prompt.player === view.playerId ? prompt : null;
@@ -16837,6 +16843,7 @@ function useSelection(
       options: callPickState.options,
       picks: callPickState.picks,
       remaining: callPickRemaining(view, callPickState.options, callPickState.picks),
+      cursor: callPickState.cursor,
     };
   }, [callPickState, myPrompt, view]);
   // 순이 넘어가면(남의 론·퐁, 시간 초과) 고르던 것을 버린다 — 위 prompt 대조가 첫 렌더를 막고, 이건 뒷정리다
@@ -16857,7 +16864,7 @@ function useSelection(
     setFrameTile(null);
     clearDw();
     exitRiichiMode();
-    setCallPickState({ prompt: myPrompt, type, options, picks: [] });
+    setCallPickState({ prompt: myPrompt, type, options, picks: [], cursor: null });
   };
   const cancelCallPick = (): void => setCallPickState(null);
 
@@ -16877,8 +16884,22 @@ function useSelection(
       submit(r.submit);
       return true;
     }
-    setCallPickState({ ...callPickState, picks: r.picks });
+    // 남은 후보가 바뀌었으니 ←→로 짚던 자리는 버린다(다른 후보를 가리키게 되므로)
+    setCallPickState({ ...callPickState, picks: r.picks, cursor: null });
     return true;
+  };
+  /*
+   * 키보드 ←→ — 남은 후보를 하나씩 짚는다. 칩(숫자 1..N)은 후보가 CALL_PICK_CHIP_MAX 이하일 때만 서므로,
+   * 무너진 국경의 치 22개 같은 판에서 키보드 사용자가 특정 후보를 고를 길이 이것이다(docs/59 U56 5단계).
+   * 짚은 후보는 안내 줄에 칩 하나로 서고 숫자 1로 낸다. 처음 → 는 첫 후보, 처음 ← 는 끝 후보.
+   */
+  const stepCallPick = (delta: number): void => {
+    if (callPick === null || callPickState === null) return;
+    const n = callPick.remaining.length;
+    if (n === 0) return;
+    const cur = callPick.cursor;
+    const next = cur === null ? (delta > 0 ? 0 : n - 1) : (((cur + delta) % n) + n) % n;
+    setCallPickState({ ...callPickState, cursor: next });
   };
 
   // ── 왕패의 주인 — 여러 쌍을 한 번에 고른 뒤 차례로 제출한다 ──
@@ -17143,6 +17164,7 @@ function useSelection(
     cancelCallPick,
     callPickArmable,
     callPickClick,
+    stepCallPick,
     meldOptionFor,
   };
 }
@@ -23128,6 +23150,49 @@ function OwnArea(props: {
   // 후로 고르기(docs/59 U56) — 액션 바의 묶음 버튼([치 ×3])을 누르면 선다. 관전에는 프롬프트가 없다
   const callPicking = !isSpectator && sel.callPick !== null;
   const callPickName = sel.callPick !== null ? actionLabel(sel.callPick.type, props.catalog) : "";
+  /*
+   * 후로 고르기 안내 줄의 후보 칩 하나 — 그 후보가 쓰는 손패, 가깡이면 **붙일 퐁**까지 그린다. 가깡 칩이
+   * 둘 서는 것은 손패 한 장이 퐁 둘에 붙을 때뿐인데, 손패(payload.tileId)만 그리면 두 칩이 그림도
+   * 이름도 똑같아 어느 퐁에 붙는지 알 수 없었다(2026-09-25, B17 리뷰). 퐁은 몇 번째 후로인지도 이름에
+   * 싣는다 — 두 퐁의 패 그림까지 같아도 자리로는 갈린다. note는 ←→로 짚은 칩의 «3/22» 같은 자리 표시다.
+   */
+  const callPickChip = (o: ActionOption, key: string, hot: string, note = ""): JSX.Element => {
+    const target = (o.payload as { targetMeldTileId?: unknown } | undefined)?.targetMeldTileId;
+    const melds = view.round.byPlayer[view.playerId]?.melds ?? [];
+    const meldIdx = typeof target === "number" ? melds.findIndex((m) => m.tileIds.includes(target)) : -1;
+    const meld = meldIdx >= 0 ? melds[meldIdx] : undefined;
+    const handName = (callPickTileIds(o) ?? []).map((t) => formatTile(view.tiles[t])).join(", ");
+    const meldName =
+      meld !== undefined
+        ? ` → ${meldIdx + 1}번째 후로(${meld.tileIds.map((t) => formatTile(view.tiles[t])).join("·")})에`
+        : "";
+    return (
+      <button
+        key={key}
+        className="call-pick-chip"
+        title={`${callPickName} 이 조합으로${meldName} (단축키 ${hot})`}
+        aria-label={`${callPickName}: ${handName}${meldName}${note !== "" ? ` (후보 ${note})` : ""}`}
+        onClick={() => sel.submit(o)}
+      >
+        <ActionTiles view={view} option={o} />
+        {meld !== undefined ? (
+          <>
+            <span className="act-tiles-arrow" aria-hidden="true">→</span>
+            <span className="act-tiles">
+              {meld.tileIds.map((t) => (
+                <TileImg key={t} tile={view.tiles[t]} size="mini" />
+              ))}
+            </span>
+          </>
+        ) : null}
+        {note !== "" ? (
+          <span className="act-group-count" aria-hidden="true">
+            {note}
+          </span>
+        ) : null}
+      </button>
+    );
+  };
   const hand3Pool = useMemo(() => {
     const pool = new Set<number>();
     if (!hand3Picking) return pool;
@@ -24659,25 +24724,29 @@ function OwnArea(props: {
             가르는 드문 경우(가깡의 퐁이 둘)와 키보드(숫자 1..N)의 길이다.
           */
           <div className="arm-hint arm-swap arm-call">
-            <span className="arm-hint-text">
+            <span
+              className="arm-hint-text"
+              title={
+                sel.callPick.remaining.length > CALL_PICK_CHIP_MAX
+                  ? "키보드: ←→로 후보를 하나씩 짚고 1로 냅니다"
+                  : undefined
+              }
+            >
               {callPickName}: 함께 쓸 손패를 클릭하세요
               {sel.callPick.picks.length > 0 ? ` (${sel.callPick.picks.length}장 고름)` : ""}
             </span>
+            {/* 후보가 적으면 전부 칩(숫자 1..N), 많으면 ←→로 짚은 하나만 칩(숫자 1) — 키보드로도 특정
+                후보를 고를 길(docs/59 U56 5단계). 짚기 전에는 칩 없이 손패로 좁힌다 */}
             {sel.callPick.remaining.length <= CALL_PICK_CHIP_MAX
-              ? sel.callPick.remaining.map((o, i) => (
-                  <button
-                    key={i}
-                    className="call-pick-chip"
-                    title={`${callPickName} 이 조합으로 (단축키 ${i + 1})`}
-                    aria-label={`${callPickName}: ${(callPickTileIds(o) ?? [])
-                      .map((t) => formatTile(view.tiles[t]))
-                      .join(", ")}`}
-                    onClick={() => sel.submit(o)}
-                  >
-                    <ActionTiles view={view} option={o} />
-                  </button>
-                ))
-              : null}
+              ? sel.callPick.remaining.map((o, i) => callPickChip(o, String(i), String(i + 1)))
+              : sel.callPick.cursor !== null && sel.callPick.remaining[sel.callPick.cursor] !== undefined
+                ? callPickChip(
+                    sel.callPick.remaining[sel.callPick.cursor]!,
+                    "cursor",
+                    "1 · ←→ 다른 후보",
+                    `${sel.callPick.cursor + 1}/${sel.callPick.remaining.length}`,
+                  )
+                : null}
             <button className="arm-hint-cancel" onClick={() => sel.cancelCallPick()}>
               취소
             </button>
@@ -25082,6 +25151,8 @@ function OwnArea(props: {
                   hot === null ? null : hotWaitTitle(hot),
                   callPicking && sel.callPick?.picks.includes(id) === true
                     ? `${callPickName}에 함께 쓸 패로 선택됨. 다시 누르면 뺍니다`
+                    : callPicking && armable
+                    ? `${callPickName}에 함께 쓸 수 있는 패`
                     : swapGiveInHand && swap3Sel.includes(id)
                     ? "넘길 패로 선택됨. 다시 누르면 뺍니다"
                     : dwStaged
@@ -25106,7 +25177,12 @@ function OwnArea(props: {
                     ? "잠시 뒤 자동으로 버림. 키를 누르거나 화면을 누르면 멈춤"
                     : null,
                   coachLocked ? "튜토리얼 진행 중이라 지금은 누를 수 없음" : null,
-                  !clickable && !coachLocked ? "지금 버릴 수 없음" : null,
+                  // 후로 고르기 중의 클릭은 버림이 아니다 — «버릴 수 없음» 대신 고르기의 말로(B17 리뷰)
+                  !clickable && !coachLocked
+                    ? callPicking
+                      ? `${callPickName}에 쓰이지 않는 패`
+                      : "지금 버릴 수 없음"
+                    : null,
                 ]
                   .filter((x) => x !== null)
                   .join(", ")}
@@ -29319,13 +29395,24 @@ function ActionBar(props: {
     keyed.push({ key: n <= 9 ? String(n) : "", run: () => pressOption(o, `${o.type}-${i}`) });
   });
   /*
-   * 후로 고르기 중에는 숫자 1..N이 안내 줄의 남은 후보 칩을 순서대로 낸다 — 키보드로 특정 치를 고르는
-   * 길이다(docs/59 U56). 그동안 바의 숫자는 비우고(키 "") 칩을 맨 앞에 끼운다. 글자 단축키(R·P)는
-   * keyed 끝자리를 쓰므로 그대로 산다.
+   * 후로 고르기 중에는 바의 숫자를 **늘** 비운다 — 후보 수에 따라 «2»가 칩이었다가 바의 [퐁]이었다가
+   * 하면, 치를 고르던 키보드 사용자가 경고 없이 다른 후로를 내 버린다(2026-09-25, B17 리뷰). 글자
+   * 단축키(R·P)는 keyed 끝자리를 쓰므로 그대로 산다. 그 자리에 고르기 키를 맨 앞에 끼운다:
+   * 후보가 적으면 숫자 1..N이 안내 줄의 칩을 순서대로, 많으면(칩 없음) ←→가 후보를 하나씩 짚고 숫자 1이
+   * 짚은 후보를 낸다 — 키보드로 특정 치를 고르는 길이다(docs/59 U56 5단계).
    */
+  const pickingHere = sel.callPick !== null && buttons.some((o) => o.type === sel.callPick?.type);
+  if (pickingHere) for (const k of keyed) k.key = "";
   if (pickChips !== null) {
-    for (const k of keyed) k.key = "";
     keyed.unshift(...pickChips.map((o, i) => ({ key: String(i + 1), run: () => sel.submit(o) })));
+  } else if (pickingHere && sel.callPick !== null) {
+    const cp = sel.callPick;
+    const pointed = cp.cursor !== null ? cp.remaining[cp.cursor] : undefined;
+    keyed.unshift(
+      { key: "ArrowLeft", run: () => sel.stepCallPick(-1) },
+      { key: "ArrowRight", run: () => sel.stepCallPick(1) },
+      ...(pointed !== undefined ? [{ key: "1", run: () => sel.submit(pointed) }] : []),
+    );
   }
   /** 선택지 버튼 앞에 선 리치 계열 버튼 수 — 선택지 버튼의 단축키 번호가 여기서 이어진다 */
   const hotBase = keyed.length - hotButtons.length;
@@ -29398,7 +29485,9 @@ function ActionBar(props: {
         ? ""
         : picking
           ? ` — 고르는 중 (다시 누르면 취소)`
-          : ` — 후보 ${group.length}개, 누른 뒤 함께 쓸 손패를 클릭`;
+          : ` — 후보 ${group.length}개, 누른 뒤 함께 쓸 손패를 클릭${
+              group.length > CALL_PICK_CHIP_MAX ? "(키보드는 ←→로 짚고 1)" : ""
+            }`;
     return (
       <button
         key={key}
