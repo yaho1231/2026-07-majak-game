@@ -107,6 +107,18 @@ export type FlowStatus =
 const PASS: ActionOption = { type: "pass", payload: {} };
 
 /**
+ * 후로 재료 몇 장의 **서명 멀티셋** — (종류, 적도라)를 정렬해 붙인 키. 퐁·대명깡 후보에서
+ * 손패로는 같은 수(같은 서명의 다른 장)를 한 번만 내려고 쓴다(2026-09-25, docs/59 U58).
+ * 클라이언트 callPick(callTileSig)이 누른 패와 후보를 짓는 기준과 같다.
+ */
+function callSigKey(state: Parameters<typeof kindOf>[0], ids: readonly TileId[]): string {
+  return ids
+    .map((t) => `${kindKey(kindOf(state, t))}${state.tiles[t]?.attrs.red === true ? "*" : ""}`)
+    .sort()
+    .join("|");
+}
+
+/**
  * 리액션(버림패에 대한 선언)의 **우선순위**. 클수록 세다: 론 > 펑·대명깡 > 치 > 패스.
  * `resolve()`가 실제로 해소하는 순서와 같은 서열이며, 진행부(HanchanController)가
  * "이미 확정된 선언보다 약한 프롬프트는 더 기다릴 필요가 없다"를 판정하는 데 쓴다.
@@ -609,12 +621,37 @@ export class FlowController {
           return null;
         };
         const combos: [TileId, TileId][] = [];
-        for (const pair of [
-          firstPair(norms, norms),
-          firstPair(norms, reds),
-          firstPair(reds, reds),
-        ]) {
-          if (pair !== null) combos.push(pair);
+        const seen = new Set<string>();
+        const push = (pair: [TileId, TileId] | null): void => {
+          if (pair === null) return;
+          const key = callSigKey(state, pair);
+          if (seen.has(key)) return;
+          seen.add(key);
+          combos.push(pair);
+        };
+        push(firstPair(norms, norms));
+        push(firstPair(norms, reds));
+        push(firstPair(reds, reds));
+        /*
+         * 무늬 혼합(동수의 결속)·양극이면 **어느 무늬(랭크) 두 장을 쓸지**도 고를 수 있어야 한다
+         * (2026-09-25, docs/59 U58). 1만 버림에 손패 1통·1삭·1통이면 위 세 줄은 [1통,1삭]
+         * 하나만 내서, 1삭을 슌쯔용으로 남기는 [1통,1통]을 고를 길이 없었다 — 서버(HumanAgent)는
+         * 제시한 옵션과 payload 완전일치만 받으므로 클라이언트로는 못 고친다.
+         *
+         * 그래서 (종류, 적도라) 서명이 다른 닫히는 짝을 대표 한 쌍씩 **뒤에** 붙인다.
+         * - 앞 세 줄을 먼저 두는 것은 봇(bidCall은 같은 값이면 앞 후보)·기존 테스트가 보던 첫 퐁
+         *   후보를 그대로 두려는 것이다.
+         * - 짝 판정은 위 closes() 그대로라 «한 규칙 안에서 닫히는 짝만»(QA synergy3)이 유지된다.
+         * - 규칙이 꺼져 있으면 matching이 한 종류뿐이라 서명이 일반/적 둘 → 위 세 줄과 겹쳐
+         *   아무것도 늘지 않는다.
+         * 클라이언트는 같은 종류 후보를 [퐁] 버튼 하나로 접고 손패 클릭으로 좁힌다(B17 callPick).
+         */
+        for (let i = 0; i < matching.length; i++) {
+          for (let j = i + 1; j < matching.length; j++) {
+            const x = matching[i]!;
+            const y = matching[j]!;
+            if (closes(x, y)) push([x, y]);
+          }
         }
         for (const tileIds of combos) {
           const payload = { tileIds };
@@ -629,20 +666,27 @@ export class FlowController {
          * 양극·동수의 결속을 함께 들면 앞 세 장이 서로 다른 규칙으로 하나씩 통과해
          * 잡종 깡이 후보로 서는 일이 생긴다(sameCallBody 주석의 그 경로).
          */
-        const trio = ((): [TileId, TileId, TileId] | null => {
-          for (let i = 0; i < matching.length; i++) {
-            for (let j = i + 1; j < matching.length; j++) {
-              for (let k = j + 1; k < matching.length; k++) {
-                const ids = [matching[i]!, matching[j]!, matching[k]!] as [TileId, TileId, TileId];
-                if (sameCallQuad([discardKind, ...ids.map((t) => kindOf(state, t))], mixedTri, polar)) {
-                  return ids;
-                }
+        /*
+         * 퐁과 같은 까닭으로 서명(종류·적도라)이 다른 조합을 하나씩 낸다(2026-09-25, docs/59 U58).
+         * 앞에서부터 훑으므로 첫 후보는 예전의 «처음 닫히는 세 장» 그대로다. 규칙이 꺼져 있으면
+         * 버림패가 넷째 장이라 손패의 같은 종류가 셋뿐 — 조합이 하나라 아무것도 늘지 않는다.
+         */
+        const trios: [TileId, TileId, TileId][] = [];
+        const seenTrio = new Set<string>();
+        for (let i = 0; i < matching.length; i++) {
+          for (let j = i + 1; j < matching.length; j++) {
+            for (let k = j + 1; k < matching.length; k++) {
+              const ids = [matching[i]!, matching[j]!, matching[k]!] as [TileId, TileId, TileId];
+              const key = callSigKey(state, ids);
+              if (seenTrio.has(key)) continue;
+              if (sameCallQuad([discardKind, ...ids.map((t) => kindOf(state, t))], mixedTri, polar)) {
+                seenTrio.add(key);
+                trios.push(ids);
               }
             }
           }
-          return null;
-        })();
-        if (trio !== null) {
+        }
+        for (const trio of trios) {
           const payload = { tileIds: trio };
           if (this.validateOk(p.id, "minkan", payload)) {
             options.push({ type: "minkan", payload });
