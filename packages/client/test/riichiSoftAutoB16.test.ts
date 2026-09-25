@@ -46,7 +46,7 @@ describe("B16 소프트 자동 조건 (riichiSoftAutoOption)", () => {
   });
 
   it("나머지는 전부 액티브 증강 — 버릴 패를 바꾸는 증강(DRAG)·화료·깡·구종구패는 멈춘다", () => {
-    expect(fn).toMatch(/!AUGMENT_ACTION_TYPES\.has\(o\.type\) \|\| RIICHI_SOFT_AUTO_STOP_TYPES\.has\(o\.type\)\) return null/);
+    expect(fn).toMatch(/!AUGMENT_ACTION_TYPES\.has\(o\.type\) \|\| !RIICHI_SOFT_AUTO_OK_TYPES\.has\(o\.type\)\) return null/);
     // 화료·깡·구종구패가 액티브 증강 집합에 섞여 들어오면 위 판정이 그걸 자동으로 흘려보낸다
     const set = between(APP_CODE, "const AUGMENT_ACTION_TYPES = new Set([", "]);");
     for (const t of ["win", "ankan", "shouminkan", "kyushuKyuhai", "discard"]) {
@@ -56,13 +56,15 @@ describe("B16 소프트 자동 조건 (riichiSoftAutoOption)", () => {
     expect(between(APP_CODE, "const DRAG_DISCARD_ARM_TYPES = new Set([", "]);")).toContain('"flip_riichi"');
   });
 
-  it("멈춤 집합 = 버릴 패를 바꾸는 증강(DRAG) + 스스로 뜨는 영상패 고르기(bloom_pick) (리뷰 라운드 2)", () => {
+  it("멈춤 목록이 아니라 허용 목록이다 — bloom_pick·DRAG 계열은 목록 밖이라 멈춘다 (리뷰 라운드 2 · W4 통합 리뷰)", () => {
     // 절벽 위 꽃: 리치 중 안깡 → 영상 쯔모에 bloom_pick 넷이 붙고 선택 창이 스스로 뜬다.
     // 2초 뒤 영상패를 버리면 고를 기회(영상개화 포함)가 사라진다.
-    expect(APP_CODE).toMatch(
-      /const RIICHI_SOFT_AUTO_STOP_TYPES: ReadonlySet<string> = new Set\(\[\.\.\.DRAG_DISCARD_ARM_TYPES, "bloom_pick"\]\);/,
-    );
-    expect(fn).not.toMatch(/\|\| DRAG_DISCARD_ARM_TYPES\.has\(o\.type\)/);
+    expect(APP_CODE).not.toContain("RIICHI_SOFT_AUTO_STOP_TYPES");
+    const ok = between(APP_CODE, "const RIICHI_SOFT_AUTO_OK_TYPES: ReadonlySet<string> = new Set([", "]);");
+    expect(ok).not.toContain('"bloom_pick"');
+    for (const t of between(APP_CODE, "const DRAG_DISCARD_ARM_TYPES = new Set([", "]);").match(/"[a-z_]+"/g) ?? []) {
+      expect(ok).not.toContain(t);
+    }
   });
 
   it("자물쇠(격에 막힌 화료)·강제 선택이 있으면 걸지 않는다", () => {
@@ -161,7 +163,8 @@ describe("B16 취소 — 손이 닿으면 소프트 자동만 걷는다", () => 
 
   it("✦ 메뉴가 열려 있거나 무장이 남아 있으면(안내 줄·왕패 도킹) 곧바로 걷는다 (리뷰 라운드 1·2)", () => {
     const fx = between(APP_CODE, "if (riichiSoftAutoAt === null) return;", "}, [riichiSoftAutoAt]);");
-    expect(fx).toMatch(/if \(document\.querySelector\("\.aug-menu, \.arm-hint, \.dw-dock"\) !== null\) \{\s*stop\(\);\s*return;\s*\}/);
+    expect(fx).toMatch(/if \(document\.querySelector\(RIICHI_SOFT_AUTO_BUSY_SELECTOR\) !== null\) \{\s*stop\(\);\s*return;\s*\}/);
+    expect(APP_CODE).toContain('const RIICHI_SOFT_AUTO_BUSY_SELECTOR = ".aug-menu, .arm-hint, .dw-dock, .rinshan-pick-overlay";');
   });
 
   it("재입장(joined)은 떠 있던 프롬프트와 함께 걸린 자동응답도 걷는다 (리뷰 라운드 1)", () => {

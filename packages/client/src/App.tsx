@@ -1453,16 +1453,71 @@ const DRAG_DISCARD_ARM_TYPES = new Set([
 ]);
 
 /**
- * 리치 소프트 자동 쯔모기리를 **멈추는** 액티브 — 뜬 순 자체가 «의미 있는 결정»인 것들
- * (2026-09-25, docs/59 U52 · B16 리뷰 라운드 2). 나머지 액티브(승부수·밑장빼기·예지 등)는 리치
- * 내내 서 있는 선택지라 그것 때문에 매 순 멈추면 자동이 없는 것과 같다.
- * - `DRAG_DISCARD_ARM_TYPES` — 손바닥 뒤집기처럼 **버릴 패를 바꾸는** 증강. 쯔모패가 대기를 바꿀
- *   때만 뜬다.
- * - `bloom_pick` — 절벽 위 꽃의 영상패 고르기. 리치 중에도 되는 안깡 직후 영상 쯔모에 붙고, 선택
- *   창이 **스스로 뜬다**(.aug-menu가 아니라 여는 손길도 없다). 왕패 넉 장을 읽는 사이 2초가 지나면
- *   영상패를 버리고 고를 기회가 사라진다 — 거기 화료패가 있었다면 영상개화를 잃는다.
+ * 리치 소프트 자동 쯔모기리를 걸어도 되는 액티브 — **허용 목록**(W4 통합 리뷰 interaction-1 ·
+ * lifecycle-1 · regression-1, 2026-09-25). 여기 없는 타입이 하나라도 끼면 멈춘다(fail-closed).
+ *
+ * 예전에는 «멈추는 목록»(DRAG_DISCARD_ARM_TYPES + bloom_pick)이라 목록 밖 액티브가 전부 자동으로
+ * 넘어갔다. 그래서 리치 중에도 서는 **결정적** 액티브가 2초 뒤 쯔모기리로 덮였다:
+ * - `grave_rob` — 후보가 선다는 것 자체가 «지금 화료한다»다(리치 가드 없음).
+ * - `alchemy`·`tile_dye` — 리치 중 쯔모패 한 장만 바꾸는 그 순 한정 결정(riichiDrawOnly.ts 설계:
+ *   «자동으로 넘어가지 않고 플레이어가 직접 버린다»). ±1이 곧 쯔모 화료·방총 회피다.
+ * - `rinshan_arrange`(쯔모패를 영상패와 맞바꿈)·`greed_use`(방금 쯔모한 패 한정)·`conjure_tsumo`
+ *   (대기패를 다음 쯔모로)·`copy_take`(무엇을 빌려 올지 모른다)·`foresight_order`(공개한 그 순에만
+ *   열리는 재배열, 창이 스스로 뜬다)·`bloom_pick`·DRAG 계열.
+ * 새 증강이 생겨도 기본값이 «멈춤»이라 같은 사고가 다시 나지 않는다.
+ *
+ * 들어 있는 것은 content에서 하나씩 확인한 «리치 내내 서 있는 선택지»다 — 이번 쯔모패·이번 순에
+ * 묶이지 않고, 손패·화료를 바꾸지 않으며, 다음 순에 눌러도 잃는 것이 없다:
+ * 승부수(cancel_riichi)·밑장빼기·삼세 예지·예지 발동(공개만 — 뒤따르는 재배열은 목록 밖)·
+ * 이면투시 발동·찬탈자·늪, 그리고 정보·선언·지목형(천리안·지뢰 탐지·투시·선언 간파·카르마·
+ * 시간 정지·천하무적·일확천금·함구령·안개·박무·도라의 잔상·재장전·무장해제·스파이·덤터기·기생충·
+ * 등 떠밀기). 첫 순 한정(sign_flip_use·blood_contract_declare)은 리치 중에 설 수 없어 넣지 않는다.
  */
-const RIICHI_SOFT_AUTO_STOP_TYPES: ReadonlySet<string> = new Set([...DRAG_DISCARD_ARM_TYPES, "bloom_pick"]);
+const RIICHI_SOFT_AUTO_OK_TYPES: ReadonlySet<string> = new Set([
+  "cancel_riichi",
+  "bottom_deal",
+  "triple_peek_use",
+  "foresight_reveal",
+  "ura_peek_reveal",
+  "claim_dealer",
+  "swamp_activate",
+  "tenpai_scan_use",
+  "danger_sense_use",
+  "xray_reveal",
+  "peek_waits",
+  "karma_burn",
+  "time_stop_use",
+  "invincible_guard",
+  "jackpot_roll",
+  "call_seal_use",
+  "declare_fog",
+  "declare_brief_fog",
+  "dora_recall",
+  "reload_use",
+  "disarm_lock",
+  "spy_mark",
+  "scapegoat_mark",
+  "parasite_attach",
+  "push_brand",
+]);
+
+/**
+ * «지금 손을 쓰는 중»인 화면 요소 — 이것이 서 있으면 리치 소프트 자동을 곧바로 걷고, 발사 직전에도
+ * 다시 봐서 서 있으면 보내지 않는다. ✦ 메뉴·무장 안내 줄·왕패 도킹에 더해 **스스로 뜨는 고르기 창**
+ * (.rinshan-pick-overlay — 예지 재배열·절벽 위 꽃·영상 정찰·단색 세계)을 본다. 그 창은 자식 effect가
+ * 연 뒤 다음 커밋에 그려지므로 걸 때 한 번 보는 것으로는 놓친다(W4 통합 리뷰 interaction-2·lifecycle-2).
+ */
+const RIICHI_SOFT_AUTO_BUSY_SELECTOR = ".aug-menu, .arm-hint, .dw-dock, .rinshan-pick-overlay";
+
+/**
+ * 리치 소프트 자동의 «이 순» 열쇠 — 좌석·국·순·쯔모패. 사람이 이 순에 이미 증강을 썼으면 같은 순의
+ * 뒤따르는 프롬프트에는 다시 걸지 않는다(W4 통합 리뷰 interaction-2 — 예지 발동 뒤 재배열 프롬프트).
+ */
+function riichiSoftAutoTurnKey(view: PlayerView | null, seat: string): string | null {
+  if (view === null) return null;
+  const r = view.round;
+  return `${seat}|${r.prevalentWind}-${r.roundNumber}-${r.honba}|${r.turnCount}|${r.myDrawnTile ?? "-"}`;
+}
 
 /**
  * 리치 중 **소프트 자동 쯔모기리**를 걸어도 되는 프롬프트면 그 쯔모기리 후보를, 아니면 null
@@ -1472,7 +1527,8 @@ const RIICHI_SOFT_AUTO_STOP_TYPES: ReadonlySet<string> = new Set([...DRAG_DISCAR
  * - 내가 리치 중이고, 버림 후보가 쯔모패 한 장뿐이다.
  * - 나머지가 전부 액티브 증강(`AUGMENT_ACTION_TYPES`)이다 — 쯔모·안깡·가깡·구종구패는
  *   거기 없으므로 저절로 멈춘다(화료·깡은 사람이 정할 순간이다).
- * - 스스로 결정을 내미는 증강(`RIICHI_SOFT_AUTO_STOP_TYPES`)이 끼면 멈춘다 — 그 순 자체가 결정이다.
+ * - 그 액티브가 전부 «리치 내내 서 있는 선택지»(`RIICHI_SOFT_AUTO_OK_TYPES`, 허용 목록)여야 한다 —
+ *   목록 밖(화료·쯔모패 변경·그 순 한정 선택, 모르는 새 타입)이 하나라도 끼면 멈춘다.
  * - 자물쇠(격에 막힌 화료)가 있으면 서버처럼 멈춘다 — 그 순이 바로 알아야 하는 순간이다.
  * - 강제 선택(미래를 보는 자·등가교환)에는 버림이 함께 실려도 걸지 않는다(§2-2).
  */
@@ -1493,7 +1549,7 @@ function riichiSoftAutoOption(
       discard = o;
       continue;
     }
-    if (!AUGMENT_ACTION_TYPES.has(o.type) || RIICHI_SOFT_AUTO_STOP_TYPES.has(o.type)) return null;
+    if (!AUGMENT_ACTION_TYPES.has(o.type) || !RIICHI_SOFT_AUTO_OK_TYPES.has(o.type)) return null;
     augs += 1;
   }
   // 증강이 하나도 없으면 서버가 이미 대신 버렸다(auto) — 여기 올 일이 없지만 겹쳐 걸지 않는다
@@ -4286,6 +4342,14 @@ export function App(): JSX.Element {
   const riichiSoftAutoRef = useRef<{ seat: string; timer: number } | null>(null);
   /** 손패의 쯔모패 위 게이지를 그리는 값 — 걸린 시각(게이지를 새로 시작시키는 key로도 쓴다) */
   const [riichiSoftAutoAt, setRiichiSoftAutoAt] = useState<number | null>(null);
+  /**
+   * 걸렸던 소프트 자동이 사람 손에 걷혔다 — 쯔모패 아래에 «직접 버리세요»를 남긴다. 걸린 상태와
+   * 멈춘 상태가 화면에서 구분되지 않으면 멈춘 줄 모르고 기다리다 서버 시간 초과로 넘어간다
+   * (W4 통합 리뷰 interaction-3). 새 프롬프트가 오면 내린다.
+   */
+  const [riichiSoftAutoStopped, setRiichiSoftAutoStopped] = useState(false);
+  /** 사람이 증강을 쓴 순의 열쇠(`riichiSoftAutoTurnKey`) — 그 순의 뒤따르는 프롬프트에는 다시 걸지 않는다 */
+  const riichiSoftAutoHandTurnRef = useRef<string | null>(null);
   /** 이 좌석에 걸린 자동응답 대기를 걷는다 (없으면 아무 일도 없다). */
   const cancelAutoRespond = (seat?: string): void => {
     const timers = autoRespondTimers.current;
@@ -4957,11 +5021,19 @@ export function App(): JSX.Element {
     const disc = riichiSoftAutoOption(p, prevViewRef.current);
     if (disc === null) return;
     const seat = p.player;
+    // 이 순에 사람이 이미 증강을 썼다 — 뒤따르는 프롬프트(예지 재배열 등)는 그 사람이 마저 둔다
+    const turnKey = riichiSoftAutoTurnKey(prevViewRef.current, seat);
+    if (turnKey !== null && riichiSoftAutoHandTurnRef.current === turnKey) return;
     scheduleAutoRespond(
       seat,
       () => {
         riichiSoftAutoRef.current = null;
         setRiichiSoftAutoAt(null);
+        // 발사 직전에 한 번 더 본다 — 고르기 창은 걸린 뒤 다음 커밋에야 그려진다(W4 통합 리뷰)
+        if (document.querySelector(RIICHI_SOFT_AUTO_BUSY_SELECTOR) !== null) {
+          setRiichiSoftAutoStopped(true);
+          return;
+        }
         // 끊겨 있으면 조용히 프롬프트만 남긴다 — send()는 실패를 «다시 연결된 뒤에 눌러 주세요»로
         // 알리는데, 이건 사람이 누른 게 아니다. 버림 소리·진동도 나가지 않은 버림에 울리면 거짓말이다
         // (autoDiscard는 프롬프트를 접는 즉시 자동이라 그대로 둔다. B16 리뷰 라운드 2)
@@ -5282,8 +5354,12 @@ export function App(): JSX.Element {
   useEffect(() => {
     if (riichiSoftAutoAt === null) return;
     const since = performance.now();
-    const stop = (): void => cancelRiichiSoftAuto();
-    if (document.querySelector(".aug-menu, .arm-hint, .dw-dock") !== null) {
+    // 손이 닿아 걷혔다 — 게이지 자리에 «직접 버리세요»를 남긴다(W4 통합 리뷰 interaction-3)
+    const stop = (): void => {
+      cancelRiichiSoftAuto();
+      setRiichiSoftAutoStopped(true);
+    };
+    if (document.querySelector(RIICHI_SOFT_AUTO_BUSY_SELECTOR) !== null) {
       stop();
       return;
     }
@@ -6441,6 +6517,7 @@ export function App(): JSX.Element {
       }
       // 같은 좌석의 새 프롬프트다 — 앞 프롬프트에 걸어 둔 리치 소프트 자동은 낡았다(docs/59 U52)
       cancelRiichiSoftAuto(msg.prompt.player);
+      setRiichiSoftAutoStopped(false);
       // 자동 화료·후로없음·자동버림 — 설정에 맞으면 프롬프트를 그리지 않고 즉시 처리한다.
       if (tryAutoRespond(msg.prompt, settingsRef.current)) {
         dropPrompt(msg.prompt.player);
@@ -7591,6 +7668,11 @@ export function App(): JSX.Element {
       ...(seat !== undefined ? { seat } : {}),
     } as ActionMessage);
     if (!sent) return false;
+    // 버림이 아닌 수(증강 발동 등)를 사람이 골랐다 — 이 순의 뒤따르는 프롬프트엔 소프트 자동을 다시 걸지
+    // 않는다. 예지 발동 뒤 재배열 창을 읽는 2초 사이에 쯔모기리가 나가면 안 된다(W4 통합 리뷰 interaction-2)
+    if (seat !== undefined && !DISCARD_LIKE.has(option.type)) {
+      riichiSoftAutoHandTurnRef.current = riichiSoftAutoTurnKey(prevViewRef.current, seat);
+    }
     /*
      * 프롬프트를 걷는 것은 **방금 보낸 수가 지금 떠 있는 그 프롬프트의 것일 때만**이다.
      *
@@ -8158,6 +8240,7 @@ export function App(): JSX.Element {
           promptSeq={promptSeq}
           promptDeadline={promptDeadline}
           riichiSoftAutoAt={riichiSoftAutoAt}
+          riichiSoftAutoStopped={riichiSoftAutoStopped}
           riichiMode={riichiMode}
           catalog={catalog}
           scoreFx={scoreFx}
@@ -8715,6 +8798,10 @@ export function App(): JSX.Element {
       ) : null}
       {/* 연출 텍스트를 보조기술에 읽어 주는 유일한 통로. 리치·후로·화료·증강 발동이
           전부 이 큐를 지나므로, 여기 한 곳만 live로 열어 두면 게임 사건 전체가 들린다. */}
+      {/* 리치 소프트 자동 쯔모기리 — 걸릴 때 한 번 읽어 준다(게이지·글은 aria-hidden, W4 통합 리뷰 regression-3) */}
+      <div className="sr-only" aria-live="polite" aria-atomic="true">
+        {riichiSoftAutoAt !== null ? "잠시 뒤 쯔모패를 자동으로 버립니다. 아무 키나 화면을 누르면 멈춥니다" : ""}
+      </div>
       <div className="sr-only" aria-live="polite" aria-atomic="true">
         {activeProd !== null
           ? `${activeProd.text}${activeProd.who !== undefined ? `, ${activeProd.who}` : ""}${activeProd.sub !== undefined ? `. ${activeProd.sub}` : ""}`
@@ -15826,6 +15913,8 @@ const GameTable = memo(function GameTable(props: {
   promptDeadline?: number | null;
   /** 리치 소프트 자동 쯔모기리가 걸린 시각 — 쯔모패 위 게이지(docs/59 U52). 없으면 null */
   riichiSoftAutoAt?: number | null;
+  /** 걸렸던 소프트 자동이 사람 손에 걷혔다 — 쯔모패 아래 «직접 버리세요»(W4 통합 리뷰 interaction-3) */
+  riichiSoftAutoStopped?: boolean;
   riichiMode: boolean;
   catalog: Record<string, AugmentCatalogEntry>;
   scoreFx: Record<string, number>;
@@ -16601,6 +16690,7 @@ const GameTable = memo(function GameTable(props: {
         promptSeq={props.promptSeq}
         promptDeadline={props.promptDeadline ?? null}
         riichiSoftAutoAt={props.riichiSoftAutoAt ?? null}
+        riichiSoftAutoStopped={props.riichiSoftAutoStopped === true}
         riichiMode={props.riichiMode}
         catalog={catalog}
         autoSort={props.settings.autoSort}
@@ -16734,7 +16824,7 @@ const GameTable = memo(function GameTable(props: {
 function useSelection(
   view: PlayerView,
   prompt: PromptMessage["prompt"] | null,
-  onSubmit: (o: ActionOption) => void,
+  onSubmit: (o: ActionOption) => boolean | void,
   onRiichiMode: (v: boolean) => void,
 ): SelectionCtx {
   const [armedState, setArmedType] = useState<string | null>(null);
@@ -16835,13 +16925,15 @@ function useSelection(
     setCallPickState(null);
   };
 
-  const submit = (o: ActionOption): void => {
-    onSubmit(o);
+  /** 보냈으면 true — 끊겨 있어 못 보냈으면 false(submitOption). 무장 정리는 결과와 상관없이 한다. */
+  const submit = (o: ActionOption): boolean => {
+    const sent = onSubmit(o) !== false;
     setArmedType(null);
     setHandPicks([]);
     setFrameTile(null);
     clearDw();
     setCallPickState(null);
+    return sent;
   };
 
   // ── 후로 고르기(docs/59 U56) — 묶음 버튼 → 손패 클릭으로 좁혀 서버 옵션 그대로 낸다 ──
@@ -16937,10 +17029,20 @@ function useSelection(
   const dwRemaining = dwRemainingOf(view);
   const [dwQueue, setDwQueue] = useState<DwPair[]>([]);
   const dwSentPromptRef = useRef<unknown>(null);
+  /**
+   * 큐를 확정한 순(`round.turnCount`) — 남은 쌍은 **그 순의** 프롬프트에만 이어 싣는다. 끊겼다 붙는
+   * 사이 서버가 시간 초과로 순을 넘기면 다음 내 차례에 지시하지 않은 교환이 나갔다
+   * (W4 통합 리뷰 lifecycle-4).
+   */
+  const dwQueueTurnRef = useRef<number | null>(null);
   useEffect(() => {
     if (dwQueue.length === 0) return;
     if (myPrompt === null) return;
     if (dwSentPromptRef.current === myPrompt) return; // 이 프롬프트에는 이미 보냈다
+    if (dwQueueTurnRef.current !== view.round.turnCount) {
+      setDwQueue([]);
+      return;
+    }
     const head = dwQueue[0]!;
     const opt = myPrompt.options.find((o) => {
       if (o.type !== "dw_swap") return false;
@@ -16953,7 +17055,12 @@ function useSelection(
       return;
     }
     dwSentPromptRef.current = myPrompt;
-    submit(opt);
+    if (!submit(opt)) {
+      // 끊겨 있어 못 보냈다 — 남은 쌍을 다시 붙은 뒤 사용자 손 없이 보내지 않는다. send()가 이미
+      // «다시 연결된 뒤에 눌러 주세요»를 띄웠으니 큐를 통째로 접는다(W4 통합 리뷰 lifecycle-4)
+      setDwQueue([]);
+      return;
+    }
     setDwQueue((cur) => cur.slice(1));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dwQueue, myPrompt]);
@@ -17035,6 +17142,7 @@ function useSelection(
   // 있다는 것 자체가 강제 선택 중이 아니라는 뜻이다(강제 선택이 시작되면 위 effect가 무장을 걷는다)
   const dwConfirm = (): void => {
     if (armedType !== "dw_swap" || dwPairs.length === 0) return;
+    dwQueueTurnRef.current = view.round.turnCount;
     setDwQueue(dwPairs);
     setArmedType(null);
     clearDw();
@@ -22913,6 +23021,8 @@ function OwnArea(props: {
   promptDeadline: number | null;
   /** 리치 소프트 자동 쯔모기리가 걸린 시각(App `tryRiichiSoftAuto`) — 쯔모패 위 게이지를 그린다 */
   riichiSoftAutoAt?: number | null;
+  /** 걸렸던 소프트 자동이 사람 손에 걷혔다 — 쯔모패 아래에 «직접 버리세요»를 남긴다 */
+  riichiSoftAutoStopped?: boolean;
   riichiMode: boolean;
   catalog: Record<string, AugmentCatalogEntry>;
   autoSort: boolean;
@@ -24114,6 +24224,15 @@ function OwnArea(props: {
   useEffect(() => {
     setArmedTileId(null);
   }, [props.riichiMode]);
+  /*
+   * **후로 고르기에 들어가거나 나올 때도 내린다** (W4 통합 리뷰 interaction-4 · regression-4).
+   * 패 A를 한 번 탭해 들어 올린 뒤 [안깡 ×2]를 누르면 A가 «한 번 더» 뱃지와 «한 번 더 누르면 버림»
+   * 이름을 단 채 남았다 — 정작 누르면 후로 고르기가 받아 «이 패는 안깡에 쓰이지 않습니다»로 거절하거나
+   * 재료로 담는다. 화면이 하는 말과 동작이 어긋난다. 리치 모드 전환과 같은 규칙이다.
+   */
+  useEffect(() => {
+    setArmedTileId(null);
+  }, [callPicking]);
   /*
    * 3장 고르기는 **선택만** 바꾼다 — 제출은 [확정] 버튼(submitSwap3)이 한다 (2026-09-25, docs/59 U10).
    * 예전엔 3장째를 누르는 순간 이 업데이터 안에서 교환이 나갔다. 가지치기(hand3)는 [확인]이
@@ -25540,6 +25659,24 @@ function OwnArea(props: {
                     style={{ "--soft-auto-ms": `${RIICHI_SOFT_AUTO_MS}ms` } as React.CSSProperties}
                     aria-hidden="true"
                   />
+                ) : null}
+                {/*
+                  게이지만으로는 무엇이 일어나는지·어떻게 멈추는지가 보이지 않는다 — 짧은 글을 함께 둔다.
+                  걷힌 뒤에는 «직접 버리세요»로 바꿔, 멈춘 상태와 아직 도는 상태를 화면에서 가른다
+                  (W4 통합 리뷰 interaction-3 · lifecycle-3 · regression-3). 읽어 주기는 App의 live 영역.
+                */}
+                {isDrawn && myPrompt !== null && !isSpectator && props.riichiSoftAutoAt != null ? (
+                  <span className="hand-soft-auto-note" aria-hidden="true">
+                    곧 쯔모기리 · 누르면 멈춤
+                  </span>
+                ) : isDrawn &&
+                  myPrompt !== null &&
+                  !isSpectator &&
+                  props.riichiSoftAutoStopped === true &&
+                  armedTileId !== id ? (
+                  <span className="hand-soft-auto-note is-stopped" aria-hidden="true">
+                    자동 멈춤 · 직접 버리세요
+                  </span>
                 ) : null}
                 {/* 가져온 패 — 봉인(오른쪽 위)·지뢰(왼쪽 위)·쏘이는 패(오른쪽 아래)와 안 겹치는 왼쪽 아래(U81) */}
                 {futureGot ? (
