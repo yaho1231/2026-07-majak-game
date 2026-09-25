@@ -259,9 +259,12 @@ export function safeFallbackOption(options: ActionOption[]): ActionOption {
  * 있는 세 가지**뿐이라(safeFallbackOption 참고) 그 셋만 적는다. 그 밖은 이름을 지어내지
  * 말고 비워 둔다 — 틀린 이름을 알리느니 "자동 진행"까지만 말하는 편이 낫다.
  */
-function fallbackLabel(o: ActionOption): string | undefined {
+export function fallbackLabel(o: ActionOption): string | undefined {
   if (o.type === "pass") return "패스";
   if (o.type === "discard") return "쯔모기리";
+  // 미래를 보는 자는 시간 초과에도 교환을 끝낸다(FORCED_ACTION_TYPES) — 토스트가 «자동 진행»까지만
+  // 말하면 손패 3장이 왜 바뀌었는지 모른다(2026-09-25 B18 리뷰, docs/59 U49).
+  if (o.type === "future_exchange") return "무작위 교환";
   return undefined;
 }
 

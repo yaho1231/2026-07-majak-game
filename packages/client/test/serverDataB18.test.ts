@@ -56,8 +56,16 @@ describe("U42 귀환 — 누르기 전에 돌아올 자패를 보인다", () => 
     const at = pill.indexOf('if (augId === "honor_return") {');
     expect(at).toBeGreaterThan(-1);
     const branch = pill.slice(at, pill.indexOf("\n  }\n", at));
-    expect(branch).toContain("av[`honor_return:${playerId}`]");
-    expect(branch).toContain("isSelf ? kindsIn(av[`honor_return:preview:${playerId}`]) : []");
+    // 값 꼴이 채널마다 다르다: 공개 채널은 TileKind 객체 배열(발동 toEvents가 recallableHonors()
+    // 결과를 그대로 싣는다), 미리보기만 kindKey 문자열. 공개 채널을 kindKey 파서로 읽으면 늘 []다.
+    expect(AUG("honor_return")).toContain("augmentDataSet(noticeKey(req.player), kinds)");
+    expect(AUG("honor_return")).toContain("recallableHonors(state, holder).map(kindKey)");
+    expect(branch).toContain("const kept = kindObjectsIn(av[`honor_return:${playerId}`]);");
+    expect(branch).toMatch(
+      /const kindObjectsIn = \(raw: unknown\): TileKind\[\] =>[\s\S]*?typeof k === "object" && typeof \(k as TileKind\)\.suit === "string"/,
+    );
+    expect(branch).not.toMatch(/kindKeysIn\(av\[`honor_return:\$\{playerId\}`\]\)/);
+    expect(branch).toContain("isSelf ? kindKeysIn(av[`honor_return:preview:${playerId}`]) : []");
     expect(branch).toContain("발동하면 다음 국 배패에 이 자패가 들어옵니다");
     expect(branch).toContain("chip: `↺ ${names}`");
   });
@@ -132,6 +140,10 @@ describe("U61 짝수의 세계 — 손패 제자리 유령패", () => {
     expect(ctl).toMatch(/const clearHints = \(\): void => \{[\s\S]*?props\.onFlipHint\?\.\(false\);/);
     expect(ctl).toMatch(/const primeFirst = \(type: string\): boolean => \{[\s\S]*?props\.onFlipHint\?\.\(type === "even_world_flip"\);/);
     expect(ctl).toMatch(/setPrimed\(null\);\s*onHint\?\.\(null\);\s*onDoomed\?\.\(null\);\s*onFlip\?\.\(false\);/);
+    // 프롬프트가 바뀌면 hover만 받은(첫 탭 없는) 유령패도 끈다 — 첫 탭 검사보다 먼저
+    expect(ctl).toMatch(
+      /setPrimed\(null\);\s*return \(\) => \{\s*onFlip\?\.\(false\);\s*if \(primedRef\.current === null\) return;/,
+    );
   });
 
   it("OwnArea가 서버 채널 값 그대로 제자리에 바뀐 모양을 그린다(클라가 다시 세지 않는다)", () => {

@@ -384,18 +384,6 @@ export function agariYameTriggers(
 }
 
 /**
- * 중반 드래프트 스테이지별 진입 조건.
- * ROUND_SETTLED 리듀서가 이미 다음 국의 장풍·국 번호를 올린 뒤 검사하므로,
- * "막 다음 국으로 넘어가는 시점"의 round 상태로 판정한다.
- * - eastThird(공통):   동3국 진입 (prevalentWind=1, roundNumber=3)
- * - eastFourth(동풍전): 동4국 진입 (prevalentWind=1, roundNumber=4)
- * - southEntry(반장전): 남1국 진입 (prevalentWind=2, roundNumber=1)
- * - southThird(반장전): 남3국 진입 (prevalentWind=2, roundNumber=3)
- *
- * 조건이 "해당 국 진입"이고 스테이지당 1회(draftedStages 가드)이므로, 본장 연장으로
- * 같은 국이 여러 번 열려도 **첫 진입 때만** 지급된다.
- */
-/**
  * 관전 선택 라벨(`optionLabel`)이 **패로 읽는** 페이로드 키 — 값이 패 id인 것만.
  * 값 모양(0~135 숫자)으로 추측하면 순번·방향·숫자 인자까지 패가 된다(docs/59 U65).
  */
@@ -408,6 +396,18 @@ const TILE_ID_PAYLOAD_KEYS: ReadonlySet<string> = new Set([
   "targetMeldTileId",
 ]);
 
+/**
+ * 중반 드래프트 스테이지별 진입 조건.
+ * ROUND_SETTLED 리듀서가 이미 다음 국의 장풍·국 번호를 올린 뒤 검사하므로,
+ * "막 다음 국으로 넘어가는 시점"의 round 상태로 판정한다.
+ * - eastThird(공통):   동3국 진입 (prevalentWind=1, roundNumber=3)
+ * - eastFourth(동풍전): 동4국 진입 (prevalentWind=1, roundNumber=4)
+ * - southEntry(반장전): 남1국 진입 (prevalentWind=2, roundNumber=1)
+ * - southThird(반장전): 남3국 진입 (prevalentWind=2, roundNumber=3)
+ *
+ * 조건이 "해당 국 진입"이고 스테이지당 1회(draftedStages 가드)이므로, 본장 연장으로
+ * 같은 국이 여러 번 열려도 **첫 진입 때만** 지급된다.
+ */
 const MID_DRAFT_TRIGGER: Partial<
   Record<DraftStage, (r: GameState["round"]) => boolean>
 > = {
@@ -1398,9 +1398,18 @@ export class HanchanController {
         // 잰다 — 새로 받은 증강(천하통일의 즉시 우승 문턱 등)이 판정을 바꿀 수 있고, 예전
         // 순서(드래프트 → 판정)의 결과를 그대로 지키기 위해서다. 드래프트와 종국 판정의
         // 순서 자체는 사용자 확인 전이라 건드리지 않는다(docs/59 §6 U77-순서).
+        // ⚠ 알려진 틈: 그래서 드래프트가 열린 국에서는 이미 보낸 roundOver.gameEnds와 실제
+        // 종국이 어긋날 수 있다(결과창은 «다음 국으로»라 했는데 새 문턱으로 여기서 끝나거나,
+        // 그 반대). 순서가 정해지기 전까지는 고칠 수 없어 QA에서 보이도록 로그만 남긴다
+        // (2026-09-25 B18 리뷰).
         const reason = drafted
           ? this.endReason(game.engine.state, game.engine.rules, played)
           : preEnd;
+        if (drafted && reason !== preEnd) {
+          console.warn(
+            `[hanchan] 중반 드래프트 뒤 종국 판정이 바뀜 — roundOver.gameEnds=${preEnd ?? "없음"}, 실제=${reason ?? "없음"}`,
+          );
+        }
         if (reason !== null) {
           endReason = reason;
           break;

@@ -15,6 +15,7 @@ import {
   FIRST_DRAFT_TIMEOUT_MS,
   DISCONNECT_GRACE_MS,
   HumanAgent,
+  fallbackLabel,
   safeFallbackOption,
 } from "../src/HumanAgent.js";
 
@@ -179,6 +180,12 @@ describe("safeFallbackOption — 되돌릴 수 없는 다단계 선택은 무작
         expect(safeFallbackOption(options).type).toBe(forced);
       }
     }
+  });
+
+  it("미래를 보는 자의 자동 교환은 토스트가 «무작위 교환»이라 말한다", () => {
+    expect(fallbackLabel(opt("future_exchange", { tileId: 3 }))).toBe("무작위 교환");
+    expect(fallbackLabel(opt("discard", { tileId: 3 }))).toBe("쯔모기리");
+    expect(fallbackLabel(opt("pass"))).toBe("패스");
   });
 
   it("무장 버튼(future_arm)은 강제가 아니다 — 무장 전 순의 시간 초과는 예전처럼 쯔모기리", () => {

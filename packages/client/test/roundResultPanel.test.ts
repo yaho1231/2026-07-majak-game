@@ -72,6 +72,8 @@ describe("국 결과 화면 — 스스로 닫지 않는다", () => {
     const from = body.indexOf("const nextRoundNote");
     const note = body.slice(from, body.indexOf("return (", from));
     expect(note).toMatch(/if \(gameEnds\) \{[\s\S]*\} else \{[\s\S]*친 넘어감/);
+    // 미련·귀환의 «다음 국…» 줄도 종국이면 뺀다 — 종국 한 줄과 서로 모순된다(B18 리뷰)
+    expect(body).toContain("(gameEnds ? [] : carryOverOf(view, p.id)).map((c) => (");
   });
 
   it("카운트다운은 서버가 보낸 상한(deadlineAt)만 본다 — 숫자를 클라가 따로 들지 않는다", () => {

@@ -1697,9 +1697,10 @@ const ARM_PROMPT: Record<string, string> = {
   red_touch: "적도라로 만들 숫자의 패를 누르세요. 게임 끝까지 그 숫자는 내 적도라입니다",
   // 순서를 강제하지 않는다 — 손패를 먼저 눌러도, 위에 펼친 왕패 칸을 먼저 눌러도 된다(docs/59 U04)
   dw_swap: "내 손패와 위의 왕패 칸을 하나씩 눌러 맞바꿀 짝을 정하세요",
-  // 옛 모달 문구를 옮겼다 — 나머지 두 장의 행방은 누르기 전에 알아야 한다(docs/59 U03)
+  // 옛 모달 문구를 옮겼다 — 나머지 두 장의 행방은 누르기 전에 알아야 한다(docs/59 U03).
+  // 시간 초과도 서버가 3장 중 하나로 교환을 끝낸다(«쓰면 무조건 교환», 2026-09-25 docs/59 U49).
   future_exchange:
-    "빛나는 3장 중 바닥에 버릴 패를 클릭하세요. 나머지 2장은 패산 맨 밑으로 가고, 패산 위 3장이 손에 들어옵니다",
+    "빛나는 3장 중 바닥에 버릴 패를 클릭하세요. 나머지 2장은 패산 맨 밑으로 가고, 패산 위 3장이 손에 들어옵니다. 시간이 다 되면 무작위로 한 장을 골라 교환합니다",
   // 상대
   // 통째로 바꾸기는 «맞바꾸기»가 아니라 상대 손패를 가져온다(내 손패는 패산 맨 밑 — full_hand_swap.ts)
   hand_swap: "손패를 통째로 가져올 상대를 클릭하세요",
@@ -21139,17 +21140,28 @@ function augmentPillStatus(
    * 흘린 자패 포함) 바닥만 보고는 맞힐 수 없어 서버가 실어 준다(2026-09-25, docs/59 U42).
    */
   if (augId === "honor_return") {
-    const kindsIn = (raw: unknown): TileKind[] =>
+    /*
+     * ⚠ 두 채널의 값 꼴이 다르다. 공개 채널은 발동 때 `recallableHonors()`가 낸 **TileKind 객체
+     * 배열**을 그대로 싣고(`carryOverOf`의 kindsOf와 같은 꼴), 미리보기 채널만 kindKey 문자열이다.
+     * 공개 채널을 kindKey 파서로 읽으면 늘 []이 되어 발동 뒤 «↺ 東·白»가 한 번도 안 떴다
+     * (2026-09-25 B18 리뷰, docs/59 U42).
+     */
+    const kindObjectsIn = (raw: unknown): TileKind[] =>
+      (Array.isArray(raw) ? raw : []).filter(
+        (k): k is TileKind =>
+          k !== null && typeof k === "object" && typeof (k as TileKind).suit === "string",
+      );
+    const kindKeysIn = (raw: unknown): TileKind[] =>
       (Array.isArray(raw) ? raw : [])
         .filter((k): k is string => typeof k === "string")
         .map(parseKindKey)
         .filter((k): k is TileKind => k !== null);
-    const kept = kindsIn(av[`honor_return:${playerId}`]);
+    const kept = kindObjectsIn(av[`honor_return:${playerId}`]);
     if (kept.length > 0) {
       const names = kept.map((kind) => formatTile({ kind })).join("·");
       return withUses({ chip: `↺ ${names}`, note: `다음 국 배패에 ${names}이(가) 들어옵니다` });
     }
-    const preview = isSelf ? kindsIn(av[`honor_return:preview:${playerId}`]) : [];
+    const preview = isSelf ? kindKeysIn(av[`honor_return:preview:${playerId}`]) : [];
     if (preview.length === 0) return usesStatus;
     const names = preview.map((kind) => formatTile({ kind })).join("·");
     return withUses({
@@ -28448,13 +28460,17 @@ function ActiveAugmentControl(props: {
   // 아무 데도 안 누른 채 순이 지나가면 바깥 누르기 리스너가 안 돌아, primed만 풀리고 빛과 ✕가
   // 판 끝까지 남았다(터치엔 hover가 없어 끌 손짓도 없다). cleanup이라 언마운트에서도 돈다
   // (2026-09-25, docs/59 U61 리뷰).
+  // 짝수의 세계 유령패만은 첫 탭 여부와 상관없이 끈다 — ✦ 줄에 마우스를 올린 채(hover만, 첫 탭
+  // 없음) 시간 초과·단축키 타패로 순이 끝나면 mouseleave 없이 메뉴가 사라져, 남의 순 내내 손패가
+  // 바뀐 모양(↻)으로 그려졌다. 미리보기 채널은 누구 순인지와 무관하게 값이 있어서다
+  // (2026-09-25 B18 리뷰, docs/59 U61).
   useEffect(() => {
     setPrimed(null);
     return () => {
+      onFlip?.(false);
       if (primedRef.current === null) return;
       onHint?.(null);
       onDoomed?.(null);
-      onFlip?.(false);
     };
   }, [myPrompt]);
   // 첫 탭을 받은 줄·버튼 밖을 누르면 푼다 — 짚어 둔 재료 표시도 함께 끈다(U61)
@@ -31291,7 +31307,9 @@ function RoundResultPanel({
                       );
                     })()
                   ) : null}
-                  {carryOverOf(view, p.id).map((c) => (
+                  {/* 대국이 이 국으로 끝나면 «다음 국으로 가져갑니다» 줄은 거짓말이다 — 다음 국이
+                      없다. 종국 한 줄(nextRoundNote)과 맞선다(2026-09-25 B18 리뷰, docs/59 U77). */}
+                  {(gameEnds ? [] : carryOverOf(view, p.id)).map((c) => (
                     <div key={c.label} className="result-carry">
                       <span className="result-carry-tag">{c.label}</span>
                       <span className="result-carry-tiles">

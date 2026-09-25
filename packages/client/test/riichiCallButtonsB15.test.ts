@@ -232,8 +232,8 @@ describe("U61 손패를 태우거나 바꾸는 선언 — 터치에서 첫 탭�
       /setPrimedKey\(null\);[\s\S]*?return \(\) => \{\s*if \(primedKeyRef\.current !== null\) doomedHintRef\.current\?\.\(null\);\s*\};\s*\}, \[props\.prompt\]\);/,
     );
     expect(CONTROL).toMatch(
-      // B18(U61): 짝수의 세계 제자리 미리보기(onFlip)도 함께 끈다
-      /return \(\) => \{\s*if \(primedRef\.current === null\) return;\s*onHint\?\.\(null\);\s*onDoomed\?\.\(null\);\s*onFlip\?\.\(false\);\s*\};\s*\}, \[myPrompt\]\);/,
+      // B18(U61): 짝수의 세계 제자리 미리보기(onFlip)도 함께 끈다 — hover만 받은 경우도 있어 첫 탭 검사보다 먼저
+      /return \(\) => \{\s*onFlip\?\.\(false\);\s*if \(primedRef\.current === null\) return;\s*onHint\?\.\(null\);\s*onDoomed\?\.\(null\);\s*\};\s*\}, \[myPrompt\]\);/,
     );
     // 다른 줄을 스쳤다 떠나도 첫 탭의 재료로 되돌린다
     expect(CONTROL).toMatch(/const hintNone = \(\): void => \{\s*if \(primed !== null\) \{\s*hintOne\(primed\);/);
