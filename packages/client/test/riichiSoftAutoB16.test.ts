@@ -46,7 +46,7 @@ describe("B16 소프트 자동 조건 (riichiSoftAutoOption)", () => {
   });
 
   it("나머지는 전부 액티브 증강 — 버릴 패를 바꾸는 증강(DRAG)·화료·깡·구종구패는 멈춘다", () => {
-    expect(fn).toMatch(/!AUGMENT_ACTION_TYPES\.has\(o\.type\) \|\| DRAG_DISCARD_ARM_TYPES\.has\(o\.type\)\) return null/);
+    expect(fn).toMatch(/!AUGMENT_ACTION_TYPES\.has\(o\.type\) \|\| RIICHI_SOFT_AUTO_STOP_TYPES\.has\(o\.type\)\) return null/);
     // 화료·깡·구종구패가 액티브 증강 집합에 섞여 들어오면 위 판정이 그걸 자동으로 흘려보낸다
     const set = between(APP_CODE, "const AUGMENT_ACTION_TYPES = new Set([", "]);");
     for (const t of ["win", "ankan", "shouminkan", "kyushuKyuhai", "discard"]) {
@@ -54,6 +54,15 @@ describe("B16 소프트 자동 조건 (riichiSoftAutoOption)", () => {
     }
     // 손바닥 뒤집기는 쯔모패가 대기를 바꿀 때만 뜨는 의미 있는 결정이다
     expect(between(APP_CODE, "const DRAG_DISCARD_ARM_TYPES = new Set([", "]);")).toContain('"flip_riichi"');
+  });
+
+  it("멈춤 집합 = 버릴 패를 바꾸는 증강(DRAG) + 스스로 뜨는 영상패 고르기(bloom_pick) (리뷰 라운드 2)", () => {
+    // 절벽 위 꽃: 리치 중 안깡 → 영상 쯔모에 bloom_pick 넷이 붙고 선택 창이 스스로 뜬다.
+    // 2초 뒤 영상패를 버리면 고를 기회(영상개화 포함)가 사라진다.
+    expect(APP_CODE).toMatch(
+      /const RIICHI_SOFT_AUTO_STOP_TYPES: ReadonlySet<string> = new Set\(\[\.\.\.DRAG_DISCARD_ARM_TYPES, "bloom_pick"\]\);/,
+    );
+    expect(fn).not.toMatch(/\|\| DRAG_DISCARD_ARM_TYPES\.has\(o\.type\)/);
   });
 
   it("자물쇠(격에 막힌 화료)·강제 선택이 있으면 걸지 않는다", () => {
@@ -87,6 +96,14 @@ describe("B16 예약 — 자동응답과 같은 타이머 맵을 쓰고 프롬�
   it("예약 시점에는 프롬프트를 접지 않는다 — 전송에 성공했을 때만 접는다", () => {
     expect(fn).not.toMatch(/^\s*dropPrompt\(/m);
     expect(fn).toContain("if (send({ type: \"action\", actionType: disc.type, payload: disc.payload, seat })) dropPrompt(seat);");
+  });
+
+  it("끊겨 있으면 소리·진동·토스트 없이 프롬프트만 남긴다 (리뷰 라운드 2)", () => {
+    const guard = fn.indexOf("if (wsRef.current?.readyState !== WebSocket.OPEN) return;");
+    expect(guard).toBeGreaterThan(0);
+    expect(fn.indexOf("sfx.discard();")).toBeGreaterThan(guard);
+    expect(fn.indexOf("haptics.discard();")).toBeGreaterThan(guard);
+    expect(fn.indexOf("rememberOwnDiscard(disc.payload);")).toBeGreaterThan(guard);
   });
 
   it("프롬프트 수신부가 새 프롬프트마다 낡은 것을 걷고, 그린 뒤에 건다", () => {
@@ -142,9 +159,9 @@ describe("B16 취소 — 손이 닿으면 소프트 자동만 걷는다", () => 
     );
   });
 
-  it("✦ 메뉴가 열린 채로 걸리면 곧바로 걷는다 (리뷰 라운드 1)", () => {
+  it("✦ 메뉴가 열려 있거나 무장이 남아 있으면(안내 줄·왕패 도킹) 곧바로 걷는다 (리뷰 라운드 1·2)", () => {
     const fx = between(APP_CODE, "if (riichiSoftAutoAt === null) return;", "}, [riichiSoftAutoAt]);");
-    expect(fx).toMatch(/if \(document\.querySelector\("\.aug-menu"\) !== null\) \{\s*stop\(\);\s*return;\s*\}/);
+    expect(fx).toMatch(/if \(document\.querySelector\("\.aug-menu, \.arm-hint, \.dw-dock"\) !== null\) \{\s*stop\(\);\s*return;\s*\}/);
   });
 
   it("재입장(joined)은 떠 있던 프롬프트와 함께 걸린 자동응답도 걷는다 (리뷰 라운드 1)", () => {

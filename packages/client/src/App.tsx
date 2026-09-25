@@ -1440,6 +1440,18 @@ const DRAG_DISCARD_ARM_TYPES = new Set([
 ]);
 
 /**
+ * 리치 소프트 자동 쯔모기리를 **멈추는** 액티브 — 뜬 순 자체가 «의미 있는 결정»인 것들
+ * (2026-09-25, docs/59 U52 · B16 리뷰 라운드 2). 나머지 액티브(승부수·밑장빼기·예지 등)는 리치
+ * 내내 서 있는 선택지라 그것 때문에 매 순 멈추면 자동이 없는 것과 같다.
+ * - `DRAG_DISCARD_ARM_TYPES` — 손바닥 뒤집기처럼 **버릴 패를 바꾸는** 증강. 쯔모패가 대기를 바꿀
+ *   때만 뜬다.
+ * - `bloom_pick` — 절벽 위 꽃의 영상패 고르기. 리치 중에도 되는 안깡 직후 영상 쯔모에 붙고, 선택
+ *   창이 **스스로 뜬다**(.aug-menu가 아니라 여는 손길도 없다). 왕패 넉 장을 읽는 사이 2초가 지나면
+ *   영상패를 버리고 고를 기회가 사라진다 — 거기 화료패가 있었다면 영상개화를 잃는다.
+ */
+const RIICHI_SOFT_AUTO_STOP_TYPES: ReadonlySet<string> = new Set([...DRAG_DISCARD_ARM_TYPES, "bloom_pick"]);
+
+/**
  * 리치 중 **소프트 자동 쯔모기리**를 걸어도 되는 프롬프트면 그 쯔모기리 후보를, 아니면 null
  * (2026-09-25, docs/59 U52 — 대기 시간과 이유는 `RIICHI_SOFT_AUTO_MS`).
  *
@@ -1447,7 +1459,7 @@ const DRAG_DISCARD_ARM_TYPES = new Set([
  * - 내가 리치 중이고, 버림 후보가 쯔모패 한 장뿐이다.
  * - 나머지가 전부 액티브 증강(`AUGMENT_ACTION_TYPES`)이다 — 쯔모·안깡·가깡·구종구패는
  *   거기 없으므로 저절로 멈춘다(화료·깡은 사람이 정할 순간이다).
- * - 손바닥 뒤집기처럼 버릴 패를 바꾸는 증강(`DRAG_DISCARD_ARM_TYPES`)은 뜬 순 자체가 결정이라 멈춘다.
+ * - 스스로 결정을 내미는 증강(`RIICHI_SOFT_AUTO_STOP_TYPES`)이 끼면 멈춘다 — 그 순 자체가 결정이다.
  * - 자물쇠(격에 막힌 화료)가 있으면 서버처럼 멈춘다 — 그 순이 바로 알아야 하는 순간이다.
  * - 강제 선택(미래를 보는 자·등가교환)에는 버림이 함께 실려도 걸지 않는다(§2-2).
  */
@@ -1468,7 +1480,7 @@ function riichiSoftAutoOption(
       discard = o;
       continue;
     }
-    if (!AUGMENT_ACTION_TYPES.has(o.type) || DRAG_DISCARD_ARM_TYPES.has(o.type)) return null;
+    if (!AUGMENT_ACTION_TYPES.has(o.type) || RIICHI_SOFT_AUTO_STOP_TYPES.has(o.type)) return null;
     augs += 1;
   }
   // 증강이 하나도 없으면 서버가 이미 대신 버렸다(auto) — 여기 올 일이 없지만 겹쳐 걸지 않는다
@@ -4912,10 +4924,13 @@ export function App(): JSX.Element {
       () => {
         riichiSoftAutoRef.current = null;
         setRiichiSoftAutoAt(null);
+        // 끊겨 있으면 조용히 프롬프트만 남긴다 — send()는 실패를 «다시 연결된 뒤에 눌러 주세요»로
+        // 알리는데, 이건 사람이 누른 게 아니다. 버림 소리·진동도 나가지 않은 버림에 울리면 거짓말이다
+        // (autoDiscard는 프롬프트를 접는 즉시 자동이라 그대로 둔다. B16 리뷰 라운드 2)
+        if (wsRef.current?.readyState !== WebSocket.OPEN) return;
         sfx.discard();
         haptics.discard();
         rememberOwnDiscard(disc.payload);
-        // 전송이 실패하면 프롬프트를 남긴다 — 다시 붙은 뒤 직접 누를 수 있게(submitOption과 같은 규칙)
         if (send({ type: "action", actionType: disc.type, payload: disc.payload, seat })) dropPrompt(seat);
       },
       RIICHI_SOFT_AUTO_MS,
@@ -5220,14 +5235,17 @@ export function App(): JSX.Element {
    *   사이 타이머가 터진다 — 틈이 끝날 때 한 번, 틈 동안 움직였고 지금 그 위에 있으면 걷는다.
    * - ✦ 메뉴가 이미 열린 채로 걸렸으면 곧바로 걷는다 — 지난 순에 메뉴를 연 채 시간이 끝나면
    *   메뉴 상태가 남아 다음 순에 열린 채로 다시 뜬다. 가장 분명한 «고민 중» 신호다.
+   *   프롬프트가 바뀌어도 남는 무장(sel.arm)도 같다 — 안내 줄(.arm-hint)·왕패 도킹(.dw-dock)이
+   *   서 있으면 이미 손을 쓰는 중이다. 이 둘은 무장·강제 선택·영상패 다시 열기에만 서고, 뒤의
+   *   둘은 애초에 소프트 자동을 걸지 않는 프롬프트라 리치 중 매 순 걷힐 일은 없다.
    *   (걸 때(tryRiichiSoftAuto)는 아직 새 프롬프트를 그리기 전이라 여기, 그린 뒤에 본다.)
-   * (틈·열린 메뉴 처리는 2026-09-25 B16 리뷰 라운드 1)
+   * (틈·열린 메뉴 처리는 2026-09-25 B16 리뷰 라운드 1, 남은 무장은 라운드 2)
    */
   useEffect(() => {
     if (riichiSoftAutoAt === null) return;
     const since = performance.now();
     const stop = (): void => cancelRiichiSoftAuto();
-    if (document.querySelector(".aug-menu") !== null) {
+    if (document.querySelector(".aug-menu, .arm-hint, .dw-dock") !== null) {
       stop();
       return;
     }
