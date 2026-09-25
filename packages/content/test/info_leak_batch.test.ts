@@ -16,6 +16,7 @@ import { briefFog } from "../src/augments/brief_fog.js";
 import { doraConceal } from "../src/augments/dora_conceal.js";
 import { uraPeek } from "../src/augments/ura_peek.js";
 import { roundKey } from "../src/util.js";
+import * as C from "../src/index.js";
 
 type Game = ReturnType<typeof createStandardGameFromState>;
 
@@ -104,5 +105,71 @@ describe("가려진 도라 — 왕패를 열어도 표시패는 안 보인다 (d
     const game = scene();
     const view = buildPlayerView(game.engine.state, SPECTATOR_ID, game.engine.rules);
     expect(view.round.doraIndicators.length).toBeGreaterThan(0);
+  });
+});
+
+/*
+ * docs/59 B18 (2026-09-25) — 발동 전 미리보기 채널 넷은 **보유자에게만** 간다.
+ * 귀환(돌아올 자패)·카피(상대별 후보 수)·등가교환(넘길 3장)·짝수의 세계(바뀔 패). 전원에게 보이면
+ * «그 증강을 쓸 것»이라는 의도와 손패 일부가 드러난다. 관전자는 종전대로 전부 본다.
+ */
+describe("보유자 전용 미리보기 채널 — 상대에게 가지 않는다 (docs/59 B18)", () => {
+  const PREFIXES = ["honor_return:preview", "copy:pool", "hand_swap3:gives", "even_world:preview"];
+
+  function scene(): Game {
+    const base = withAug(
+      craft({
+        hands: { p0: "1m3m5m7m9m2p4p6p8p1s3s5s7s", p1: "*", p2: "*", p3: "*" },
+        discards: { p0: "1z5z" },
+        phase: "turn.act",
+        turnSeat: 0,
+        drawnLastFor: "p0",
+      }),
+      { p0: ["honor_return", "copy", "hand_swap3", "even_world"], p1: ["alchemist"] },
+    );
+    const game = createStandardGameFromState(base, undefined, C.contentAugments);
+    for (const p of base.players) {
+      for (const id of p.augments) {
+        const def = C.contentAugments.find((a) => a.id === id)!;
+        installAugment(game.engine, def, p.id, { yaku: game.yaku, catalog: game.augments });
+      }
+    }
+    // 지정 → 넘길 3장 — 등가교환 채널이 실리고, 그 사이 이벤트가 나머지 채널도 돌린다
+    const submit = (type: string, payload: unknown): void => {
+      const r = game.engine.submit({ player: "p0", type, payload } as never);
+      if (!r.ok) throw new Error(`${type}: ${JSON.stringify(r)}`);
+    };
+    submit("swap3", { target: "p1" });
+    const hand = [...(game.engine.state.zones["hand:p0"]?.tileIds ?? [])].sort((a, b) => a - b);
+    submit("swap3_give", { gives: hand.slice(0, 3) });
+    return game;
+  }
+
+  it("보유자는 넷 다 본다", () => {
+    const keys = Object.keys(viewOf(scene(), "p0").augmentView);
+    for (const prefix of PREFIXES) {
+      expect(keys.some((k) => k.startsWith(prefix)), prefix).toBe(true);
+    }
+  });
+
+  it("교환 상대를 포함한 다른 좌석에는 하나도 가지 않는다", () => {
+    const game = scene();
+    for (const viewer of ["p1", "p2", "p3"] as const) {
+      const keys = Object.keys(viewOf(game, viewer).augmentView);
+      for (const prefix of PREFIXES) {
+        expect(
+          keys.filter((k) => k.includes(prefix)),
+          `${viewer}에게 ${prefix}가 샜다`,
+        ).toEqual([]);
+      }
+    }
+  });
+
+  it("관전자는 종전대로 본다", () => {
+    const game = scene();
+    const keys = Object.keys(
+      buildPlayerView(game.engine.state, SPECTATOR_ID, game.engine.rules).augmentView,
+    );
+    for (const prefix of PREFIXES) expect(keys.some((k) => k.startsWith(prefix)), prefix).toBe(true);
   });
 });

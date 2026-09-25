@@ -43,6 +43,7 @@ import { cooldownReady, cooldownUse, roundViewKey, trackRoundSeq } from "../util
 import { handIsPoor } from "./botHelpers.js";
 import { plan } from "./botPlan.js";
 import { handAlteredKey } from "./handAltered.js";
+import { clearViewOnDisarm, isDisarmEcho } from "./disarmBanner.js";
 
 const ID = "even_world";
 const ACTION = "even_world_flip";
@@ -113,6 +114,28 @@ function evenEvents(state: GameState, holder: PlayerId) {
   ];
 }
 
+/**
+ * 발동 전 미리보기 — **보유자 전용**, `{ [tileId]: 바뀔 kindKey }`.
+ *
+ * 손패 전체를 바꾸는 증강인데 어떤 패가 무엇이 되는지 볼 길이 없었다(2026-09-25, docs/59
+ * U61). 규칙은 단순하지만 화면이 다시 세지 않는다 — 짚는 패와 실제로 바뀌는 패가 갈리지
+ * 않게 발동과 **같은 함수**(`shouldFlip`·`toEvenRank`)로 서버가 실어 준다(삼원의 의지
+ * `:material`과 같은 원칙, qaFixes 2026-09-07). 쓸 수 없는 때(쿨다운·리치 중)는 비운다.
+ * 국 스코프 키이고 채널 이름에 보유자를 붙인다(관전 뷰의 평평한 키가 서로 덮어쓰지 않게).
+ */
+const previewKey = (h: PlayerId): string => roundViewKey(h, `${ID}:preview:${h}`);
+
+/** 지금 누르면 바뀔 패 — `{ tileId: 바뀐 뒤 kindKey }` (evenEvents와 같은 규칙) */
+function flipPreview(state: GameState, holder: PlayerId): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const tileId of handIdsOf(state, holder)) {
+    if (!shouldFlip(state, tileId)) continue;
+    const kind = kindOf(state, tileId);
+    out[String(tileId)] = kindKey({ suit: kind.suit, rank: toEvenRank(kind.rank) });
+  }
+  return out;
+}
+
 /** 지금 발동할 수 있는가 — 쓴 적이 없거나 마지막 발동 이후 2국이 지났다 */
 function hasUsesLeft(state: GameState, holder: PlayerId): boolean {
   return cooldownReady(state, ID, holder, COOLDOWN_ROUNDS);
@@ -152,6 +175,24 @@ export const evenWorld: AugmentDef = defineAugment({
     if (!engine.actions.has(ACTION)) {
       engine.actions.register(evenWorldAction);
     }
+
+    // 미리보기(previewKey 주석) — 손패가 바뀌는 이벤트를 열거하지 않고 `reaction("*")` +
+    // 값 비교로 따라간다. 값이 같으면 아무것도 내지 않으므로 반응 연쇄는 한 겹에서 멈추고
+    // 리플레이 이벤트는 손패가 실제로 바뀐 때만 는다.
+    ctx.reaction("*", (event, rc) => {
+      // 무장해제 연쇄 안에서 방금 비운 채널을 도로 채우지 않는다(isDisarmEcho 주석)
+      if (isDisarmEcho(ctx, event, [previewKey(holder)])) return;
+      const state = rc.state;
+      const usable =
+        hasUsesLeft(state, holder) && state.round.byPlayer[holder]?.riichi == null;
+      const next = usable ? flipPreview(state, holder) : {};
+      const cur = state.augmentData[previewKey(holder)];
+      if (JSON.stringify(cur ?? {}) === JSON.stringify(next)) return;
+      rc.emit(augmentDataSet(previewKey(holder), next));
+    });
+    // 무장해제되면 위 반응이 멈춰 값이 얼어붙는다 — 쓸 수 없는 능력의 미리보기를 내린다.
+    // 위 반응의 isDisarmEcho 가드가 있어야 실제로 내려간 채로 남는다.
+    clearViewOnDisarm(ctx, () => [previewKey(holder)]);
 
     // 자기 턴에, 아직 안 썼고, 바꿀 홀수 수패가 있을 때만 버튼을 노출한다 (합법성은 validate가 최종 판정)
     ctx.holderTurnOptions((state) => {

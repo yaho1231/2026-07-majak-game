@@ -78,7 +78,10 @@ describe("U18 같은 액션은 어디서나 증강 이름 하나로 부른다", 
     expect(APP_CODE).toContain(
       "<SpectateUsableStrip choice={props.spectateChoice} catalog={props.catalog} />",
     );
-    expect(APP_CODE).toContain("<ChoiceLabel label={o.label} catalog={catalog} title={choice.title} />");
+    // view — 좌석 id 인자를 이름으로 바꾼다(B18 U65)
+    expect(APP_CODE).toContain(
+      "<ChoiceLabel label={o.label} catalog={catalog} title={choice.title} view={view} />",
+    );
   });
 });
 

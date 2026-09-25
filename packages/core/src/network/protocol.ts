@@ -1448,6 +1448,15 @@ export interface RoundOverMessage {
    * 0·미지정이면 대기가 없다(테스트·봇 게임) — 카운트다운도 띄우지 않는다.
    */
   autoContinueMs?: number;
+  /**
+   * 이 국으로 대국이 끝나면 그 사유 — 없으면 다음 국이 이어진다.
+   *
+   * 결과 화면이 마지막 국에서도 «다음 국으로»·«N초 뒤 다음 국이 자동으로 시작됩니다»·
+   * «친 넘어감»을 띄워, 눌렀더니 순위표가 뜨는 어긋남이 있었다(2026-09-25, docs/59 U77).
+   * 서버가 roundOver를 보내기 **전에** 종국 판정을 끝내 여기 싣는다(HanchanController
+   * `willEnd`). 옛 메시지·리플레이에는 없으므로 선택 필드다 — 낡은 탭은 무시할 뿐이다.
+   */
+  gameEnds?: GameEndReason;
 }
 
 export interface RankingEntry {
