@@ -127,6 +127,17 @@ import { LESSONS, TUTORIAL_KEY, pickLesson, pickUrgent, placeBubble } from "./tu
 import { DRAWN_TILE } from "./tutorial.js";
 import type { BubbleSpot, CoachCtx, CoachRect, Lesson, LessonLock } from "./tutorial.js";
 import { remainingCounter } from "./waitCounts.js";
+import {
+  CALL_PICK_CHIP_MAX,
+  CALL_PICK_TYPES,
+  callPickArmableIn,
+  callPickRemaining,
+  callPickSigs,
+  callPickTileIds,
+  resolveCallPick,
+  sameCallChoice,
+} from "./callPick.js";
+import type { CallPick } from "./callPick.js";
 import { groupWinHand, shapeGroupLabel } from "./winShapeView.js";
 import {
   backlogProdTtl,
@@ -2112,6 +2123,20 @@ interface SelectionCtx {
   dwClickDead: (idx: number) => DwClickResult;
   /** 예약한 쌍을 교환 큐로 넘기고 무장을 푼다 */
   dwConfirm: () => void;
+  /**
+   * 후로 고르기(docs/59 U56) — 액션 바의 [치 ×3] 같은 묶음 버튼을 누르면 선다. 무장(armedType)과
+   * **따로 둔다**: armedType이 서면 ✦ 버튼이 켜짐(.aug-btn-armed)으로 그려지고, 튜토리얼의 무장 선택자가
+   * 반응하고, ✦ 클릭이 무장 해제로 가로챈다 — 후로는 증강이 아니다. 둘은 동시에 서지 않는다
+   * (무장하면 풀리고, 이걸 세우면 무장·리치 모드가 풀린다).
+   */
+  callPick: CallPick | null;
+  /** 이 종류로 고르기 시작 — 이미 그 종류를 고르는 중이면 푼다(토글) */
+  toggleCallPick: (type: string, options: ActionOption[]) => void;
+  cancelCallPick: () => void;
+  /** 이 손패가 지금 후로 고르기에서 누를 수 있는 패인가(이미 고른 패 포함) */
+  callPickArmable: (id: number) => boolean;
+  /** 손패 누르기 — 고르기/빼기, 하나로 정해지면 그 서버 옵션을 낸다. 대상이 아니면 false */
+  callPickClick: (id: number) => boolean;
 }
 
 /**
@@ -2154,6 +2179,11 @@ const NO_SELECTION: SelectionCtx = {
   dwClickHand: () => null,
   dwClickDead: () => null,
   dwConfirm: () => {},
+  callPick: null,
+  toggleCallPick: () => {},
+  cancelCallPick: () => {},
+  callPickArmable: () => false,
+  callPickClick: () => false,
 };
 
 const SelectionContext = createContext<SelectionCtx>(NO_SELECTION);
@@ -16206,6 +16236,39 @@ const GameTable = memo(function GameTable(props: {
     // 위 pointerdown과 같은 이유로 armedType이 바뀔 때만 재구독한다
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selection.armedType]);
+  /*
+   * 후로 고르기(docs/59 U56)의 빠져나가기 — 무장과 같은 규칙이다(§2 원칙 7): 펠트의 빈 곳이나 Esc면 풀고
+   * 풀렸다고 말한다. 손패·액션 바(.own-area)와 판 가운데는 data-arm-zone이라 빗나가도 풀리지 않는다.
+   * 무장과 동시에 서지 않으므로(SelectionCtx.callPick) 위 두 리스너와 겹치지 않는다.
+   */
+  const callPickType = selection.callPick?.type ?? null;
+  useEffect(() => {
+    if (callPickType === null) return;
+    const name = actionLabel(callPickType, catalog);
+    const onDown = (e: PointerEvent): void => {
+      if (e.button !== 0 || e.ctrlKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t === null || tableRef.current?.contains(t) !== true) return;
+      if (t.closest("[data-arm-zone]") !== null || t.closest(".icon-btn") !== null) return;
+      const onControl = t.closest("button, [role=button], a, input, select, textarea, label") !== null;
+      selection.cancelCallPick();
+      if (!onControl) props.onToast?.(`${name} 고르기를 취소했습니다`);
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== "Escape" || e.defaultPrevented || isTypingTarget(e.target)) return;
+      if (document.querySelector(ESC_OWNER_SELECTOR) !== null) return;
+      selection.cancelCallPick();
+      props.onToast?.(`${name} 고르기를 취소했습니다`);
+    };
+    document.addEventListener("pointerdown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+    // cancelCallPick은 상태를 비우기만 하므로 스테일해도 결과가 같다(위 무장 리스너와 같은 이유)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callPickType]);
 
   /**
    * 우클릭 쯔모기리 — **판 어디서든** 오른쪽 버튼이면 방금 쯔모한 패를 그대로 버린다.
@@ -16670,6 +16733,13 @@ function useSelection(
   const [dwHand, setDwHand] = useState<number | null>(null);
   const [dwDead, setDwDead] = useState<number | null>(null);
   const [dwPairs, setDwPairs] = useState<DwPair[]>([]);
+  // 후로 고르기(docs/59 U56) — 세운 프롬프트를 함께 기억해, 프롬프트가 바뀐 첫 렌더에도 옛 후보가 새지 않게 한다
+  const [callPickState, setCallPickState] = useState<{
+    prompt: unknown;
+    type: string;
+    options: ActionOption[];
+    picks: number[];
+  } | null>(null);
 
   const myPrompt = prompt !== null && prompt.player === view.playerId ? prompt : null;
   /*
@@ -16746,6 +16816,8 @@ function useSelection(
     setHandPicks([]);
     setFrameTile(null);
     clearDw();
+    // 무장·[리치](arm(null) 뒤 리치 모드)는 손패 클릭의 뜻을 새로 정한다 — 후로 고르기와 함께 서지 않는다
+    setCallPickState(null);
   };
 
   const submit = (o: ActionOption): void => {
@@ -16754,6 +16826,59 @@ function useSelection(
     setHandPicks([]);
     setFrameTile(null);
     clearDw();
+    setCallPickState(null);
+  };
+
+  // ── 후로 고르기(docs/59 U56) — 묶음 버튼 → 손패 클릭으로 좁혀 서버 옵션 그대로 낸다 ──
+  const callPick = useMemo<CallPick | null>(() => {
+    if (callPickState === null || myPrompt === null || callPickState.prompt !== myPrompt) return null;
+    return {
+      type: callPickState.type,
+      options: callPickState.options,
+      picks: callPickState.picks,
+      remaining: callPickRemaining(view, callPickState.options, callPickState.picks),
+    };
+  }, [callPickState, myPrompt, view]);
+  // 순이 넘어가면(남의 론·퐁, 시간 초과) 고르던 것을 버린다 — 위 prompt 대조가 첫 렌더를 막고, 이건 뒷정리다
+  useEffect(() => {
+    setCallPickState(null);
+  }, [myPrompt]);
+
+  const toggleCallPick = (type: string, options: ActionOption[]): void => {
+    if (myPrompt === null) return;
+    if (callPickState !== null && callPickState.prompt === myPrompt && callPickState.type === type) {
+      setCallPickState(null);
+      return;
+    }
+    // 증강 무장·리치 모드와 함께 서지 않는다(SelectionCtx.callPick 주석). arm()을 거치지 않는 것은
+    // arm이 후로 고르기를 비우기 때문이다 — 강제 선택 중에는 액션 바가 후로를 내지 않는다(forcedPick)
+    setArmedType(null);
+    setHandPicks([]);
+    setFrameTile(null);
+    clearDw();
+    exitRiichiMode();
+    setCallPickState({ prompt: myPrompt, type, options, picks: [] });
+  };
+  const cancelCallPick = (): void => setCallPickState(null);
+
+  const callPickArmable = (id: number): boolean =>
+    callPick !== null && callPickArmableIn(view, callPick, id);
+
+  /*
+   * 손패 누르기 — 하나로 정해지면(남은 후보가 손패로는 모두 같은 수여도) 곧바로 낸다. [확인]은 없다:
+   * 파괴적인 수가 아니고 리액션 타이머가 돈다. 낼 때는 **서버 옵션 객체 그대로**다(callPick.ts 머리말 —
+   * 누른 id로 payload를 다시 만들면 서버의 완전일치 대조에 걸린다).
+   */
+  const callPickClick = (id: number): boolean => {
+    if (callPick === null || callPickState === null) return false;
+    const r = resolveCallPick(view, callPick, id);
+    if (r === null) return false;
+    if (r.submit !== null) {
+      submit(r.submit);
+      return true;
+    }
+    setCallPickState({ ...callPickState, picks: r.picks });
+    return true;
   };
 
   // ── 왕패의 주인 — 여러 쌍을 한 번에 고른 뒤 차례로 제출한다 ──
@@ -17013,6 +17138,11 @@ function useSelection(
     dwClickHand,
     dwClickDead,
     dwConfirm,
+    callPick,
+    toggleCallPick,
+    cancelCallPick,
+    callPickArmable,
+    callPickClick,
     meldOptionFor,
   };
 }
@@ -22995,6 +23125,9 @@ function OwnArea(props: {
    */
   const hand3Picking = sel.armMode === "hand3";
   const handPicks = sel.handPicks;
+  // 후로 고르기(docs/59 U56) — 액션 바의 묶음 버튼([치 ×3])을 누르면 선다. 관전에는 프롬프트가 없다
+  const callPicking = !isSpectator && sel.callPick !== null;
+  const callPickName = sel.callPick !== null ? actionLabel(sel.callPick.type, props.catalog) : "";
   const hand3Pool = useMemo(() => {
     const pool = new Set<number>();
     if (!hand3Picking) return pool;
@@ -24518,6 +24651,37 @@ function OwnArea(props: {
               취소
             </button>
           </div>
+        ) : callPicking && sel.callPick !== null ? (
+          /*
+            후로 고르기(docs/59 U56) — 손패에서 함께 쓸 패를 누른다. [확인]은 없다: 하나로 정해지는 순간
+            나간다(파괴적인 수가 아니고 리액션 타이머가 돈다). [취소]는 고르기만 접고 프롬프트는 남긴다 —
+            [패스]·다른 후로는 액션 바에 그대로 있다. 남은 후보가 적으면 칩으로도 고른다: 손패로는 못
+            가르는 드문 경우(가깡의 퐁이 둘)와 키보드(숫자 1..N)의 길이다.
+          */
+          <div className="arm-hint arm-swap arm-call">
+            <span className="arm-hint-text">
+              {callPickName}: 함께 쓸 손패를 클릭하세요
+              {sel.callPick.picks.length > 0 ? ` (${sel.callPick.picks.length}장 고름)` : ""}
+            </span>
+            {sel.callPick.remaining.length <= CALL_PICK_CHIP_MAX
+              ? sel.callPick.remaining.map((o, i) => (
+                  <button
+                    key={i}
+                    className="call-pick-chip"
+                    title={`${callPickName} 이 조합으로 (단축키 ${i + 1})`}
+                    aria-label={`${callPickName}: ${(callPickTileIds(o) ?? [])
+                      .map((t) => formatTile(view.tiles[t]))
+                      .join(", ")}`}
+                    onClick={() => sel.submit(o)}
+                  >
+                    <ActionTiles view={view} option={o} />
+                  </button>
+                ))
+              : null}
+            <button className="arm-hint-cancel" onClick={() => sel.cancelCallPick()}>
+              취소
+            </button>
+          </div>
         ) : armedAug === "frame_discard" && sel.frameTile !== null ? (
           <div className="arm-hint arm-swap">
             <span className="arm-hint-text">
@@ -24827,10 +24991,13 @@ function OwnArea(props: {
               (swapGiveInHand && swap3Sel.includes(id)) ||
               (hand3Picking && handPicks.includes(id)) ||
               (dwArmed && (sel.dwHand === id || dwStaged)) ||
+              (callPicking && sel.callPick?.picks.includes(id) === true) ||
               (armedAug === "frame_discard" && sel.frameTile === id);
             const armable = swapGiveInHand
               ? swap3Pick.pool.includes(id)
-              : hand3Picking
+              : callPicking
+                ? sel.callPickArmable(id)
+                : hand3Picking
                 ? hand3Pool.has(id)
                 : dwArmed
                   ? dwHandArmable(id)
@@ -24845,10 +25012,11 @@ function OwnArea(props: {
               hasDrawn && id === drawnId,
             );
             // 무장 대상도 '지금 누를 수 있는 패'다 — 커서·hover 들림을 함께 준다
+            // 후로 고르기 중에는 버림이 아니라 «함께 쓸 패» 고르기다 — 후보에 안 쓰이는 패는 누를 곳이 아니다
             const clickable =
               !coachLocked &&
               (armable ||
-                (active !== undefined && (!props.riichiMode || riichi !== undefined)));
+                (!callPicking && active !== undefined && (!props.riichiMode || riichi !== undefined)));
             // 리치 선언 후 버릴 수 없는(옵션 없는) 패 + 리치 모드에서 리치 불가 패를 어둡게
             const noDiscard = discard === undefined && freeDiscard === undefined;
             /*
@@ -24881,7 +25049,9 @@ function OwnArea(props: {
             const futureGot = futureGotMine.has(id);
             // 텐파이면 이 패를 버렸을 때의 대기패를 hover 시 표시 (리치 모드 아니어도)
             // 넘길 패를 고르는 중에도 «이 패를 버리면» 전제의 대기 툴팁은 엉뚱한 말이다(U23·U07)
-            const showWaits = hoverId === id && hoverWaits.length > 0 && !armNoDiscard && !swapGiveInHand;
+            // 후로 고르기의 클릭도 버림이 아니다(docs/59 U56)
+            const showWaits =
+              hoverId === id && hoverWaits.length > 0 && !armNoDiscard && !swapGiveInHand && !callPicking;
             // 쏘이는 패 — 관전에서만, 그리고 이 좌석이 지금 두는 사람일 때만 선다.
             const hot = hotOf(id);
             return (
@@ -24910,7 +25080,9 @@ function OwnArea(props: {
                   // 사실 기반 표시는 이름에도 실어야 한다 — 링과 바람 글자는 둘 다
                   // 눈으로만 읽힌다(화면을 못 보면 중계 해설이 통째로 사라진다).
                   hot === null ? null : hotWaitTitle(hot),
-                  swapGiveInHand && swap3Sel.includes(id)
+                  callPicking && sel.callPick?.picks.includes(id) === true
+                    ? `${callPickName}에 함께 쓸 패로 선택됨. 다시 누르면 뺍니다`
+                    : swapGiveInHand && swap3Sel.includes(id)
                     ? "넘길 패로 선택됨. 다시 누르면 뺍니다"
                     : dwStaged
                       ? "왕패와 교환 예약됨. 다시 누르면 취소"
@@ -24962,7 +25134,7 @@ function OwnArea(props: {
                 }${lockedTile ? " hand-sealed" : ""}${armable ? " hand-armable" : ""}${
                   swapChosen ? " hand-swap-picked" : ""
                 }${coachLocked ? " hand-coach-locked" : ""}${
-                  armedAug !== null && !armable ? " hand-dimmed" : ""
+                  (armedAug !== null || callPicking) && !armable ? " hand-dimmed" : ""
                 }${
                   danger ? " hand-danger" : ""
                 }${doomed ? " hand-doomed" : ""}${safe ? " hand-safe" : ""}${futureGot ? " hand-future" : ""}${specDangerCls(id)}${hot === null ? "" : " spec-hot"}`}
@@ -25037,6 +25209,20 @@ function OwnArea(props: {
                   }
                   // 등가교환 상대 지정(ARM_MODE.swap3 = "opp")에서 손패를 누르면 아래 상대 무장의
                   // 빗나감 분기(해제 + 알림)가 그대로 맡는다 — 옛 swap3 전용 분기는 걷었다(docs/59 U11)
+                  /*
+                   * 후로 고르기(docs/59 U56) — 이 패를 함께 쓸 패로 넣고 뺀다. 하나로 정해지면 useSelection이
+                   * 서버 옵션 그대로 낸다. 타패·무장 분기보다 앞이다: 내 차례의 안깡 고르기가 버림으로 새면
+                   * 되돌릴 수 없다. 대상이 아닌 패는 대상 영역 안의 빗나감 — 풀지 않고 까닭만 말한다(§2 원칙 7).
+                   */
+                  if (callPicking) {
+                    if (sel.callPickClick(id)) {
+                      sfx.pick();
+                    } else {
+                      haptics.reject();
+                      props.onToast?.(`이 패는 ${callPickName}에 쓰이지 않습니다`);
+                    }
+                    return;
+                  }
                   // 가지치기: 이 패를 3장 선택에 넣고 뺀다 (제출은 [확인] 버튼)
                   if (hand3Picking) {
                     toggleHandPick(id);
@@ -28969,12 +29155,53 @@ function ActionBar(props: {
    * 삐져나가 **맨 끝의 [패스]가 화면 밖에 있어 누를 수 없었다**(2026-09-19 사용자
    * 보고. 1280×800 실측: 버튼 22개일 때 바 폭 2068px, 패스 x=1615~1662).
    * 서버가 주는 순서(론 → 후로 → 패스)와 같으므로 평소 화면과 단축키 순서는 그대로다.
+   *
+   * 그리고 **같은 종류의 후로는 버튼 하나로 접는다**(2026-09-25, docs/59 U56) — [치 ×5]를 누르면
+   * 손패에서 함께 쓸 패를 눌러 좁힌다(SelectionCtx.callPick). 22개가 서던 판이 [론][치][퐁][깡][패스]가
+   * 된다. 세 무리와 스크롤 상자는 안전망으로 남긴다(묶지 않는 증강 선언이 많이 서는 판) — 2026-09-19
+   * 결정(패스·론이 늘 제자리)의 목적은 버튼 수 자체가 줄어 더 단단해진다.
+   * 묶음의 대표는 그 종류의 첫 옵션이다(서버 순서). 쓰는 패가 손패에 다 보이지 않는 후보(서명을 못
+   * 만드는 것)는 묶지 않고 예전처럼 제 버튼을 둔다 — 손패로 고를 수 없는 것을 손패로 고르게 하지 않는다.
    */
+  const callGroups = new Map<ActionOption, ActionOption[]>();
+  const foldedButtons: ActionOption[] = [];
+  {
+    const headOf = new Map<string, ActionOption>();
+    for (const o of rawButtons) {
+      if (CALL_PICK_TYPES.has(o.type) && callPickSigs(view, o) !== null) {
+        const head = headOf.get(o.type);
+        if (head !== undefined) {
+          const group = callGroups.get(head)!;
+          // 손패로는 같은 수(서명·나머지 payload가 같다)는 한 벌만 — 어느 쪽을 내도 결과가 같다
+          if (!group.some((g) => sameCallChoice(view, g, o))) group.push(o);
+          continue;
+        }
+        headOf.set(o.type, o);
+        callGroups.set(o, [o]);
+      }
+      foldedButtons.push(o);
+    }
+  }
+  /** 이 버튼이 여러 후보를 품은 묶음인가 — 누르면 곧바로 내지 않고 손패 고르기로 들어간다 */
+  const groupOf = (o: ActionOption): ActionOption[] | null => {
+    const g = callGroups.get(o);
+    return g !== undefined && g.length > 1 ? g : null;
+  };
   const buttons = [
-    ...rawButtons.filter((o) => o.type === "win"),
-    ...rawButtons.filter((o) => o.type !== "win" && o.type !== "pass"),
-    ...rawButtons.filter((o) => o.type === "pass"),
+    ...foldedButtons.filter((o) => o.type === "win"),
+    ...foldedButtons.filter((o) => o.type !== "win" && o.type !== "pass"),
+    ...foldedButtons.filter((o) => o.type === "pass"),
   ];
+  /**
+   * 후로 고르기 중 안내 줄에 칩으로 선 남은 후보(OwnArea와 같은 기준) — 숫자 1..N이 이 순서를 따른다.
+   * 이 바의 묶음 종류를 고르는 중일 때만(다른 프롬프트의 잔재는 useSelection이 이미 걸렀다).
+   */
+  const pickChips =
+    sel.callPick !== null &&
+    buttons.some((o) => o.type === sel.callPick?.type) &&
+    sel.callPick.remaining.length <= CALL_PICK_CHIP_MAX
+      ? sel.callPick.remaining
+      : null;
   const locked = prompt.locked ?? [];
   /** 고를 것이 패스뿐이라 잠시 뒤 스스로 넘어가는 통보인가 (버튼이 시간을 그린다) */
   const autoPassing = isLockNoticeOnly(prompt);
@@ -29040,6 +29267,13 @@ function ActionBar(props: {
    * key는 `${type}-${선택지 버튼 순번}` 꼴이다(아래 renderButton의 key와 같아야 한다).
    */
   const pressOption = (o: ActionOption, key: string): void => {
+    // 후로 묶음 — 곧바로 내지 않고 손패 고르기로(다시 누르면 푼다). 후보가 하나면 아래 평소 길(docs/59 U56)
+    const group = groupOf(o);
+    if (group !== null) {
+      setPrimedKey(null);
+      sel.toggleCallPick(o.type, group);
+      return;
+    }
     const previewFirst = props.tapTwiceToDiscard === true && PREVIEW_FIRST_TYPES.has(o.type);
     if (previewFirst && primedKey !== key) {
       setPrimedKey(key);
@@ -29076,8 +29310,23 @@ function ActionBar(props: {
     hotButtons = buttons;
   }
   hotButtons.forEach((o, i) => {
-    keyed.push({ key: String(keyed.length + 1), run: () => pressOption(o, `${o.type}-${i}`) });
+    /*
+     * 한 글자 숫자만 누를 수 있다 — 리스너는 e.key 완전일치라 «10»은 영영 맞지 않는데 툴팁은
+     * «단축키 12»라고 적었다(2026-09-25, docs/59 U57). 항목은 빼지 않고 키만 비운다: ActionHotkeys의
+     * R/P 폴백이 keyed 끝자리를 buttons 순서로 찾는다(빼면 P가 엉뚱한 버튼을 누른다).
+     */
+    const n = keyed.length + 1;
+    keyed.push({ key: n <= 9 ? String(n) : "", run: () => pressOption(o, `${o.type}-${i}`) });
   });
+  /*
+   * 후로 고르기 중에는 숫자 1..N이 안내 줄의 남은 후보 칩을 순서대로 낸다 — 키보드로 특정 치를 고르는
+   * 길이다(docs/59 U56). 그동안 바의 숫자는 비우고(키 "") 칩을 맨 앞에 끼운다. 글자 단축키(R·P)는
+   * keyed 끝자리를 쓰므로 그대로 산다.
+   */
+  if (pickChips !== null) {
+    for (const k of keyed) k.key = "";
+    keyed.unshift(...pickChips.map((o, i) => ({ key: String(i + 1), run: () => sel.submit(o) })));
+  }
   /** 선택지 버튼 앞에 선 리치 계열 버튼 수 — 선택지 버튼의 단축키 번호가 여기서 이어진다 */
   const hotBase = keyed.length - hotButtons.length;
   const hotIndex = (i: number): string => String(hotBase + i + 1);
@@ -29114,6 +29363,9 @@ function ActionBar(props: {
     props.onDoomedHint?.(primedType === null ? null : doomedTileIdsOf(view, primedType));
   };
 
+  /** 리액션에서 부르는 패 — 묶음 버튼에 그린다(U56). 내 차례(안깡·가깡)에는 없다 */
+  const calledTile =
+    !isMyTurn && view.round.lastDiscard !== null ? view.tiles[view.round.lastDiscard.tileId] : undefined;
   const renderButton = (o: ActionOption, i: number): JSX.Element => {
     const label =
       o.type === "win" ? (isMyTurn ? "쯔모" : "론") : actionLabel(o.type, props.catalog);
@@ -29136,11 +29388,25 @@ function ActionBar(props: {
     const key = `${o.type}-${i}`;
     // 미리보기 먼저 — 첫 탭은 재료를 손패에 고정해 짚기만 한다(U61). 판정은 pressOption 한 곳
     const primed = primedKey === key;
+    // 툴팁의 숫자는 실제로 걸린 키일 때만 적는다 — 10번째부터·후로 고르기 중에는 키가 비어 있다(U57)
+    const hotBound = keyed[hotBase + i]?.key === hotIndex(i);
+    // 후로 묶음(U56) — 누르면 손패 고르기로 들어가고, 그 중이면 눌린 채로 그린다
+    const group = groupOf(o);
+    const picking = group !== null && sel.callPick?.type === o.type;
+    const groupTip =
+      group === null
+        ? ""
+        : picking
+          ? ` — 고르는 중 (다시 누르면 취소)`
+          : ` — 후보 ${group.length}개, 누른 뒤 함께 쓸 손패를 클릭`;
     return (
       <button
         key={key}
-        className={`act ${tone}${primed ? " act-primed" : ""}`}
+        className={`act ${tone}${primed ? " act-primed" : ""}${group !== null ? " act-group" : ""}${
+          picking ? " act-group-on" : ""
+        }`}
         data-confirm-pending={primed ? "bar" : undefined}
+        {...(group !== null ? { "aria-pressed": picking } : {})}
         onClick={() => pressOption(o, key)}
         /* 누르면 사라지는 패를 손패에서 짚는다 — 마우스·키보드 둘 다 (감사 §6-10) */
         onMouseEnter={() => props.onDoomedHint?.(doomedTileIdsOf(view, o.type))}
@@ -29151,21 +29417,35 @@ function ActionBar(props: {
         onFocus={() => props.onDoomedHint?.(doomedTileIdsOf(view, o.type))}
         onBlur={restoreDoomed}
         title={
-          o.type === "win"
-            ? `${label} (단축키 ${hotIndex(i)} 또는 R)`
-            : o.type === "pass"
-              ? `${label} (단축키 ${hotIndex(i)} 또는 P)`
-              : `${label} (단축키 ${hotIndex(i)})`
+          hotBound
+            ? o.type === "win"
+              ? `${label}${groupTip} (단축키 ${hotIndex(i)} 또는 R)`
+              : o.type === "pass"
+                ? `${label}${groupTip} (단축키 ${hotIndex(i)} 또는 P)`
+                : `${label}${groupTip} (단축키 ${hotIndex(i)})`
+            : o.type === "win"
+              ? `${label} (단축키 R)`
+              : o.type === "pass"
+                ? `${label} (단축키 P)`
+                : `${label}${groupTip}`
         }
       >
         {fromAugment ? "✦ " : ""}
         {label}
         {primed ? (
           <span className="act-target">한 번 더 눌러 발동</span>
-        ) : detail !== "" ? (
+        ) : detail !== "" && group === null ? (
           <span className="act-target">{detail}</span>
         ) : null}
-        <ActionTiles view={view} option={o} />
+        {group !== null ? (
+          /* 묶음은 부른 패(리액션이면 방금 버려진 패) + 후보 수만 — 몸통은 손패에서 고른다(U56) */
+          <span className="act-tiles">
+            {calledTile !== undefined ? <TileImg tile={calledTile} size="mini" /> : null}
+            <span className="act-group-count" aria-hidden="true">×{group.length}</span>
+          </span>
+        ) : (
+          <ActionTiles view={view} option={o} />
+        )}
       </button>
     );
   };
