@@ -1894,6 +1894,12 @@ interface Settings {
   showSafeTiles: boolean;
   /** 우클릭 쯔모기리 — 판 어디서든 오른쪽 버튼을 누르면 쯔모한 패를 그대로 버린다. */
   rightClickTsumogiri: boolean;
+  /**
+   * 리치 중 자동 쯔모기리 — 선택형 액티브(승부수 등) 때문에 서버 자동이 꺼진 순에도 잠시 뒤
+   * 쯔모패를 대신 버린다(App `tryRiichiSoftAuto`, 2026-09-25 docs/59 U52). 기본 켬 — 서버
+   * 자동과 같은 편안함이 기본이고, 매 순 직접 보고 싶은 사람만 끈다.
+   */
+  riichiSoftAuto: boolean;
   /** 도라 반짝임 — 도라인 패를 금빛(전용 도라는 보랏금)으로 반짝이게 한다. */
   doraFx: boolean;
   /** 화면 효과 — 화료·리치 때 화면 흔들림·플래시·파티클 연출. */
@@ -1945,6 +1951,7 @@ const DEFAULT_SETTINGS: Settings = {
   showSafeTiles: true,
   // 우클릭 쯔모기리는 기본 꺼짐 — 판 전체가 대상이라 모르고 켜져 있으면 실수로 패가 나간다.
   rightClickTsumogiri: false,
+  riichiSoftAuto: true,
   doraFx: true,
   screenFx: true,
   prodSpeed: 1,
@@ -4895,6 +4902,8 @@ export function App(): JSX.Element {
    */
   function tryRiichiSoftAuto(p: PromptMessage["prompt"]): void {
     if (coachOnRef.current || sandboxRef.current !== null || spectatingRef.current) return;
+    // 설정에서 끈 사람은 예전처럼 매 순 직접 둔다(설정 «리치 중 자동 쯔모기리»)
+    if (!settingsRef.current.riichiSoftAuto) return;
     const disc = riichiSoftAutoOption(p, prevViewRef.current);
     if (disc === null) return;
     const seat = p.player;
@@ -5207,11 +5216,21 @@ export function App(): JSX.Element {
    *   엇갈리지 않는다. 손패 위 hover는 보지 않는다: 리치 중 손은 대개 방금 버린 자리(손패)에
    *   머물러 있어, 조금만 흔들려도 매 순 걷히면 자동이 없는 것과 같다. 걸린 직후 짧은 틈도
    *   흘려 보낸다 — 버튼이 제자리에 가만히 있는 포인터 밑으로 나타날 때도 over가 난다.
+   *   다만 그 틈에 **움직여서** 올라간 포인터까지 버리면, 거기 가만히 멈춰 메뉴를 고민하는
+   *   사이 타이머가 터진다 — 틈이 끝날 때 한 번, 틈 동안 움직였고 지금 그 위에 있으면 걷는다.
+   * - ✦ 메뉴가 이미 열린 채로 걸렸으면 곧바로 걷는다 — 지난 순에 메뉴를 연 채 시간이 끝나면
+   *   메뉴 상태가 남아 다음 순에 열린 채로 다시 뜬다. 가장 분명한 «고민 중» 신호다.
+   *   (걸 때(tryRiichiSoftAuto)는 아직 새 프롬프트를 그리기 전이라 여기, 그린 뒤에 본다.)
+   * (틈·열린 메뉴 처리는 2026-09-25 B16 리뷰 라운드 1)
    */
   useEffect(() => {
     if (riichiSoftAutoAt === null) return;
     const since = performance.now();
     const stop = (): void => cancelRiichiSoftAuto();
+    if (document.querySelector(".aug-menu") !== null) {
+      stop();
+      return;
+    }
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === "Shift" || e.key === "Control" || e.key === "Alt" || e.key === "Meta") return;
       stop();
@@ -5221,13 +5240,24 @@ export function App(): JSX.Element {
       const t = e.target;
       if (t instanceof Element && t.closest(".aug-btn, .aug-menu, .action-bar") !== null) stop();
     };
+    let movedInGrace = false;
+    const onMove = (): void => {
+      movedInGrace = true;
+    };
+    const graceEnd = window.setTimeout(() => {
+      document.removeEventListener("pointermove", onMove, true);
+      if (movedInGrace && document.querySelector(".aug-btn:hover, .aug-menu:hover, .action-bar:hover") !== null) stop();
+    }, RIICHI_SOFT_AUTO_HOVER_GRACE_MS);
     document.addEventListener("pointerdown", stop, true);
     document.addEventListener("keydown", onKey, true);
     document.addEventListener("pointerover", onOver, true);
+    document.addEventListener("pointermove", onMove, true);
     return () => {
+      window.clearTimeout(graceEnd);
       document.removeEventListener("pointerdown", stop, true);
       document.removeEventListener("keydown", onKey, true);
       document.removeEventListener("pointerover", onOver, true);
+      document.removeEventListener("pointermove", onMove, true);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [riichiSoftAutoAt]);
@@ -6160,8 +6190,12 @@ export function App(): JSX.Element {
        * 탈출구는 새로고침뿐이었고 안내는 그 말을 하지 않았다 (감사 §2-4).
        *
        * 지우는 편이 항상 안전하다: 서버가 정말 기다리는 중이면 곧바로 다시 보낸다.
+       *
+       * 걸려 있던 자동응답(리치 소프트 자동 포함)도 함께 걷는다 — 화면에 없는 프롬프트의
+       * 답이 끊긴 사이 나가면 서버가 거절한다. 다시 온 프롬프트에 새로 걸린다(2026-09-25, B16 리뷰).
        */
       setPrompts({});
+      cancelAutoRespond();
       setDraft(null);
       setDraftPicked(false);
       draftPickedRef.current = false;
@@ -17420,6 +17454,13 @@ function SettingsPanel(props: {
       key: "rightClickTsumogiri",
       label: "우클릭 쯔모기리",
       desc: "게임 화면 어디서든 마우스 오른쪽 버튼을 누르면 방금 쯔모한 패를 바로 버립니다. 리치할 패를 고르는 중이거나 증강을 선택하는 중에는 동작하지 않습니다",
+    },
+    // 빠른 토글(QuickToggles)이 아니라 여기다 — 그 넷은 «매 국 옵션 초기화»로 되돌아가는 판 위
+    // 스위치이고, 이건 한 번 정하면 두는 취향이다(2026-09-25, docs/59 U52 리뷰)
+    {
+      key: "riichiSoftAuto",
+      label: "리치 중 자동 쯔모기리",
+      desc: "리치 중 쓸 수 있는 액티브 증강(승부수 등)이 있어 자동 쯔모기리가 멈추는 순에도, 2초 뒤 쯔모한 패를 대신 버립니다. 그 사이 화면이나 키를 누르거나 ✦ 버튼·액션 바에 마우스를 올리면 멈추고 직접 고를 수 있습니다",
     },
     { key: "doraFx", label: "도라 반짝임", desc: "도라인 패를 금빛으로 반짝이게 합니다. 나만의 도라는 보랏빛 금색으로 표시합니다" },
     { key: "screenFx", label: "화면 효과", desc: "화료나 리치 때 화면 흔들림, 번쩍임, 파티클 효과를 보여 줍니다. 멀미가 나거나 빛에 민감하면 꺼 주세요" },

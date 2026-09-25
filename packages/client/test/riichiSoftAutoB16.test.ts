@@ -129,8 +129,42 @@ describe("B16 취소 — 손이 닿으면 소프트 자동만 걷는다", () => 
     expect(fx).toContain('document.addEventListener("pointerover", onOver, true);');
     expect(fx).toContain('t.closest(".aug-btn, .aug-menu, .action-bar")');
     expect(fx).toContain("RIICHI_SOFT_AUTO_HOVER_GRACE_MS");
-    // 정리도 셋 다
-    expect(fx.match(/document\.removeEventListener\(/g)?.length).toBe(3);
+    // 정리는 넷 + 틈이 끝날 때 떼는 움직임(pointermove) 하나
+    expect(fx.match(/document\.removeEventListener\(/g)?.length).toBe(5);
+    expect(fx).toContain("window.clearTimeout(graceEnd);");
+  });
+
+  it("틈 동안 움직여 ✦·액션 바 위에 멈춘 포인터는 틈이 끝날 때 걷는다 (리뷰 라운드 1)", () => {
+    const fx = between(APP_CODE, "if (riichiSoftAutoAt === null) return;", "}, [riichiSoftAutoAt]);");
+    expect(fx).toContain('document.addEventListener("pointermove", onMove, true);');
+    expect(fx).toMatch(
+      /if \(movedInGrace && document\.querySelector\("\.aug-btn:hover, \.aug-menu:hover, \.action-bar:hover"\) !== null\) stop\(\);/,
+    );
+  });
+
+  it("✦ 메뉴가 열린 채로 걸리면 곧바로 걷는다 (리뷰 라운드 1)", () => {
+    const fx = between(APP_CODE, "if (riichiSoftAutoAt === null) return;", "}, [riichiSoftAutoAt]);");
+    expect(fx).toMatch(/if \(document\.querySelector\("\.aug-menu"\) !== null\) \{\s*stop\(\);\s*return;\s*\}/);
+  });
+
+  it("재입장(joined)은 떠 있던 프롬프트와 함께 걸린 자동응답도 걷는다 (리뷰 라운드 1)", () => {
+    const at = APP_CODE.indexOf('if (msg.type === "joined") {');
+    const body = APP_CODE.slice(at, APP_CODE.indexOf("return;", at));
+    expect(body).toMatch(/setPrompts\(\{\}\);\s*cancelAutoRespond\(\);/);
+  });
+});
+
+describe("B16 설정 — «리치 중 자동 쯔모기리» (기본 켬)", () => {
+  it("설정 키가 있고 기본은 켜짐, 끄면 걸지 않는다", () => {
+    expect(APP_CODE).toMatch(/\n  riichiSoftAuto: boolean;/);
+    expect(between(APP_CODE, "const DEFAULT_SETTINGS: Settings = {", "\n};")).toContain("riichiSoftAuto: true,");
+    const fn = between(APP_CODE, "function tryRiichiSoftAuto(", "function tryAutoRespond(");
+    expect(fn).toContain("if (!settingsRef.current.riichiSoftAuto) return;");
+  });
+
+  it("설정 창에 스위치가 있다", () => {
+    const panel = between(APP_CODE, "function SettingsPanel(", "const votes = ");
+    expect(panel).toMatch(/key: "riichiSoftAuto",\s*label: "리치 중 자동 쯔모기리",/);
   });
 });
 
